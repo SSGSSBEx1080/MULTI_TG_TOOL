@@ -20,6 +20,14 @@ from backend.tools.astrology_and_physics import (
     get_horoscope,
     solve_physics,
 )
+from backend.tools.universes_hub import (
+    compute_dc_summary,
+    compute_marvel_summary,
+    compute_zitraks_summary,
+    filter_valid_ids,
+    get_universes_catalog,
+    is_valid_item_id,
+)
 
 router = Router(name="v3_bot_handlers")
 
@@ -591,3 +599,263 @@ async def _execute_physics_bot(
         + (f"\n\n<b>Дополнительно:</b>\n{extra_txt}" if extra_txt else ""),
         reply_markup=b.as_markup(),
     )
+
+
+# ==============================================================================
+# 4. Чек-листы Marvel / DC и Вики мода ZitraksMode (Forge 1.19.2)
+# ==============================================================================
+async def _render_marvel_bot(target: Message | CallbackQuery, group_id: str = "phase-1") -> None:
+    uid = target.from_user.id
+    cat = get_universes_catalog()["marvel"]
+    raw_checked = await db.get_user_checklist(uid, "marvel")
+    checked = set(filter_valid_ids("marvel", raw_checked))
+    summary = compute_marvel_summary(list(checked))
+
+    all_groups = [
+        *[{"id": p["id"], "title": p["title"], "items": p["items"]} for p in cat["mcu_phases"]],
+        *[{"id": g["id"], "title": g["title"], "items": g["items"]} for g in cat["other_groups"]],
+        {"id": "upcoming", "title": "Анонсы", "items": cat["upcoming"]},
+    ]
+    grp = next((g for g in all_groups if g["id"] == group_id), all_groups[0])
+    grp_done = sum(1 for it in grp["items"] if it["id"] in checked)
+
+    lines = [
+        f"{'✅' if it['id'] in checked else '⬜'} <b>{esc(it['title'])}</b> ({it['year'] or 'TBA'})"
+        for it in grp["items"][:12]
+    ]
+    if len(grp["items"]) > 12:
+        lines.append(f"<i>…и ещё {len(grp['items']) - 12} в этой группе</i>")
+
+    txt = (
+        f"<b>🛡️ Чек-лист Marvel — {esc(grp['title'])}</b>\n"
+        f"<blockquote>Всего просмотрено: <b>{summary['total_done']} / {summary['total_items']}</b>  •  "
+        f"MCU: <b>{summary['mcu_done']}/{summary['mcu_total']} ({summary['mcu_pct']}%)</b></blockquote>\n\n"
+        f"<b>{esc(grp['title'])} ({grp_done}/{len(grp['items'])}):</b>\n"
+        + "\n".join(lines)
+    )
+
+    b = InlineKeyboardBuilder()
+    # Quick toggle buttons for first 6 items in group
+    item_btns = [
+        InlineKeyboardButton(
+            text=f"{'✅' if it['id'] in checked else '⬜'} {it['title'][:20]}",
+            callback_data=f"uv:mtog:{grp['id']}:{it['id']}",
+        )
+        for it in grp["items"][:6]
+    ]
+    for i in range(0, len(item_btns), 2):
+        b.row(*item_btns[i : i + 2])
+
+    # Phase switcher
+    phase_btns = [
+        InlineKeyboardButton(
+            text=f"• Ф{idx} •" if p["id"] == grp["id"] else f"Ф{idx}",
+            callback_data=f"uv:mgrp:{p['id']}",
+        )
+        for idx, p in enumerate(cat["mcu_phases"], start=1)
+    ]
+    b.row(*phase_btns)
+    b.row(
+        InlineKeyboardButton(
+            text="• Паук •" if grp["id"] == "spider" else "Паук",
+            callback_data="uv:mgrp:spider",
+        ),
+        InlineKeyboardButton(
+            text="• Люди Икс •" if grp["id"] == "xmen" else "Люди Икс",
+            callback_data="uv:mgrp:xmen",
+        ),
+        InlineKeyboardButton(
+            text="• Дэдпул •" if grp["id"] == "deadpool" else "Дэдпул",
+            callback_data="uv:mgrp:deadpool",
+        ),
+        InlineKeyboardButton(
+            text="• Анонсы •" if grp["id"] == "upcoming" else "Анонсы",
+            callback_data="uv:mgrp:upcoming",
+        ),
+    )
+    b.row(webapp_button("📱 Весь чек-лист Marvel в приложении", tab="marvel_checklist"))
+    b.row(InlineKeyboardButton(text="🌐 Сайт Marvel Checklist", url=cat["site_url"]))
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:universes"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    await render_hud(target, txt, reply_markup=b.as_markup())
+
+
+@router.message(Command("marvel"))
+async def cmd_marvel(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "marvel_checklist", "universes", "bot", "open")
+    await _render_marvel_bot(message, "phase-1")
+
+
+@router.callback_query(F.data == "tool:open:marvel_checklist")
+async def cb_open_marvel(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "marvel_checklist", "universes", "bot", "open")
+    await _render_marvel_bot(call, "phase-1")
+
+
+@router.callback_query(F.data.startswith("uv:mgrp:"))
+async def cb_marvel_group(call: CallbackQuery) -> None:
+    grp_id = call.data.split(":", 2)[2]
+    await _render_marvel_bot(call, grp_id)
+
+
+@router.callback_query(F.data.startswith("uv:mtog:"))
+async def cb_marvel_toggle(call: CallbackQuery) -> None:
+    _, _, grp_id, item_id = call.data.split(":", 3)
+    if is_valid_item_id("marvel", item_id):
+        checked_now, _ = await db.toggle_user_checklist_item(call.from_user.id, "marvel", item_id)
+        if checked_now:
+            await db.record_tool_use(call.from_user.id, "marvel_checklist", "universes", "bot", item_id, xp_gain=4)
+    await _render_marvel_bot(call, grp_id)
+
+
+async def _render_dc_bot(target: Message | CallbackQuery, era_id: str = "dcu") -> None:
+    uid = target.from_user.id
+    cat = get_universes_catalog()["dc"]
+    raw_checked = await db.get_user_checklist(uid, "dc")
+    checked = set(filter_valid_ids("dc", raw_checked))
+    summary = compute_dc_summary(list(checked))
+
+    eras = cat["eras"]
+    era = next((e for e in eras if e["id"] == era_id), eras[0])
+    items = sorted(
+        [p for p in cat["projects"] if p["era"] == era["id"]],
+        key=lambda x: x["release_order"],
+    )
+
+    lines = [
+        f"{'✅' if p['id'] in checked else '⬜'} <b>{esc(p['title'])}</b> ({p['year'] or 'TBA'}) • ★ {esc(p['imdb'])} • {esc(p['duration'])}"
+        for p in items
+    ]
+    txt = (
+        f"<b>🦇 Чек-лист DC — {esc(era['short'])}</b>\n"
+        f"<blockquote>Просмотрено: <b>{summary['done']} / {summary['total']} ({summary['pct']}%)</b>  •  "
+        f"Время: <b>{summary['watched_hours']} ч</b></blockquote>\n\n"
+        f"<b>{esc(era['title'])}:</b>\n"
+        + ("\n".join(lines) if lines else "Нет проектов")
+    )
+
+    b = InlineKeyboardBuilder()
+    item_btns = [
+        InlineKeyboardButton(
+            text=f"{'✅' if p['id'] in checked else '⬜'} {p['title'][:22]}",
+            callback_data=f"uv:dctog:{era['id']}:{p['id']}",
+        )
+        for p in items[:8]
+    ]
+    for i in range(0, len(item_btns), 2):
+        b.row(*item_btns[i : i + 2])
+
+    b.row(
+        *[
+            InlineKeyboardButton(
+                text=f"• {e['short']} •" if e["id"] == era["id"] else e["short"],
+                callback_data=f"uv:dcera:{e['id']}",
+            )
+            for e in eras
+        ]
+    )
+    b.row(webapp_button("📱 Интерактивный чек-лист DC", tab="dc_checklist"))
+    b.row(InlineKeyboardButton(text="🌐 Сайт DC Universe Checklist", url=cat["site_url"]))
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:universes"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    await render_hud(target, txt, reply_markup=b.as_markup())
+
+
+@router.message(Command("dc"))
+async def cmd_dc(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "dc_checklist", "universes", "bot", "open")
+    await _render_dc_bot(message, "dcu")
+
+
+@router.callback_query(F.data == "tool:open:dc_checklist")
+async def cb_open_dc(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "dc_checklist", "universes", "bot", "open")
+    await _render_dc_bot(call, "dcu")
+
+
+@router.callback_query(F.data.startswith("uv:dcera:"))
+async def cb_dc_era(call: CallbackQuery) -> None:
+    era_id = call.data.split(":", 2)[2]
+    await _render_dc_bot(call, era_id)
+
+
+@router.callback_query(F.data.startswith("uv:dctog:"))
+async def cb_dc_toggle(call: CallbackQuery) -> None:
+    _, _, era_id, item_id = call.data.split(":", 3)
+    if is_valid_item_id("dc", item_id):
+        checked_now, _ = await db.toggle_user_checklist_item(call.from_user.id, "dc", item_id)
+        if checked_now:
+            await db.record_tool_use(call.from_user.id, "dc_checklist", "universes", "bot", item_id, xp_gain=4)
+    await _render_dc_bot(call, era_id)
+
+
+async def _render_zitraks_bot(target: Message | CallbackQuery, page_idx: int = 0) -> None:
+    uid = target.from_user.id
+    cat = get_universes_catalog()["zitraks"]
+    raw_checked = await db.get_user_checklist(uid, "zitraks")
+    checked = filter_valid_ids("zitraks", raw_checked)
+    summary = compute_zitraks_summary(checked)
+
+    pts = cat["points"]
+    per_page = 10
+    total_pages = max(1, (len(pts) + per_page - 1) // per_page)
+    page_idx = max(0, min(page_idx, total_pages - 1))
+    chunk = pts[page_idx * per_page : (page_idx + 1) * per_page]
+
+    br_by_n = {b["n"]: b for b in summary["branches"] if not b["guest"]}
+    lines = []
+    for p in chunk:
+        b_stat = br_by_n.get(p["n"], {"done": 0, "total": 0})
+        prog = f"{b_stat['done']}/{b_stat['total']}" if b_stat["total"] else "—"
+        lines.append(f"• <b>№{p['code']} {esc(p['title'])}</b> ({p['date']}) — 🏆 {prog}")
+
+    txt = (
+        f"<b>⛏️ ZitraksMode Wiki ({esc(cat['mod_version'])})</b>\n"
+        f"<blockquote>Ур. <b>{summary['level']}</b> ({esc(summary['rank'])})  •  "
+        f"Опыт: <b>{summary['xp']}/{summary['xp_total']} XP</b>  •  "
+        f"Ачивок: <b>{summary['got']}/{summary['total']}</b></blockquote>\n\n"
+        f"<b>Пункты мода (стр. {page_idx + 1}/{total_pages}):</b>\n"
+        + "\n".join(lines)
+    )
+
+    b = InlineKeyboardBuilder()
+    nav_row = []
+    if page_idx > 0:
+        nav_row.append(InlineKeyboardButton(text="⬅️ Пред.", callback_data=f"uv:zmpage:{page_idx - 1}"))
+    if page_idx + 1 < total_pages:
+        nav_row.append(InlineKeyboardButton(text="След. ➡️", callback_data=f"uv:zmpage:{page_idx + 1}"))
+    if nav_row:
+        b.row(*nav_row)
+
+    b.row(webapp_button("📱 Древо ачивок и все 33 пункта в приложении", tab="zitraksmode_wiki"))
+    b.row(
+        InlineKeyboardButton(text="🌐 ZitraksMode Wiki", url=cat["site_url"]),
+        InlineKeyboardButton(text="🎮 Веб-Minecraft", url=cat["play_url"]),
+    )
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:universes"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    await render_hud(target, txt, reply_markup=b.as_markup())
+
+
+@router.message(Command("zitraks"))
+async def cmd_zitraks(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "zitraksmode_wiki", "universes", "bot", "open")
+    await _render_zitraks_bot(message, 0)
+
+
+@router.callback_query(F.data == "tool:open:zitraksmode_wiki")
+async def cb_open_zitraks(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "zitraksmode_wiki", "universes", "bot", "open")
+    await _render_zitraks_bot(call, 0)
+
+
+@router.callback_query(F.data.startswith("uv:zmpage:"))
+async def cb_zitraks_page(call: CallbackQuery) -> None:
+    p_idx = int(call.data.split(":", 2)[2])
+    await _render_zitraks_bot(call, p_idx)

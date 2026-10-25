@@ -2052,4 +2052,344 @@ export const HabitRing3D: React.FC<{ doneCount: number; totalCount: number }> = 
   );
 };
 
+// ============================================================================
+// 10. UNIVERSES 3D SCENE: MARVEL ARC REACTOR / DC CRYSTAL / ZITRAKS VOXEL BLOCK
+// ============================================================================
+export interface Universes3DProps {
+  mode: 'marvel' | 'dc' | 'zitraks';
+  progressPct?: number;
+  subtitle?: string;
+}
+
+const ZITRAKS_BLOCK_THEMES = [
+  { id: 'num', label: '№01 Цифроблок', top: '#ffffff', side: '#cbd5e1', accent: '#38bdf8', mark: '1' },
+  { id: 'tnt', label: '№02 ТНТ-броня', top: '#ef4444', side: '#dc2626', accent: '#fef08a', mark: 'TNT' },
+  { id: 'labubu', label: '№06 Лабубу', top: '#f472b6', side: '#ec4899', accent: '#fde047', mark: '★' },
+  { id: 'ender', label: '№07 Эндер-сейф', top: '#8b5cf6', side: '#4c1d95', accent: '#34d399', mark: '◈' },
+  { id: 'sand', label: '№29 Сандевистан', top: '#eef638', side: '#84cc16', accent: '#22d3ee', mark: '⚡' },
+];
+
+export const Universes3DScene: React.FC<Universes3DProps> = ({
+  mode,
+  progressPct = 0,
+  subtitle = '',
+}) => {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const active = useViewportActive(wrapRef);
+
+  const [zmBlockIdx, setZmBlockIdx] = useState(1);
+  const [paused, setPaused] = useState(false);
+
+  const camRef = useRef({ rx: 0.46, ry: 0.62, zoom: 1, down: false, lx: 0, ly: 0 });
+
+  const meshes = useMemo(
+    () => ({
+      outerRing: createTorus(1.18, 0.14, 22, 9),
+      innerRing: createTorus(0.74, 0.1, 18, 8),
+      coreIcosa: createIcosahedron(0.42),
+      dcOcta: createOctahedron(1.08),
+      dcInner: createDodecahedron(0.52),
+      mcCube: createCube(0.88),
+      miniCube: createCube(0.22),
+    }),
+    []
+  );
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    let t = 0;
+
+    const stones = [
+      { name: 'Space', col: '#38bdf8' },
+      { name: 'Mind', col: '#facc15' },
+      { name: 'Reality', col: '#ef4444' },
+      { name: 'Power', col: '#a855f7' },
+      { name: 'Time', col: '#22c55e' },
+      { name: 'Soul', col: '#fb923c' },
+    ];
+
+    const render = () => {
+      const cvs = canvasRef.current;
+      const ctx = cvs?.getContext('2d');
+      if (!cvs || !ctx) return;
+
+      const W = cvs.width;
+      const H = cvs.height;
+      const speedBoost = 1 + (progressPct / 100) * 0.85;
+      if (!paused) {
+        t += 0.018 * speedBoost;
+        if (!camRef.current.down) {
+          camRef.current.ry += 0.0065;
+        }
+      }
+
+      // Deep themed background gradient
+      const bg = ctx.createRadialGradient(W * 0.5, H * 0.5, 10, W * 0.5, H * 0.5, W * 0.62);
+      if (mode === 'marvel') {
+        bg.addColorStop(0, '#2a0912');
+        bg.addColorStop(0.55, '#110710');
+        bg.addColorStop(1, '#070912');
+      } else if (mode === 'dc') {
+        bg.addColorStop(0, '#09203f');
+        bg.addColorStop(0.55, '#081226');
+        bg.addColorStop(1, '#060913');
+      } else {
+        bg.addColorStop(0, '#132417');
+        bg.addColorStop(0.55, '#0d1512');
+        bg.addColorStop(1, '#070a0d');
+      }
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      const fov = 265 * camRef.current.zoom;
+      const camDist = 4.3;
+      const { rx, ry } = camRef.current;
+
+      if (mode === 'marvel') {
+        // Stark Arc Reactor + 6 Orbiting Infinity Stones
+        drawShadedMesh(ctx, meshes.outerRing, rx, ry, t * 0.6, W, H, fov, camDist, '#e23636', 0.82, 'rgba(254,202,202,0.45)');
+        drawShadedMesh(ctx, meshes.innerRing, rx + Math.PI * 0.35, ry - t * 0.9, -t * 0.7, W, H, fov, camDist, '#38bdf8', 0.84, 'rgba(186,230,253,0.6)');
+        drawShadedMesh(ctx, meshes.coreIcosa, rx + t, ry + t * 1.1, 0, W, H, fov, camDist, '#7dd3fc', 0.92, 'rgba(255,255,255,0.75)');
+
+        stones.forEach((st, idx) => {
+          const ang = t * 0.9 + (idx * Math.PI * 2) / stones.length;
+          const pos = v3(Math.cos(ang) * 1.58, Math.sin(ang * 1.5) * 0.36, Math.sin(ang) * 1.58);
+          const pr = project3D(rotateEuler(pos, rx, ry, 0), W, H, fov, camDist);
+          if (pr.visible) {
+            const r = Math.max(4.5, pr.scale * 0.11);
+            const g = ctx.createRadialGradient(pr.sx, pr.sy, 1, pr.sx, pr.sy, r * 2.5);
+            g.addColorStop(0, '#ffffff');
+            g.addColorStop(0.35, st.col);
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(pr.sx, pr.sy, r * 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+      } else if (mode === 'dc') {
+        // DC Kryptonian Multiverse Crystal + Golden & Elseworlds Orbits
+        drawShadedMesh(ctx, meshes.dcInner, -rx, -ry * 1.3, t, W, H, fov, camDist, '#f7c948', 0.88, 'rgba(254,240,138,0.65)');
+        drawShadedMesh(ctx, meshes.dcOcta, rx, ry, t * 0.35, W, H, fov, camDist, '#198cff', 0.58, 'rgba(147,197,253,0.65)');
+
+        const orbitColors = ['#198cff', '#f7c948', '#c084fc'];
+        orbitColors.forEach((col, oi) => {
+          ctx.beginPath();
+          for (let s = 0; s <= 52; s++) {
+            const a = (s / 52) * Math.PI * 2;
+            const rad = 1.48 + oi * 0.14;
+            const p0 = v3(
+              Math.cos(a) * rad,
+              Math.sin(a) * Math.sin(0.55 + oi * 0.8) * 0.65,
+              Math.sin(a) * rad
+            );
+            const pr = project3D(rotateEuler(p0, rx, ry + t * 0.25 * (oi % 2 ? -1 : 1), oi * 0.6), W, H, fov, camDist);
+            if (s === 0) ctx.moveTo(pr.sx, pr.sy);
+            else ctx.lineTo(pr.sx, pr.sy);
+          }
+          ctx.strokeStyle = col;
+          ctx.globalAlpha = 0.62;
+          ctx.lineWidth = 1.6;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        });
+      } else {
+        // ZitraksMode 3D Minecraft Voxel Block + Floating XP Orbs
+        const blk = ZITRAKS_BLOCK_THEMES[zmBlockIdx % ZITRAKS_BLOCK_THEMES.length];
+        const cube = meshes.mcCube;
+        const transformed = cube.vertices.map((vt) => rotateEuler(vt, rx, ry, 0));
+        const projected = transformed.map((vt) => project3D(vt, W, H, fov, camDist));
+
+        const sortedFaces = cube.faces
+          .map((f, fIdx) => {
+            let cx = 0;
+            let cy = 0;
+            let cz = 0;
+            for (const vi of f) {
+              cx += transformed[vi].x;
+              cy += transformed[vi].y;
+              cz += transformed[vi].z;
+            }
+            const center = { x: cx / 4, y: cy / 4, z: cz / 4 };
+            const e1 = sub3(transformed[f[1]], transformed[f[0]]);
+            const e2 = sub3(transformed[f[2]], transformed[f[0]]);
+            let normal = cross3(e1, e2);
+            if (normal.x * center.x + normal.y * center.y + normal.z * center.z < 0) {
+              normal = scale3(normal, -1);
+            }
+            // Face 2/3 in cube: distinguish top/bottom vs side faces
+            const hex = fIdx === 3 ? blk.top : fIdx === 2 ? '#1e293b' : blk.side;
+            return { f, fIdx, center, normal, depth: center.z, hex };
+          })
+          .sort((a, b) => a.depth - b.depth);
+
+        for (const item of sortedFaces) {
+          const pts = item.f.map((vi) => projected[vi]);
+          if (pts.some((p) => !p.visible)) continue;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].sx, pts[0].sy);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+          ctx.closePath();
+          ctx.fillStyle = shadeBlinnPhong(item.normal, item.center, hexToRgb(item.hex), undefined, 0.96);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(15,23,42,0.85)';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // Pixel stripe / emblem on side faces
+          if (item.fIdx !== 2 && item.fIdx !== 3 && item.depth > 0) {
+            const midX = (pts[0].sx + pts[1].sx + pts[2].sx + pts[3].sx) * 0.25;
+            const midY = (pts[0].sy + pts[1].sy + pts[2].sy + pts[3].sy) * 0.25;
+            ctx.fillStyle = blk.accent;
+            ctx.font = 'bold 16px "Tiny5", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(blk.mark, midX, midY);
+          }
+        }
+
+        // Floating Minecraft XP orbs around the block
+        for (let i = 0; i < 10; i++) {
+          const a = t * 1.05 + (i * Math.PI * 2) / 10;
+          const pos = v3(Math.cos(a) * 1.52, Math.sin(t * 2 + i) * 0.45, Math.sin(a) * 1.52);
+          const pr = project3D(rotateEuler(pos, rx, ry, 0), W, H, fov, camDist);
+          if (pr.visible) {
+            const orbCol = i % 2 === 0 ? '#84cc16' : '#facc15';
+            const r = Math.max(3.5, pr.scale * 0.085);
+            const g = ctx.createRadialGradient(pr.sx, pr.sy, 0.5, pr.sx, pr.sy, r * 2.2);
+            g.addColorStop(0, '#ffffff');
+            g.addColorStop(0.45, orbCol);
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(pr.sx, pr.sy, r * 2.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // HUD Overlay in corner
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.font = '600 11px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      if (subtitle) {
+        ctx.fillText(subtitle, 12, H - 10);
+      }
+
+      raf = requestAnimationFrame(render);
+    };
+
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [active, meshes, mode, paused, progressPct, subtitle, zmBlockIdx]);
+
+  const titleLabel =
+    mode === 'marvel'
+      ? '🛡️ 3D Дуговой Реактор и Камни Бесконечности'
+      : mode === 'dc'
+      ? '🦇 3D Кристалл Мультивселенной DC'
+      : '⛏️ 3D Блок ZitraksMode и Сферы XP';
+
+  return (
+    <div ref={wrapRef} className="rounded-2xl border border-white/10 bg-slate-950/90 p-3 space-y-2 select-none">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="font-semibold text-white">{titleLabel}</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setPaused((p) => !p)}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+            title={paused ? 'Продолжить вращение' : 'Пауза'}
+          >
+            {paused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              camRef.current.zoom = Math.min(1.45, camRef.current.zoom + 0.12);
+            }}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+            title="Приблизить"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              camRef.current.zoom = Math.max(0.7, camRef.current.zoom - 0.12);
+            }}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+            title="Отдалить"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              camRef.current.rx = 0.46;
+              camRef.current.ry = 0.62;
+              camRef.current.zoom = 1;
+            }}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+            title="Сброс ракурса"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {mode === 'zitraks' && (
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+          {ZITRAKS_BLOCK_THEMES.map((b, idx) => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => setZmBlockIdx(idx)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-pixel whitespace-nowrap border transition shrink-0 ${
+                zmBlockIdx === idx
+                  ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200'
+                  : 'bg-slate-900 border-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <canvas
+        ref={canvasRef}
+        width={560}
+        height={195}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          camRef.current.down = true;
+          camRef.current.lx = e.clientX;
+          camRef.current.ly = e.clientY;
+        }}
+        onPointerMove={(e) => {
+          if (!camRef.current.down) return;
+          const dx = e.clientX - camRef.current.lx;
+          const dy = e.clientY - camRef.current.ly;
+          camRef.current.lx = e.clientX;
+          camRef.current.ly = e.clientY;
+          camRef.current.ry += dx * 0.011;
+          camRef.current.rx = Math.max(-1.35, Math.min(1.35, camRef.current.rx + dy * 0.011));
+        }}
+        onPointerUp={() => {
+          camRef.current.down = false;
+        }}
+        onPointerCancel={() => {
+          camRef.current.down = false;
+        }}
+        className="w-full h-auto max-h-[205px] rounded-xl cursor-grab active:cursor-grabbing touch-none block"
+      />
+    </div>
+  );
+};
+
+
 

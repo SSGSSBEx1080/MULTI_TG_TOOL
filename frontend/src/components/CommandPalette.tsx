@@ -53,7 +53,7 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, categories, onS
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl rounded-2xl border border-white/15 bg-[#0f1629] shadow-2xl overflow-hidden"
+        className="w-full max-w-xl rounded-2xl border border-white/15 glass-surface shadow-2xl overflow-hidden animate-view-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2.5 px-3.5 sm:px-4 py-3 border-b border-white/10">
@@ -70,7 +70,7 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, categories, onS
                 onClose();
               }
             }}
-            placeholder="Поиск по всем 59 инструментам (QR, физика, гороскоп, PDF, пароль)..."
+            placeholder="Поиск по инструментам (Marvel, DC, ZitraksMode, QR, физика, PDF)..."
             className="w-full min-w-0 bg-transparent text-sm text-white placeholder-slate-400 focus:outline-none"
           />
           <button

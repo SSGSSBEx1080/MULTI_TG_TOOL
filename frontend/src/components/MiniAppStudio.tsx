@@ -30,6 +30,7 @@ const SocialDatingHub = lazy(() =>
 );
 const HoroscopeHub = lazy(() => import('./tools/HoroscopeHub').then((m) => ({ default: m.HoroscopeHub })));
 const PhysicsHub = lazy(() => import('./tools/PhysicsHub').then((m) => ({ default: m.PhysicsHub })));
+const UniversesHub = lazy(() => import('./tools/UniversesHub').then((m) => ({ default: m.UniversesHub })));
 
 interface Props {
   isNativeTma?: boolean;
@@ -133,6 +134,16 @@ export const MiniAppStudio: React.FC<Props> = ({
         <PhysicsHub
           activeTool={activeTool}
           onSelectTool={(t) => onSelectTool('physics', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'universes') {
+      return (
+        <UniversesHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('universes', t)}
           onSync={onRefreshWorkspace}
           onToast={onToast}
         />
@@ -246,21 +257,21 @@ export const MiniAppStudio: React.FC<Props> = ({
           ===================================================================== */}
       <div className="hidden lg:grid lg:grid-cols-12 lg:gap-5 items-start">
         {/* Left Sidebar */}
-        <aside className={`col-span-3 sticky ${isNativeTma ? 'top-3 max-h-[calc(100vh-1.5rem)]' : 'top-16 max-h-[calc(100vh-5rem)]'} rounded-2xl bg-slate-900/85 border border-white/10 p-3 space-y-3 overflow-y-auto`}>
+        <aside className={`col-span-3 sticky ${isNativeTma ? 'top-3 max-h-[calc(100vh-1.5rem)]' : 'top-16 max-h-[calc(100vh-5rem)]'} rounded-2xl glass-surface border border-white/10 p-3 space-y-3 overflow-y-auto`}>
           {profile && (
-            <div className="px-2.5 py-2 rounded-xl bg-slate-950/80 border border-white/5 flex items-center justify-between gap-2">
+            <div className="px-2.5 py-2 rounded-xl bg-slate-950/80 border border-white/10 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
-                <img src="/avatar.png" alt="Logo" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                <img src="/avatar.png" alt="Logo" className="w-8 h-8 rounded-lg object-cover shrink-0 border border-white/15" />
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-white truncate">{profile.first_name}</div>
-                  <div className="text-[11px] text-slate-400 truncate">
+                  <div className="text-xs font-display font-bold text-white truncate">{profile.first_name}</div>
+                  <div className="text-[11px] font-mono text-slate-400 truncate">
                     Ур. {profile.rank.level} • {profile.rank.xp} XP
                   </div>
                 </div>
               </div>
               <button
                 onClick={onOpenPalette}
-                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition"
                 title="Поиск по всем инструментам (Ctrl+K)"
               >
                 <Search className="w-4 h-4" />
@@ -279,7 +290,7 @@ export const MiniAppStudio: React.FC<Props> = ({
           )}
 
           <div className="space-y-1">
-            <div className="px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <div className="px-2 text-[11px] font-tech uppercase tracking-wider text-slate-400">
               Разделы ({categories.length})
             </div>
             {categories.map((cat) => {
@@ -288,17 +299,24 @@ export const MiniAppStudio: React.FC<Props> = ({
                 <button
                   key={cat.id}
                   onClick={() => onSelectCategory(cat.id)}
+                  style={
+                    active
+                      ? {
+                          boxShadow: `inset 3px 0 0 ${cat.color || '#6366f1'}, 0 6px 18px -6px ${cat.color || '#6366f1'}66`,
+                        }
+                      : undefined
+                  }
                   className={`w-full px-3 py-2.5 rounded-xl text-left transition flex items-center gap-2.5 ${
                     active
-                      ? 'bg-indigo-600 text-white font-semibold shadow-sm'
-                      : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                      ? 'bg-slate-800/95 border border-white/15 text-white font-semibold'
+                      : 'text-slate-300 hover:bg-white/5 hover:text-white border border-transparent'
                   }`}
                 >
                   <span className="text-base shrink-0">{cat.emoji}</span>
                   <div className="min-w-0 flex-1">
                     <div className="text-xs leading-snug truncate">{cat.title}</div>
                   </div>
-                  <span className={`text-[10px] ${active ? 'text-indigo-200' : 'text-slate-500'}`}>
+                  <span className={`text-[10px] font-mono ${active ? 'text-sky-300' : 'text-slate-500'}`}>
                     {cat.tools.length}
                   </span>
                 </button>
@@ -312,7 +330,7 @@ export const MiniAppStudio: React.FC<Props> = ({
           {/* Quick Bar */}
           <form
             onSubmit={runQuickBar}
-            className="rounded-2xl bg-slate-900/80 border border-white/10 p-2.5 flex items-center gap-2"
+            className="rounded-2xl glass-surface border border-white/10 p-2.5 flex items-center gap-2"
           >
             <Search className="w-4 h-4 text-slate-400 ml-2 shrink-0" />
             <input
@@ -336,7 +354,7 @@ export const MiniAppStudio: React.FC<Props> = ({
             <button
               type="submit"
               disabled={quickBusy}
-              className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shrink-0"
+              className="px-4 py-1.5 rounded-xl glow-btn text-white text-xs font-semibold shrink-0"
             >
               {quickBusy ? '...' : 'Выполнить'}
             </button>
@@ -364,13 +382,18 @@ export const MiniAppStudio: React.FC<Props> = ({
 
           {/* Active Category Header + Sub-tools */}
           {currentCat && (
-            <div className="rounded-2xl bg-slate-900/80 border border-white/10 p-4 space-y-3">
+            <div
+              className="rounded-2xl glass-surface border border-white/10 p-4 space-y-3"
+              style={{ boxShadow: `inset 0 2px 0 ${currentCat.color || '#6366f1'}` }}
+            >
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-3">
                   <span className="text-2xl">{currentCat.emoji}</span>
                   <div>
-                    <h2 className="text-lg font-bold text-white leading-tight">{currentCat.title}</h2>
-                    <p className="text-xs text-slate-400">{currentCat.short}</p>
+                    <h2 className="text-base sm:text-lg font-display font-bold text-white leading-tight">
+                      {currentCat.title}
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">{currentCat.short}</p>
                   </div>
                 </div>
                 <button
@@ -395,7 +418,7 @@ export const MiniAppStudio: React.FC<Props> = ({
                       onClick={() => onSelectTool(currentCat.id, t.id)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 ${
                         isAct
-                          ? 'bg-indigo-600 border-indigo-400 text-white'
+                          ? 'glow-btn border-white/25 text-white font-semibold'
                           : 'bg-slate-950/70 border-white/10 text-slate-300 hover:border-white/25 hover:text-white'
                       }`}
                     >
@@ -409,7 +432,9 @@ export const MiniAppStudio: React.FC<Props> = ({
           )}
 
           {/* Active Tool Workspace */}
-          <div>{renderActiveHub()}</div>
+          <div key={`${activeCategory}:${activeTool}`} className="animate-view-in">
+            {renderActiveHub()}
+          </div>
         </section>
       </div>
 
@@ -421,14 +446,14 @@ export const MiniAppStudio: React.FC<Props> = ({
           /* LEVEL 1: CLEAN CATEGORY DIRECTORY */
           <>
             {/* Compact Mobile Top Bar */}
-            <div className="rounded-2xl bg-slate-900/90 border border-white/10 p-3 space-y-2.5">
+            <div className="rounded-2xl glass-surface border border-white/10 p-3 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <img src="/avatar.png" alt="Logo" className="w-9 h-9 rounded-xl object-cover border border-white/15 shrink-0" />
                   <div className="min-w-0">
-                    <div className="text-sm font-bold text-white truncate">MULTI_TG_TOOL</div>
+                    <div className="text-sm font-display font-bold text-white truncate">MULTI_TG_TOOL</div>
                     {profile && (
-                      <div className="text-[11px] text-slate-400 truncate">
+                      <div className="text-[11px] font-mono text-slate-400 truncate">
                         {profile.first_name} • Ур. {profile.rank.level} ({profile.rank.xp} XP)
                       </div>
                     )}
@@ -467,7 +492,7 @@ export const MiniAppStudio: React.FC<Props> = ({
                 <button
                   type="submit"
                   disabled={quickBusy}
-                  className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold shrink-0"
+                  className="px-3.5 py-2 rounded-xl glow-btn text-white text-xs font-semibold shrink-0"
                 >
                   {quickBusy ? '...' : 'ОК'}
                 </button>
@@ -533,16 +558,25 @@ export const MiniAppStudio: React.FC<Props> = ({
                   accentColor={cat.color || '#6366f1'}
                   maxTilt={9}
                   onClick={() => onSelectCategory(cat.id)}
-                  className="p-3.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 active:scale-[0.99] border border-white/10 text-left transition flex flex-col justify-between min-h-[104px] cursor-pointer"
+                  className="p-3.5 rounded-2xl glass-surface hover:bg-slate-800/90 active:scale-[0.99] border border-white/10 text-left transition flex flex-col justify-between min-h-[108px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between w-full">
                     <span className="text-2xl">{cat.emoji}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400">
+                    <span
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
+                      style={{
+                        borderColor: `${cat.color || '#6366f1'}55`,
+                        backgroundColor: `${cat.color || '#6366f1'}20`,
+                        color: '#e2e8f0',
+                      }}
+                    >
                       {cat.tools.length}
                     </span>
                   </div>
                   <div className="mt-2">
-                    <div className="text-xs sm:text-sm font-bold text-white leading-snug">{cat.title}</div>
+                    <div className="text-xs sm:text-sm font-display font-bold text-white leading-snug">
+                      {cat.title}
+                    </div>
                     <div className="text-[11px] text-slate-400 line-clamp-2 mt-0.5 leading-tight">
                       {cat.short}
                     </div>
@@ -553,10 +587,10 @@ export const MiniAppStudio: React.FC<Props> = ({
           </>
         ) : (
           /* LEVEL 2: IMMEDIATE TOOL VIEW AT TOP OF SCREEN */
-          <div className="space-y-3 min-w-0">
+          <div className="space-y-3 min-w-0 animate-view-in">
             {/* Sticky Back Header + Horizontal Tool Switcher */}
             <div
-              className={`sticky ${isNativeTma ? 'top-0' : 'top-12'} z-20 -mx-3 px-3 py-2.5 bg-[#080c16]/95 backdrop-blur-md border-b border-white/10 space-y-2`}
+              className={`sticky ${isNativeTma ? 'top-0' : 'top-12'} z-20 -mx-3 px-3 py-2.5 bg-[#060913]/92 backdrop-blur-xl border-b border-white/10 space-y-2`}
             >
               <div className="flex items-center justify-between gap-2 min-w-0">
                 <button
@@ -567,7 +601,7 @@ export const MiniAppStudio: React.FC<Props> = ({
                   <ArrowLeft className="w-4 h-4" /> Разделы
                 </button>
                 {currentCat && (
-                  <div className="text-xs sm:text-sm font-bold text-white truncate min-w-0">
+                  <div className="text-xs sm:text-sm font-display font-bold text-white truncate min-w-0">
                     {currentCat.emoji} {currentCat.title}
                   </div>
                 )}
@@ -596,7 +630,7 @@ export const MiniAppStudio: React.FC<Props> = ({
                         onClick={() => onSelectTool(currentCat.id, t.id)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap border transition shrink-0 ${
                           isAct
-                            ? 'bg-indigo-600 border-indigo-400 text-white'
+                            ? 'glow-btn border-white/25 text-white font-semibold'
                             : 'bg-slate-900 border-white/10 text-slate-300'
                         }`}
                       >
@@ -609,20 +643,31 @@ export const MiniAppStudio: React.FC<Props> = ({
             </div>
 
             {/* Active Tool Immediately Visible */}
-            <div className="min-w-0">{renderActiveHub()}</div>
+            <div key={`${activeCategory}:${activeTool}`} className="min-w-0 animate-view-in">
+              {renderActiveHub()}
+            </div>
           </div>
         )}
 
         {/* Mobile Bottom Navigation Bar */}
-        <nav className="fixed bottom-0 inset-x-0 z-30 bg-[#0a101f]/95 backdrop-blur-lg border-t border-white/10 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] grid grid-cols-5 gap-1">
+        <nav className="fixed bottom-0 inset-x-0 z-30 bg-[#070b17]/95 backdrop-blur-xl border-t border-white/10 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] grid grid-cols-5 gap-1">
           <button
             onClick={onBackToCategories}
             className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
-              !mobileDrillOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400'
+              !mobileDrillOpen ? 'text-indigo-400 bg-indigo-500/15' : 'text-slate-400'
             }`}
           >
             <span className="text-base leading-none">🗂️</span>
             <span className="mt-0.5">Разделы</span>
+          </button>
+          <button
+            onClick={() => onSelectCategory('universes')}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              mobileDrillOpen && activeCategory === 'universes' ? 'text-rose-300 bg-rose-500/15' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">🎬</span>
+            <span className="mt-0.5">Кино/Мод</span>
           </button>
           <button
             onClick={() => onSelectCategory('horoscope')}
@@ -641,15 +686,6 @@ export const MiniAppStudio: React.FC<Props> = ({
           >
             <span className="text-base leading-none">⚛️</span>
             <span className="mt-0.5">Физика</span>
-          </button>
-          <button
-            onClick={() => onSelectCategory('workspace')}
-            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
-              mobileDrillOpen && activeCategory === 'workspace' ? 'text-emerald-300 bg-emerald-500/15' : 'text-slate-400'
-            }`}
-          >
-            <span className="text-base leading-none">✅</span>
-            <span className="mt-0.5">Привычки</span>
           </button>
           <button
             onClick={onOpenPalette}

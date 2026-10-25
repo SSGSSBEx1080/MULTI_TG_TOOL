@@ -30,6 +30,18 @@ TOOL_CATEGORIES: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "universes",
+        "title": "Кино и ZitraksMode",
+        "emoji": "🎬",
+        "short": "Чек-листы фильмов Marvel и DC, вики и ачивки мода ZitraksMode",
+        "color": "#e23636",
+        "tools": [
+            {"id": "marvel_checklist", "title": "Чек-лист Marvel", "emoji": "🛡️", "desc": "Все фазы MCU (1–6), Человек-паук, Люди Икс, Дэдпул и анонсы"},
+            {"id": "dc_checklist", "title": "Чек-лист DC", "emoji": "🦇", "desc": "DCU, DCEU, Elseworlds, хронометраж, IMDb и порядок просмотра"},
+            {"id": "zitraksmode_wiki", "title": "Мод ZitraksMode", "emoji": "⛏️", "desc": "Forge 1.19.2: 29+4 пункта мода, древо из 169 ачивок, XP и .zmsave"},
+        ],
+    },
+    {
         "id": "workspace",
         "title": "Привычки и Задачи",
         "emoji": "✅",

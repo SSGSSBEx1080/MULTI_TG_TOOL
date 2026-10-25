@@ -227,12 +227,12 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # 1. Health & Catalog (14 factual categories)
+        # 1. Health & Catalog (15 factual categories)
         r = await client.get("/api/health")
         assert r.status_code == 200
         cat_res = await client.get("/api/tools/catalog")
         categories = cat_res.json()["categories"]
-        assert len(categories) == 14
+        assert len(categories) == 15
 
         # 2. Verify NO fake/demo users exist in Leaderboard initially
         top_initial = await client.get("/api/v2/social/leaderboard?sort_by=xp")
@@ -283,11 +283,14 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
                 after_snapshot = (len(t_msgs), new_last["text"])
                 assert after_snapshot != before_snapshot, f"Button tool:open:{tool_obj['id']} produced ZERO reaction!"
 
-        # 5. Test new Bot commands: /horoscope, /compat, /physics, /habits, /bored, "6 дюймов"
+        # 5. Test Bot commands: /horoscope, /compat, /physics, /marvel, /dc, /zitraks, /habits, /bored, "6 дюймов"
         for cmd_text, expected_substr in [
             ("/horoscope лев", "Лев"),
             ("/compat 15.05.2002 21.09.2003", "Совместимость"),
             ("/physics", "Формула"),
+            ("/marvel", "Чек-лист Marvel"),
+            ("/dc", "Чек-лист DC"),
+            ("/zitraks", "ZitraksMode"),
             ("/habits", "Трекер привычек"),
             ("/bored", "скучно"),
             ("6 дюймов", "15.24"),
@@ -605,5 +608,87 @@ async def test_exhaustive_nested_bot_callbacks_fsm_and_all_api_endpoints(tmp_pat
             assert len(iq_res.json()["results"]) >= 1
 
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_universes_marvel_dc_and_zitraksmode_sync_and_zmsave(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(db, "db_path", tmp_path / "test_universes.db")
+    await db.init()
+
+    test_bot_token = "111222333:AAH_TEST_UNIVERSES_HMAC_SECRET_TOKEN"
+    await db.set_setting("bot_token", test_bot_token)
+    user_a = {"X-Telegram-Init-Data": _make_signed_init_data(test_bot_token, 7001001, "user_a", "Арсений")}
+    user_b = {"X-Telegram-Init-Data": _make_signed_init_data(test_bot_token, 7001002, "user_b", "Максим")}
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            cat_r = await client.get("/api/v2/universes/catalog")
+            assert cat_r.status_code == 200
+            cat = cat_r.json()
+
+            # Verify exact dataset counts from reference repositories
+            marvel_total = (
+                sum(len(p["items"]) for p in cat["marvel"]["mcu_phases"])
+                + sum(len(g["items"]) for g in cat["marvel"]["other_groups"])
+                + len(cat["marvel"]["upcoming"])
+            )
+            assert marvel_total == 99
+            assert len(cat["dc"]["projects"]) == 19
+            assert len(cat["zitraks"]["points"]) == 29
+            assert len(cat["zitraks"]["guest_points"]) == 4
+            all_adv_uids = [
+                a["uid"]
+                for br in cat["zitraks"]["branches"]
+                for a in br["advancements"]
+            ]
+            assert len(all_adv_uids) == 169
+
+            # Toggle Marvel item & DC item
+            first_marvel_id = cat["marvel"]["mcu_phases"][0]["items"][0]["id"]
+            m_tog = await client.post(
+                "/api/v2/universes/toggle",
+                headers=user_a,
+                json={"scope": "marvel", "item_id": first_marvel_id},
+            )
+            assert m_tog.status_code == 200
+            assert m_tog.json()["checked_now"] is True
+            assert m_tog.json()["summary"]["mcu_done"] == 1
+
+            first_dc = cat["dc"]["projects"][0]
+            dc_tog = await client.post(
+                "/api/v2/universes/toggle",
+                headers=user_a,
+                json={"scope": "dc", "item_id": first_dc["id"]},
+            )
+            assert dc_tog.status_code == 200
+            assert dc_tog.json()["summary"]["done"] == 1
+            assert dc_tog.json()["summary"]["watched_minutes"] == first_dc["minutes"]
+
+            # Mark 25 ZitraksMode advancements on user_a, export ZM1. code, and import into user_b
+            sample_uids = all_adv_uids[:25]
+            zm_bulk = await client.post(
+                "/api/v2/universes/bulk",
+                headers=user_a,
+                json={"scope": "zitraks", "item_ids": sample_uids, "mode": "add"},
+            )
+            assert zm_bulk.status_code == 200
+            zm_data = zm_bulk.json()
+            assert zm_data["summary"]["got"] == 25
+            assert zm_data["summary"]["xp"] > 0
+            assert zm_data["zmsave_code"].startswith("ZM1.")
+
+            # Import exported ZM1. code into user_b and verify 1:1 restoration
+            imp_res = await client.post(
+                "/api/v2/universes/zmsave/import",
+                headers=user_b,
+                json={"code": zm_data["zmsave_code"], "merge": False},
+            )
+            assert imp_res.status_code == 200
+            assert imp_res.json()["imported_count"] == 25
+            assert set(imp_res.json()["checked"]) == set(sample_uids)
+    finally:
+        await db.close()
 
 

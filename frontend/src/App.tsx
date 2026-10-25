@@ -89,8 +89,8 @@ export const App: React.FC = () => {
       const tg = getTelegramWebApp();
       tg?.ready?.();
       tg?.expand?.();
-      tg?.setHeaderColor?.('#080c16');
-      tg?.setBackgroundColor?.('#080c16');
+      tg?.setHeaderColor?.('#060913');
+      tg?.setBackgroundColor?.('#060913');
     } catch {
       // ignore
     }
@@ -228,11 +228,51 @@ export const App: React.FC = () => {
     }
   };
 
+  // Dynamic ambient aurora colors matched to current category / universe tool
+  const activeCatObj = categories.find((c) => c.id === activeCategory);
+  const primaryGlow =
+    activeCategory === 'universes'
+      ? activeTool === 'dc_checklist'
+        ? '#198cff'
+        : activeTool === 'zitraksmode_wiki'
+        ? '#22c55e'
+        : '#e23636'
+      : activeCatObj?.color || '#6366f1';
+  const secondaryGlow =
+    activeCategory === 'universes'
+      ? activeTool === 'dc_checklist'
+        ? '#f7c948'
+        : activeTool === 'zitraksmode_wiki'
+        ? '#eab308'
+        : '#38bdf8'
+      : '#38bdf8';
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#080c16] text-slate-100 overflow-x-clip">
+    <div
+      className="relative min-h-screen flex flex-col bg-[#060913] text-slate-100 overflow-x-clip"
+      style={
+        {
+          '--accent-primary': primaryGlow,
+          '--accent-secondary': secondaryGlow,
+        } as React.CSSProperties
+      }
+    >
+      {/* Multi-layered GPU-accelerated Ambient Aurora + Cyber-Grid Backdrop */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
+        <div
+          className="aurora-blob-a absolute -top-28 -left-24 w-[62vw] max-w-[680px] h-[52vh] max-h-[540px] rounded-full blur-[110px] opacity-25 transition-colors duration-700"
+          style={{ backgroundColor: primaryGlow }}
+        />
+        <div
+          className="aurora-blob-b absolute -bottom-32 -right-20 w-[58vw] max-w-[640px] h-[48vh] max-h-[500px] rounded-full blur-[120px] opacity-20 transition-colors duration-700"
+          style={{ backgroundColor: secondaryGlow }}
+        />
+        <div className="cyber-grid-bg absolute inset-0" />
+      </div>
+
       {/* Top Browser Shell (Hidden inside native Telegram WebApp) */}
       {!isNativeTma && (
-        <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0a101f]/95 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 border-b border-white/10 bg-[#070b17]/88 backdrop-blur-xl">
           <div className="max-w-[1680px] mx-auto px-3 sm:px-4 h-12 sm:h-13 flex items-center justify-between gap-2">
             <button
               type="button"
@@ -240,18 +280,18 @@ export const App: React.FC = () => {
                 setViewMode('miniapp');
                 setMobileDrillOpen(false);
               }}
-              className="flex items-center gap-2 text-left min-w-0 shrink-0"
+              className="flex items-center gap-2 text-left min-w-0 shrink-0 group"
             >
               <img
                 src="/avatar.png"
                 alt="MULTI_TG_TOOL"
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl object-cover border border-white/15 shrink-0"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl object-cover border border-white/20 shrink-0 group-hover:scale-105 transition"
               />
               <div className="min-w-0">
-                <div className="font-bold text-xs sm:text-sm text-white leading-none truncate">
+                <div className="font-display font-bold text-xs sm:text-sm text-white leading-none truncate tracking-tight">
                   MULTI_TG_TOOL
                 </div>
-                <div className="hidden xs:block sm:block text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">
+                <div className="hidden xs:block sm:block text-[10px] sm:text-[11px] font-mono text-slate-400 mt-0.5 truncate">
                   @multi_tg_bot
                 </div>
               </div>
@@ -273,7 +313,7 @@ export const App: React.FC = () => {
                     onClick={() => setViewMode(m.id as ViewMode)}
                     className={`${m.hideMobile ? 'hidden xl:flex' : 'flex'} items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition ${
                       active
-                        ? 'bg-indigo-600 text-white font-semibold'
+                        ? 'glow-btn text-white font-semibold'
                         : 'text-slate-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
@@ -288,7 +328,7 @@ export const App: React.FC = () => {
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/10 text-xs text-slate-300 transition shrink-0"
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/85 hover:bg-slate-800 border border-white/10 text-xs text-slate-300 transition shrink-0"
             >
               <Search className="w-3.5 h-3.5 text-indigo-400" />
               <span>Поиск инструмента</span>
@@ -301,7 +341,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0">
+      <main className="relative z-10 flex-1 min-w-0">
         <Suspense
           fallback={
             <div className="max-w-xl mx-auto mt-10 p-8 rounded-2xl bg-slate-900/60 border border-white/10 text-center text-sm text-slate-400">
