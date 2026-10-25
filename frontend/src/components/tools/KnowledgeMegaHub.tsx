@@ -9,8 +9,18 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
+const toolToKnowledgeTab = (tool: string): 'const' | 'religions' | 'wiki' | 'ege' | 'pop' => {
+  if (tool === 'religions_hub') return 'religions';
+  if (tool === 'multi_wiki') return 'wiki';
+  if (tool === 'ege_formulas') return 'ege';
+  if (tool === 'population_hub') return 'pop';
+  return 'const';
+};
+
 export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
-  const [subTab, setSubTab] = useState<'const' | 'religions' | 'wiki' | 'ege' | 'pop'>('const');
+  const [subTab, setSubTab] = useState<'const' | 'religions' | 'wiki' | 'ege' | 'pop'>(() =>
+    toolToKnowledgeTab(activeTool)
+  );
 
   const [constQuery, setConstQuery] = useState('');
   const [constItems, setConstItems] = useState<any[]>([]);
@@ -32,38 +42,48 @@ export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, on
   const [popData, setPopData] = useState<any>(null);
 
   useEffect(() => {
-    if (activeTool === 'constitutions_hub') setSubTab('const');
-    else if (activeTool === 'religions_hub') setSubTab('religions');
-    else if (activeTool === 'multi_wiki') setSubTab('wiki');
-    else if (activeTool === 'ege_formulas') setSubTab('ege');
-    else if (activeTool === 'population_hub') setSubTab('pop');
+    setSubTab(toolToKnowledgeTab(activeTool));
   }, [activeTool]);
 
   useEffect(() => {
-    apiGet(`/api/v2/knowledge/constitutions?q=${encodeURIComponent(constQuery)}`).then((r) => setConstItems(r.items));
-  }, [constQuery]);
+    if (subTab !== 'const') return;
+    apiGet(`/api/v2/knowledge/constitutions?q=${encodeURIComponent(constQuery)}`)
+      .then((r) => setConstItems(r.items || []))
+      .catch(() => {});
+  }, [subTab, constQuery]);
 
   useEffect(() => {
-    apiGet(`/api/v2/knowledge/religions?q=${encodeURIComponent(relQuery)}`).then((r) => setRelItems(r.items));
-  }, [relQuery]);
+    if (subTab !== 'religions') return;
+    apiGet(`/api/v2/knowledge/religions?q=${encodeURIComponent(relQuery)}`)
+      .then((r) => setRelItems(r.items || []))
+      .catch(() => {});
+  }, [subTab, relQuery]);
 
   useEffect(() => {
-    apiGet(`/api/v2/knowledge/wiki?section=${wikiSection}&q=${encodeURIComponent(wikiQuery)}`).then(setWikiData);
-  }, [wikiSection, wikiQuery]);
+    if (subTab !== 'wiki') return;
+    apiGet(`/api/v2/knowledge/wiki?section=${wikiSection}&q=${encodeURIComponent(wikiQuery)}`)
+      .then(setWikiData)
+      .catch(() => {});
+  }, [subTab, wikiSection, wikiQuery]);
 
   useEffect(() => {
-    apiGet(`/api/v2/knowledge/formulas?subject=${encodeURIComponent(egeSubj)}&q=${encodeURIComponent(egeQuery)}`).then((r) =>
-      setEgeItems(r.items)
-    );
-  }, [egeSubj, egeQuery]);
+    if (subTab !== 'ege') return;
+    apiGet(`/api/v2/knowledge/formulas?subject=${encodeURIComponent(egeSubj)}&q=${encodeURIComponent(egeQuery)}`)
+      .then((r) => setEgeItems(r.items || []))
+      .catch(() => {});
+  }, [subTab, egeSubj, egeQuery]);
 
   const loadPop = (q = popQuery) => {
-    apiGet(`/api/v2/knowledge/population?q=${encodeURIComponent(q)}`).then(setPopData);
+    apiGet(`/api/v2/knowledge/population?q=${encodeURIComponent(q)}`)
+      .then(setPopData)
+      .catch(() => {});
   };
 
   useEffect(() => {
-    loadPop('');
-  }, []);
+    if (subTab === 'pop' && !popData) {
+      loadPop('');
+    }
+  }, [subTab]);
 
   const rollStand = async () => {
     const r = await apiPost('/api/v2/knowledge/roll-stand', { name: standUser });

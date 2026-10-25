@@ -4,35 +4,38 @@ import io
 from datetime import datetime, timezone
 from typing import Any
 
-from fpdf import FPDF
 from PIL import Image
-from pypdf import PdfReader, PdfWriter
 
 from backend.config import FONT_BOLD, FONT_REGULAR
 
 
-class _NexusPDF(FPDF):
-    def __init__(self, doc_title: str = "NEXUS Document") -> None:
-        super().__init__()
-        self.doc_title = doc_title
-        self.add_font("DejaVu", style="", fname=FONT_REGULAR)
-        self.add_font("DejaVu", style="B", fname=FONT_BOLD)
+def _build_pdf_doc(doc_title: str = "MULTI_TG_TOOL Document"):
+    from fpdf import FPDF
 
-    def footer(self) -> None:
-        self.set_y(-15)
-        self.set_font("DejaVu", "", 8)
-        self.set_text_color(140, 150, 165)
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        self.cell(0, 10, f"NEXUS PDF Forge • {ts} • Стр. {self.page_no()}", align="C")
+    class _NexusPDF(FPDF):
+        def __init__(self, title_str: str = "MULTI_TG_TOOL Document") -> None:
+            super().__init__()
+            self.doc_title = title_str
+            self.add_font("DejaVu", style="", fname=FONT_REGULAR)
+            self.add_font("DejaVu", style="B", fname=FONT_BOLD)
+
+        def footer(self) -> None:
+            self.set_y(-15)
+            self.set_font("DejaVu", "", 8)
+            self.set_text_color(140, 150, 165)
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            self.cell(0, 10, f"MULTI_TG_TOOL PDF • {ts} • Стр. {self.page_no()}", align="C")
+
+    return _NexusPDF(title_str=doc_title)
 
 
-def render_text_to_pdf(title: str, content: str, author: str = "NEXUS Multi-Tool") -> bytes:
+def render_text_to_pdf(title: str, content: str, author: str = "MULTI_TG_TOOL") -> bytes:
     body = (content or "").strip()
     if not body:
         raise ValueError("Текст документа не может быть пустым")
 
-    doc_title = (title or "Документ NEXUS").strip()[:120]
-    pdf = _NexusPDF(doc_title=doc_title)
+    doc_title = (title or "Документ MULTI_TG_TOOL").strip()[:120]
+    pdf = _build_pdf_doc(doc_title=doc_title)
     pdf.set_title(doc_title)
     pdf.set_author(author)
     pdf.set_auto_page_break(auto=True, margin=18)
@@ -95,6 +98,8 @@ def images_to_pdf(image_bytes_list: list[bytes]) -> bytes:
 
 
 def inspect_pdf(pdf_bytes: bytes) -> dict[str, Any]:
+    from pypdf import PdfReader
+
     reader = PdfReader(io.BytesIO(pdf_bytes))
     is_encrypted = reader.is_encrypted
     meta: dict[str, str] = {}
@@ -154,6 +159,8 @@ def transform_pdf(
     rotate_deg: int = 0,
     password: str = "",
 ) -> tuple[bytes, dict[str, Any]]:
+    from pypdf import PdfReader, PdfWriter
+
     reader = PdfReader(io.BytesIO(pdf_bytes))
     if reader.is_encrypted:
         raise ValueError("Исходный PDF уже зашифрован паролем")

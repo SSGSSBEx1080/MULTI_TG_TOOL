@@ -18,18 +18,7 @@ async def get_workspace_state(
     search: str = "",
 ) -> dict[str, Any]:
     uid = await resolve_api_user(request, user_id)
-    profile = await db.ensure_user(uid)
-    favorites = await db.list_favorites(uid)
-    notes = await db.list_notes(uid, search=search)
-    todos = await db.list_todos(uid)
-    habits = await db.list_habits(uid)
-    return {
-        "profile": profile,
-        "favorites": favorites,
-        "notes": notes,
-        "todos": todos,
-        "habits": habits,
-    }
+    return await db.get_workspace_bundle(uid, search=search)
 
 
 class FavToggleReq(BaseModel):

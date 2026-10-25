@@ -387,3 +387,55 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         auth = await client.get("/api/v2/author")
         assert "MULTI_TG_TOOL" in auth.json()["title"]
         assert len(auth.json()["links"]) == 4
+
+        # 9. Regression check for Knowledge Hub endpoints (including /api/v2/knowledge/formulas?subject=...&q=...)
+        form_all = await client.get("/api/v2/knowledge/formulas?subject=all&q=")
+        assert form_all.status_code == 200
+        assert form_all.json()["count"] >= 15
+
+        form_filtered = await client.get("/api/v2/knowledge/formulas?subject=Алгебра&q=синус")
+        assert form_filtered.status_code == 200
+        assert form_filtered.json()["count"] >= 1
+
+        for kb_url in [
+            "/api/v2/knowledge/constitutions?q=россия",
+            "/api/v2/knowledge/religions?q=",
+            "/api/v2/knowledge/wiki?section=all&q=python",
+            "/api/v2/knowledge/population?q=москва",
+        ]:
+            kb_res = await client.get(kb_url)
+            assert kb_res.status_code == 200
+
+        # 10. Fast vectorized gradient QR across all modes + OpenCV round-trip decode
+        import base64
+        import time as _time
+
+        for qr_theme in ("cyber", "telegram", "emerald", "classic"):
+            t0 = _time.perf_counter()
+            q_res = await client.post(
+                "/api/tools/qr",
+                json={"mode": "text", "data": f"https://t.me/multi_tg_bot?t={qr_theme}", "theme": qr_theme, "shape": "rounded"},
+            )
+            elapsed_ms = (_time.perf_counter() - t0) * 1000
+            assert q_res.status_code == 200
+            assert elapsed_ms < 500, f"QR theme {qr_theme} took {elapsed_ms:.1f}ms"
+            b64_png = q_res.json()["image_data_url"].split(",", 1)[1]
+            scan_res = await client.post(
+                "/api/v2/qr/decode",
+                files={"file": ("qr.png", base64.b64decode(b64_png), "image/png")},
+            )
+            assert scan_res.status_code == 200
+            assert scan_res.json()["found"] is True
+            assert scan_res.json()["primary"] == f"https://t.me/multi_tg_bot?t={qr_theme}"
+
+        # 11. Workspace state bundle + Static caching headers
+        ws_res = await client.get("/api/workspace/state", headers={"X-Guest-Id": "900000123456"})
+        assert ws_res.status_code == 200
+        assert "profile" in ws_res.json() and "habits" in ws_res.json()
+
+        av_res = await client.get("/avatar.png")
+        assert av_res.status_code == 200
+        assert "max-age=" in av_res.headers.get("cache-control", "")
+
+    await db.close()
+

@@ -323,18 +323,18 @@ FORMULAS_DB: list[dict[str, str]] = [
 ]
 
 
-def search_formulas(subject: str = "all", query: str = "") -> list[dict[str, str]]:
+def search_formulas(subject: str = "all", query: str = "", *, q: str = "") -> list[dict[str, str]]:
     subj = (subject or "all").strip().lower()
-    q = (query or "").strip().lower()
+    search_q = (query or q or "").strip().lower()
     out = []
     for item in FORMULAS_DB:
         if subj not in ("all", "") and item["subj"].lower() != subj:
             continue
-        if q and not (
-            q in item["name"].lower()
-            or q in item["topic"].lower()
-            or q in item["formula"].lower()
-            or q in item["subj"].lower()
+        if search_q and not (
+            search_q in item["name"].lower()
+            or search_q in item["topic"].lower()
+            or search_q in item["formula"].lower()
+            or search_q in item["subj"].lower()
         ):
             continue
         out.append(item)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import secrets
 import time
@@ -68,9 +69,22 @@ from backend.tools.text_studio import (
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 
-def _persist_generated(raw: bytes, ext: str, prefix: str = "nx") -> str:
+_CLEANUP_COUNTER = 0
+
+
+def _persist_generated_sync(raw: bytes, ext: str, prefix: str = "nx") -> str:
+    global _CLEANUP_COUNTER
     fname = f"{prefix}_{int(time.time() * 1000)}_{secrets.token_hex(4)}.{ext.lstrip('.')}"
     (GENERATED_DIR / fname).write_bytes(raw)
+    _CLEANUP_COUNTER += 1
+    if _CLEANUP_COUNTER % 50 == 0:
+        cutoff = time.time() - 3600
+        try:
+            for item in GENERATED_DIR.iterdir():
+                if item.is_file() and item.stat().st_mtime < cutoff:
+                    item.unlink(missing_ok=True)
+        except Exception:
+            pass
     return f"/media/generated/{fname}"
 
 
@@ -138,7 +152,8 @@ async def api_qr(req: QrReq) -> dict[str, Any]:
         else:
             payload = req.data or "https://t.me/nexus_multitool_bot"
 
-        png = generate_styled_qr(
+        png = await asyncio.to_thread(
+            generate_styled_qr,
             payload,
             theme=req.theme,
             shape=req.shape,
@@ -147,7 +162,7 @@ async def api_qr(req: QrReq) -> dict[str, Any]:
             fg_hex=req.fg_hex,
             bg_hex=req.bg_hex,
         )
-        url = _persist_generated(png, "png", "qr")
+        url = await asyncio.to_thread(_persist_generated_sync, png, "png", "qr")
         await db.record_tool_use(req.user_id, "qr_studio", "qr", "miniapp", req.mode)
         return {
             "payload": payload,
@@ -168,8 +183,8 @@ class BarcodeReq(BaseModel):
 @router.post("/barcode")
 async def api_barcode(req: BarcodeReq) -> dict[str, Any]:
     try:
-        png = generate_barcode_png(req.value, req.kind)
-        url = _persist_generated(png, "png", "barcode")
+        png = await asyncio.to_thread(generate_barcode_png, req.value, req.kind)
+        url = await asyncio.to_thread(_persist_generated_sync, png, "png", "barcode")
         await db.record_tool_use(req.user_id, "barcode_gen", "qr", "miniapp", f"{req.kind}:{req.value[:20]}")
         return {
             "image_data_url": _b64_data_uri(png, "image/png"),
@@ -191,8 +206,8 @@ class CodeCardReq(BaseModel):
 @router.post("/code-card")
 async def api_code_card(req: CodeCardReq) -> dict[str, Any]:
     try:
-        png = render_code_card(req.code, req.language, req.title, req.theme)
-        url = _persist_generated(png, "png", "codecard")
+        png = await asyncio.to_thread(render_code_card, req.code, req.language, req.title, req.theme)
+        url = await asyncio.to_thread(_persist_generated_sync, png, "png", "codecard")
         await db.record_tool_use(req.user_id, "code_card", "image", "miniapp", req.language)
         return {
             "image_data_url": _b64_data_uri(png, "image/png"),
@@ -211,8 +226,8 @@ async def api_stego_encode(
 ) -> dict[str, Any]:
     try:
         cover_bytes = await file.read() if file is not None else None
-        png, meta = stego_encode_png(secret_text, password=password, cover_bytes=cover_bytes)
-        url = _persist_generated(png, "png", "stego_carrier")
+        png, meta = await asyncio.to_thread(stego_encode_png, secret_text, password=password, cover_bytes=cover_bytes)
+        url = await asyncio.to_thread(_persist_generated_sync, png, "png", "stego_carrier")
         await db.record_tool_use(user_id, "stego_lab", "image", "miniapp", "LSB Encode")
         return {
             "meta": meta,
@@ -231,7 +246,7 @@ async def api_stego_decode(
 ) -> dict[str, Any]:
     try:
         raw = await file.read()
-        res = stego_decode_png(raw, password=password)
+        res = await asyncio.to_thread(stego_decode_png, raw, password=password)
         await db.record_tool_use(user_id, "stego_lab", "image", "miniapp", "LSB Decode")
         return res
     except Exception as exc:
@@ -245,10 +260,10 @@ async def api_image_exif(
 ) -> dict[str, Any]:
     try:
         raw = await file.read()
-        clean_bytes, info = inspect_and_clean_image(raw)
+        clean_bytes, info = await asyncio.to_thread(inspect_and_clean_image, raw)
         ext = info["output_format"].lower()
         mime = "image/png" if ext == "png" else "image/jpeg"
-        url = _persist_generated(clean_bytes, ext, "clean_exif")
+        url = await asyncio.to_thread(_persist_generated_sync, clean_bytes, ext, "clean_exif")
         await db.record_tool_use(user_id, "exif_clean", "image", "miniapp", "EXIF Clean")
         return {
             "info": info,
@@ -269,10 +284,12 @@ async def api_image_transform(
 ) -> dict[str, Any]:
     try:
         raw = await file.read()
-        out_bytes, meta = transform_image(raw, action=action, target_format=target_format, quality=quality)
+        out_bytes, meta = await asyncio.to_thread(
+            transform_image, raw, action=action, target_format=target_format, quality=quality
+        )
         ext = meta["format"].lower()
         mime = f"image/{ext}"
-        url = _persist_generated(out_bytes, ext, f"img_{action}")
+        url = await asyncio.to_thread(_persist_generated_sync, out_bytes, ext, f"img_{action}")
         await db.record_tool_use(user_id, "img_transform", "image", "miniapp", action)
         return {
             "meta": meta,
@@ -293,8 +310,8 @@ class TextPdfReq(BaseModel):
 @router.post("/pdf/from-text")
 async def api_pdf_from_text(req: TextPdfReq) -> dict[str, Any]:
     try:
-        pdf_bytes = render_text_to_pdf(req.title, req.content)
-        url = _persist_generated(pdf_bytes, "pdf", "doc")
+        pdf_bytes = await asyncio.to_thread(render_text_to_pdf, req.title, req.content)
+        url = await asyncio.to_thread(_persist_generated_sync, pdf_bytes, "pdf", "doc")
         await db.record_tool_use(req.user_id, "text_to_pdf", "pdf", "miniapp", req.title[:30])
         return {
             "size_kb": round(len(pdf_bytes) / 1024, 1),
@@ -311,8 +328,8 @@ async def api_pdf_from_images(
 ) -> dict[str, Any]:
     try:
         blobs = [await f.read() for f in files]
-        pdf_bytes = images_to_pdf(blobs)
-        url = _persist_generated(pdf_bytes, "pdf", "photos")
+        pdf_bytes = await asyncio.to_thread(images_to_pdf, blobs)
+        url = await asyncio.to_thread(_persist_generated_sync, pdf_bytes, "pdf", "photos")
         await db.record_tool_use(user_id, "img_to_pdf", "pdf", "miniapp", f"{len(blobs)} imgs")
         return {
             "pages": len(blobs),
@@ -330,7 +347,7 @@ async def api_pdf_inspect(
 ) -> dict[str, Any]:
     try:
         raw = await file.read()
-        info = inspect_pdf(raw)
+        info = await asyncio.to_thread(inspect_pdf, raw)
         await db.record_tool_use(user_id, "pdf_inspect", "pdf", "miniapp", f"{info['page_count']}p")
         return info
     except Exception as exc:
@@ -347,8 +364,10 @@ async def api_pdf_transform(
 ) -> dict[str, Any]:
     try:
         raw = await file.read()
-        out_bytes, meta = transform_pdf(raw, pages_spec=pages_spec, rotate_deg=rotate_deg, password=password)
-        url = _persist_generated(out_bytes, "pdf", "transformed")
+        out_bytes, meta = await asyncio.to_thread(
+            transform_pdf, raw, pages_spec=pages_spec, rotate_deg=rotate_deg, password=password
+        )
+        url = await asyncio.to_thread(_persist_generated_sync, out_bytes, "pdf", "transformed")
         await db.record_tool_use(user_id, "pdf_protect", "pdf", "miniapp", "Transform PDF")
         return {
             "meta": meta,
@@ -398,9 +417,9 @@ class AesReq(BaseModel):
 async def api_aes(req: AesReq) -> dict[str, Any]:
     try:
         if req.action == "decrypt":
-            out = decrypt_nx1(req.text, req.password)
+            out = await asyncio.to_thread(decrypt_nx1, req.text, req.password)
         else:
-            out = encrypt_nx1(req.text, req.password)
+            out = await asyncio.to_thread(encrypt_nx1, req.text, req.password)
         await db.record_tool_use(req.user_id, "aes_cipher", "security", "miniapp", req.action)
         return {"action": req.action, "output": out}
     except Exception as exc:

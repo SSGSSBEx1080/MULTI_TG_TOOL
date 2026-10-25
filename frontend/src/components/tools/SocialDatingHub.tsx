@@ -23,8 +23,19 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
+const toolToSocialTab = (tool: string): 'top' | 'altushka' | 'bibinto' | 'turing' | 'anon' | 'author' => {
+  if (tool === 'altushka_chat') return 'altushka';
+  if (tool === 'bibinto_rate') return 'bibinto';
+  if (tool === 'turing_game') return 'turing';
+  if (tool === 'anon_chat') return 'anon';
+  if (tool === 'author_links') return 'author';
+  return 'top';
+};
+
 export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
-  const [subTab, setSubTab] = useState<'top' | 'altushka' | 'bibinto' | 'turing' | 'anon' | 'author'>('top');
+  const [subTab, setSubTab] = useState<'top' | 'altushka' | 'bibinto' | 'turing' | 'anon' | 'author'>(() =>
+    toolToSocialTab(activeTool)
+  );
 
   // --- Leaderboard & Public Profile ---
   const [sortBy, setSortBy] = useState<'xp' | 'games' | 'views' | 'respects' | 'tools'>('xp');
@@ -67,16 +78,13 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
   const [authorInfo, setAuthorInfo] = useState<any>(null);
 
   useEffect(() => {
-    if (activeTool === 'leaderboard_hub') setSubTab('top');
-    else if (activeTool === 'altushka_chat') setSubTab('altushka');
-    else if (activeTool === 'bibinto_rate') setSubTab('bibinto');
-    else if (activeTool === 'turing_game') setSubTab('turing');
-    else if (activeTool === 'anon_chat') setSubTab('anon');
-    else if (activeTool === 'author_links') setSubTab('author');
+    setSubTab(toolToSocialTab(activeTool));
   }, [activeTool]);
 
   const loadLeaders = (s = sortBy) => {
-    apiGet(`/api/v2/social/leaderboard?sort_by=${s}`).then((r) => setLeaders(r.users || []));
+    apiGet(`/api/v2/social/leaderboard?sort_by=${s}`)
+      .then((r) => setLeaders(r.users || []))
+      .catch(() => {});
   };
 
   const openUserProfile = async (uid: number) => {
@@ -112,22 +120,39 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
     }
   };
 
-  // Load initial data
+  // Lazy-load only active tab data instead of firing 6 simultaneous API requests
   useEffect(() => {
-    loadLeaders('xp');
-    apiGet('/api/v2/social/altushka').then((r) => {
-      const list = r.personas || [];
-      setPersonas(list);
-      if (list[0]) {
-        setActivePersona(list[0]);
-        setAltMessages([{ from: 'girl', text: list[0].greeting, mood: 'онлайн 🖤' }]);
-      }
-    });
-    apiGet('/api/v2/social/bibinto').then((r) => setBibintoProfiles(r.profiles || []));
-    apiGet('/api/v2/social/turing').then(setTuringRound);
-    apiGet('/api/v2/social/anon?room=global').then((r) => setAnonMsgs(r.messages || []));
-    apiGet('/api/v2/author').then(setAuthorInfo);
-  }, []);
+    if (subTab === 'top') {
+      loadLeaders(sortBy);
+    } else if (subTab === 'altushka' && personas.length === 0) {
+      apiGet('/api/v2/social/altushka')
+        .then((r) => {
+          const list = r.personas || [];
+          setPersonas(list);
+          if (list[0]) {
+            setActivePersona(list[0]);
+            setAltMessages([{ from: 'girl', text: list[0].greeting, mood: 'онлайн 🖤' }]);
+          }
+        })
+        .catch(() => {});
+    } else if (subTab === 'bibinto' && bibintoProfiles.length === 0) {
+      apiGet('/api/v2/social/bibinto')
+        .then((r) => setBibintoProfiles(r.profiles || []))
+        .catch(() => {});
+    } else if (subTab === 'turing' && !turingRound) {
+      apiGet('/api/v2/social/turing')
+        .then(setTuringRound)
+        .catch(() => {});
+    } else if (subTab === 'anon' && anonMsgs.length === 0) {
+      apiGet(`/api/v2/social/anon?room=${encodeURIComponent(anonRoom)}`)
+        .then((r) => setAnonMsgs(r.messages || []))
+        .catch(() => {});
+    } else if (subTab === 'author' && !authorInfo) {
+      apiGet('/api/v2/author')
+        .then(setAuthorInfo)
+        .catch(() => {});
+    }
+  }, [subTab]);
 
   const selectPersona = (p: any) => {
     setActivePersona(p);
