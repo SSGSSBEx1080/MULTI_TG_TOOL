@@ -14,7 +14,7 @@ import {
   Terminal,
   Zap,
 } from 'lucide-react';
-import { apiForm, apiGet, apiPost, copyText, triggerHaptic } from '../lib/api';
+import { apiForm, apiGet, apiPost, copyText, openExternalLink, triggerHaptic } from '../lib/api';
 
 interface InlineBtn {
   text: string;
@@ -131,7 +131,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
       return;
     }
     if (btn.url) {
-      window.open(btn.url, '_blank', 'noopener,noreferrer');
+      openExternalLink(btn.url);
       return;
     }
     if (!btn.callback_data) return;
@@ -177,7 +177,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
       const blob = await (await fetch(stego.image_data_url)).blob();
       const demoFile = new File([blob], 'secret_stego.png', { type: 'image/png' });
       await handleFileUpload(demoFile, 'document');
-      onToast('Стего-PNG отправлен в чат. Нажмите «Найти тайну (Stego)»');
+      onToast('Стего-PNG отправлен в чат. Нажмите «🔓 Прочитать текст из PNG»');
     } catch (e: any) {
       onToast(e.message);
       setLoading(false);
@@ -263,7 +263,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
       {/* Main Telegram Chat Frame */}
-      <div className={`${showInspector ? 'xl:col-span-8' : 'xl:col-span-12'} flex flex-col rounded-2xl border border-white/10 bg-[#0e1525] overflow-hidden shadow-2xl h-[calc(100vh-145px)] min-h-[580px]`}>
+      <div className={`${showInspector ? 'xl:col-span-8' : 'xl:col-span-12'} flex flex-col rounded-2xl border border-white/10 bg-[#0e1525] overflow-hidden shadow-2xl h-[calc(100dvh-115px)] sm:h-[calc(100vh-145px)] min-h-[460px] sm:min-h-[580px]`}>
         {/* Authentic Telegram Chat Header */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 bg-[#131c31] border-b border-white/10">
           <div className="flex items-center gap-3 min-w-0">
@@ -280,8 +280,8 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
                 </span>
               </div>
               <div className="text-xs text-emerald-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                бот • ежемесячно 50+ инструментов
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="truncate">бот • 59 инструментов</span>
               </div>
             </div>
           </div>
@@ -434,7 +434,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
 
                 {/* Telegram Inline Keyboard Grid */}
                 {!isUser && msg.inline_keyboard && msg.inline_keyboard.length > 0 && (
-                  <div className="mt-1.5 w-full max-w-[90%] sm:max-w-[78%] space-y-1">
+                  <div className="mt-1.5 w-full max-w-[94%] sm:max-w-[78%] space-y-1">
                     {msg.inline_keyboard.map((row, rIdx) => (
                       <div
                         key={rIdx}
@@ -446,9 +446,10 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
                           return (
                             <button
                               key={bIdx}
+                              type="button"
                               disabled={loading}
                               onClick={() => handleInlineButton(msg.message_id, btn)}
-                              className={`px-2.5 py-2 rounded-xl text-xs font-medium truncate transition border shadow-sm ${
+                              className={`px-2 py-2 min-h-[36px] rounded-xl text-[11px] sm:text-xs font-medium leading-tight whitespace-normal break-words text-center flex items-center justify-center transition border shadow-sm ${
                                 isWebApp
                                   ? 'bg-gradient-to-r from-sky-500/25 via-indigo-500/25 to-purple-500/25 hover:from-sky-500/40 hover:to-purple-500/40 text-sky-100 border-sky-400/40'
                                   : 'bg-[#1c2942]/90 hover:bg-[#263859] text-slate-100 border-white/10 active:scale-[0.99]'
@@ -470,7 +471,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
         </div>
 
         {/* Smart Omni Quick Test Strip */}
-        <div className="px-3 py-2 bg-[#101729] border-t border-white/5 flex items-center gap-1.5 overflow-x-auto">
+        <div className="px-3 py-2 bg-[#101729] border-t border-white/5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           <span className="text-[11px] text-slate-400 shrink-0 flex items-center gap-1 pr-1">
             <Sparkles className="w-3 h-3 text-sky-400" /> Omni-тест:
           </span>
@@ -486,20 +487,31 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
         </div>
 
         {/* Telegram Bottom Composer Bar with /Menu and Smart Drop */}
-        <div className="relative px-3 py-2.5 bg-[#131c31] border-t border-white/10 flex items-center gap-2">
+        <div className="relative px-2.5 sm:px-3 py-2.5 bg-[#131c31] border-t border-white/10 flex items-center gap-1.5 sm:gap-2">
+          {(showCmdMenu || showDropMenu) && (
+            <div
+              className="fixed inset-0 z-20"
+              onClick={() => {
+                setShowCmdMenu(false);
+                setShowDropMenu(false);
+              }}
+            />
+          )}
+
           {/* Slash Commands Popover */}
           {showCmdMenu && (
-            <div className="absolute bottom-16 left-3 w-80 max-h-72 overflow-y-auto rounded-2xl bg-[#162038] border border-white/15 shadow-2xl p-1.5 z-30">
+            <div className="absolute bottom-14 left-2 right-2 sm:right-auto sm:left-3 sm:w-80 max-h-72 overflow-y-auto rounded-2xl bg-[#162038] border border-white/15 shadow-2xl p-1.5 z-30">
               <div className="px-3 py-1.5 text-[11px] font-semibold text-sky-300 uppercase tracking-wider">
                 Команды бота MULTI_TG_TOOL
               </div>
               {commands.map((c) => (
                 <button
                   key={c.command}
+                  type="button"
                   onClick={() => sendText(c.command)}
                   className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl hover:bg-white/10 text-left transition"
                 >
-                  <span className="font-mono text-xs text-sky-300 font-semibold">{c.command}</span>
+                  <span className="font-mono text-xs text-sky-300 font-semibold shrink-0">{c.command}</span>
                   <span className="text-xs text-slate-300 truncate">{c.description}</span>
                 </button>
               ))}
@@ -508,7 +520,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
 
           {/* Smart Media Drop Popover */}
           {showDropMenu && (
-            <div className="absolute bottom-16 left-14 w-80 rounded-2xl bg-[#162038] border border-white/15 shadow-2xl p-2 z-30 space-y-1">
+            <div className="absolute bottom-14 left-2 right-2 sm:right-auto sm:left-14 sm:w-80 rounded-2xl bg-[#162038] border border-white/15 shadow-2xl p-2 z-30 space-y-1">
               <div className="px-2.5 py-1 text-[11px] font-semibold text-purple-300 uppercase tracking-wider">
                 Отправить файл или демо-пример в 1 клик
               </div>

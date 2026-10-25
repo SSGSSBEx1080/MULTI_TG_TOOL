@@ -380,6 +380,41 @@ TOOL_TO_CALC_ID = {
     "phys_heat": "heat_boiling",
 }
 
+PHYS_BTN_TITLES = {
+    "kinematics_uniform": "Путь и скорость",
+    "kinematics_accel": "Разгон и ускорение",
+    "free_fall": "Свободное падение",
+    "newton_force": "Сила и трение",
+    "work_power_eff": "Работа и КПД",
+    "ohm_electric": "Закон Ома",
+    "heat_boiling": "Нагрев и закипание",
+    "energy_pressure": "Энергия и давление",
+}
+
+PHYS_TARGET_BTN = {
+    ("kinematics_uniform", "t"): "Время (t)",
+    ("kinematics_uniform", "s"): "Путь (s)",
+    ("kinematics_uniform", "v"): "Скорость (v)",
+    ("kinematics_accel", "t"): "Время разгона (t)",
+    ("kinematics_accel", "a"): "Ускорение (a)",
+    ("kinematics_accel", "s"): "Путь (s)",
+    ("free_fall", "t"): "Время падения (t)",
+    ("free_fall", "h"): "Высота (h)",
+    ("newton_force", "F"): "Сила (F)",
+    ("newton_force", "a"): "Ускорение (a)",
+    ("newton_force", "m"): "Масса (m)",
+    ("work_power_eff", "eta"): "КПД (η, %)",
+    ("work_power_eff", "P"): "Мощность (P)",
+    ("work_power_eff", "A"): "Работа (A)",
+    ("work_power_eff", "t"): "Время (t)",
+    ("ohm_electric", "I"): "Сила тока (I)",
+    ("ohm_electric", "U"): "Напряжение (U)",
+    ("ohm_electric", "R"): "Сопротивление (R)",
+    ("heat_boiling", "t_heat"): "Время нагрева (t)",
+    ("energy_pressure", "Ek"): "Кинетич. энергия",
+    ("energy_pressure", "p_hydro"): "Давление жидкости",
+}
+
 
 async def _render_physics_menu(target: Message | CallbackQuery, calc_id: str = "kinematics_uniform", target_var: str = "") -> None:
     calc = next((c for c in PHYSICS_CALCULATORS if c["id"] == calc_id), PHYSICS_CALCULATORS[0])
@@ -390,7 +425,7 @@ async def _render_physics_menu(target: Message | CallbackQuery, calc_id: str = "
     b = InlineKeyboardBuilder()
     mod_btns = [
         InlineKeyboardButton(
-            text=f"{'✅ ' if c['id'] == calc['id'] else c['emoji'] + ' '}{c['title'][:20]}",
+            text=f"{'✅ ' if c['id'] == calc['id'] else c['emoji'] + ' '}{PHYS_BTN_TITLES.get(c['id'], c['title'])}",
             callback_data=f"v3:phys:{c['id']}:{c['targets'][0]['var']}",
         )
         for c in PHYSICS_CALCULATORS
@@ -401,7 +436,11 @@ async def _render_physics_menu(target: Message | CallbackQuery, calc_id: str = "
     if len(targets) > 1:
         var_btns = [
             InlineKeyboardButton(
-                text=f"🎯 {t['label'][:24]}" if t["var"] == target_var else t["label"][:24],
+                text=(
+                    f"🎯 {PHYS_TARGET_BTN.get((calc['id'], t['var']), t['label'])}"
+                    if t["var"] == target_var
+                    else PHYS_TARGET_BTN.get((calc["id"], t["var"]), t["label"])
+                ),
                 callback_data=f"v3:phys:{calc['id']}:{t['var']}",
             )
             for t in targets

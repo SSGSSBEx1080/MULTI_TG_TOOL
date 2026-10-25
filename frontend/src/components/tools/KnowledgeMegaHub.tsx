@@ -86,15 +86,19 @@ export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, on
   }, [subTab]);
 
   const rollStand = async () => {
-    const r = await apiPost('/api/v2/knowledge/roll-stand', { name: standUser });
-    setRolledStand(r.stand);
-    onSync();
+    try {
+      const r = await apiPost('/api/v2/knowledge/roll-stand', { name: standUser });
+      setRolledStand(r.stand);
+      onSync();
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка расчёта Стенда');
+    }
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 min-w-0">
       {/* Sub-navigation */}
-      <div className="flex flex-wrap gap-2">
+      <div className="hidden lg:flex flex-wrap gap-2">
         {[
           { id: 'const', tool: 'constitutions_hub', label: '⚖️ Конституции Стран Мира' },
           { id: 'religions', tool: 'religions_hub', label: '🕉️ Мировые Религии' },
@@ -232,7 +236,16 @@ export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, on
 
           {rolledStand && (
             <div className="p-4 rounded-2xl bg-slate-950 border border-amber-400/50 space-y-1.5 text-xs">
-              <div className="text-sm font-black text-amber-300">🌟 Ваш Стенд: {rolledStand.name} ({rolledStand.part})</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-black text-amber-300">🌟 Ваш Стенд: {rolledStand.name} ({rolledStand.part})</div>
+                <button
+                  type="button"
+                  onClick={() => copyText(`${rolledStand.name} (${rolledStand.part}) — ${rolledStand.ability}`, onToast)}
+                  className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] text-white shrink-0"
+                >
+                  Копировать
+                </button>
+              </div>
               <div className="text-purple-300">Каноничный владелец: <b>{rolledStand.user}</b> • Статы: <code>{rolledStand.stats}</code></div>
               <p className="text-slate-200">{rolledStand.ability}</p>
             </div>
@@ -317,7 +330,7 @@ export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, on
                         </div>
                         <div className="text-slate-400">⚡ Скорость: <span className="text-slate-200">{l.speed}</span></div>
                         <div className="text-slate-300">🎯 Где топ: {l.best_for}</div>
-                        <code className="block p-2 rounded-lg bg-slate-900 text-emerald-300 font-mono text-[11px]">{l.snippet}</code>
+                        <code className="block p-2 rounded-lg bg-slate-900 text-emerald-300 font-mono text-[11px] overflow-x-auto">{l.snippet}</code>
                       </div>
                     ))}
                   </div>

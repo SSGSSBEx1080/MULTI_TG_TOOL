@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Gamepad2, Play, RotateCcw, Trophy, Zap } from 'lucide-react';
+import { Play, Trophy } from 'lucide-react';
 import { apiGet, apiPost } from '../../lib/api';
 
 interface Props {
@@ -8,6 +8,17 @@ interface Props {
   onSync: () => void;
   onToast: (msg: string) => void;
 }
+
+const GAME_NAMES: Record<string, string> = {
+  arcade_wolf: '🐺 Ну, погоди!',
+  wolf: '🐺 Ну, погоди!',
+  arcade_doodle: '🚀 Doodle Jump',
+  doodle: '🚀 Doodle Jump',
+  arcade_tetris: '🧱 Тетрис',
+  tetris: '🧱 Тетрис',
+  arcade_clicker: '⚡ Кликер',
+  clicker: '⚡ Кликер',
+};
 
 // ============================================================================
 // 1. WOLF CATCHING EGGS («НУ, ПОГОДИ!»)
@@ -21,10 +32,61 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
   const [running, setRunning] = useState(false);
   const [gameOver, setGameOver] = useState(false);
 
+  const startGame = () => {
+    setScore(0);
+    setLives(3);
+    setGameOver(false);
+    setRunning(true);
+  };
+
   const setPos = (p: 0 | 1 | 2 | 3) => {
     basketRef.current = p;
     setBasketPos(p);
+    if (!running && !gameOver) {
+      startGame();
+    }
   };
+
+  // Draw initial idle preview frame when not running
+  useEffect(() => {
+    if (running) return;
+    const cvs = canvasRef.current;
+    const ctx = cvs?.getContext('2d');
+    if (!cvs || !ctx) return;
+
+    ctx.fillStyle = '#0b1220';
+    ctx.fillRect(0, 0, cvs.width, cvs.height);
+    ctx.strokeStyle = 'rgba(56,189,248,0.28)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(8, 8, cvs.width - 16, cvs.height - 16);
+
+    const chutes = [
+      { x1: 30, y1: 68, x2: 145, y2: 122 },
+      { x1: 30, y1: 158, x2: 145, y2: 212 },
+      { x1: 390, y1: 68, x2: 275, y2: 122 },
+      { x1: 390, y1: 158, x2: 275, y2: 212 },
+    ];
+    chutes.forEach((c) => {
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(c.x1, c.y1);
+      ctx.lineTo(c.x2, c.y2);
+      ctx.stroke();
+    });
+
+    ctx.font = '28px sans-serif';
+    ctx.fillText('🐺', 196, 152);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      gameOver ? `Игра окончена • Счёт: ${score}` : 'Нажмите на экран или кнопку для старта',
+      cvs.width / 2,
+      238
+    );
+    ctx.textAlign = 'start';
+  }, [running, gameOver, score]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -36,7 +98,7 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [running, gameOver]);
 
   useEffect(() => {
     if (!running) return;
@@ -48,10 +110,10 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
     let lastTs = performance.now();
 
     const chutes = [
-      { x1: 30, y1: 68, x2: 145, y2: 122 },   // 0 TL
-      { x1: 30, y1: 158, x2: 145, y2: 212 },  // 1 BL
-      { x1: 390, y1: 68, x2: 275, y2: 122 },  // 2 TR
-      { x1: 390, y1: 158, x2: 275, y2: 212 }, // 3 BR
+      { x1: 30, y1: 68, x2: 145, y2: 122 },
+      { x1: 30, y1: 158, x2: 145, y2: 212 },
+      { x1: 390, y1: 68, x2: 275, y2: 122 },
+      { x1: 390, y1: 158, x2: 275, y2: 212 },
     ];
 
     const loop = (ts: number) => {
@@ -93,12 +155,10 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
         ctx.fillStyle = '#0b1220';
         ctx.fillRect(0, 0, cvs.width, cvs.height);
 
-        // Retro LCD frame
         ctx.strokeStyle = 'rgba(56,189,248,0.25)';
         ctx.lineWidth = 2;
         ctx.strokeRect(8, 8, cvs.width - 16, cvs.height - 16);
 
-        // Chutes
         chutes.forEach((c) => {
           ctx.strokeStyle = '#475569';
           ctx.lineWidth = 5;
@@ -108,7 +168,6 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
           ctx.stroke();
         });
 
-        // Wolf body in center
         const bPos = basketRef.current;
         const wolfX = 210;
         const wolfY = 175;
@@ -121,7 +180,6 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
         ctx.font = '20px sans-serif';
         ctx.fillText('🐺', wolfX - 12, wolfY - 28);
 
-        // Basket at active chute end
         const target = chutes[bPos];
         ctx.fillStyle = '#f59e0b';
         ctx.beginPath();
@@ -131,7 +189,6 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Rolling eggs
         eggs.forEach((eg) => {
           const c = chutes[eg.lane];
           const ex = c.x1 + (c.x2 - c.x1) * eg.progress;
@@ -145,12 +202,11 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
           ctx.stroke();
         });
 
-        // HUD
         ctx.fillStyle = '#38bdf8';
         ctx.font = 'bold 14px monospace';
         ctx.fillText(`СЧЁТ: ${curScore}`, 22, 32);
         ctx.fillStyle = '#fb7185';
-        ctx.fillText(`ЖИЗНИ: ${'❤️'.repeat(Math.max(0, curLives))}`, 295, 32);
+        ctx.fillText(`ЖИЗНИ: ${'❤️'.repeat(Math.max(0, curLives))}`, 285, 32);
       }
 
       animId = requestAnimationFrame(loop);
@@ -160,24 +216,21 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
     return () => cancelAnimationFrame(animId);
   }, [running]);
 
-  const startGame = () => {
-    setScore(0);
-    setLives(3);
-    setGameOver(false);
-    setRunning(true);
-  };
-
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs text-slate-300">
-          Управление: клавиши <kbd className="px-1.5 py-0.5 rounded bg-white/10">Q</kbd> <kbd className="px-1.5 py-0.5 rounded bg-white/10">A</kbd> <kbd className="px-1.5 py-0.5 rounded bg-white/10">E</kbd> <kbd className="px-1.5 py-0.5 rounded bg-white/10">D</kbd> или кнопки по углам:
+          Клавиши <kbd className="px-1.5 py-0.5 rounded bg-white/10">Q</kbd>{' '}
+          <kbd className="px-1.5 py-0.5 rounded bg-white/10">A</kbd>{' '}
+          <kbd className="px-1.5 py-0.5 rounded bg-white/10">E</kbd>{' '}
+          <kbd className="px-1.5 py-0.5 rounded bg-white/10">D</kbd> или кнопки корзин:
         </div>
         <button
+          type="button"
           onClick={startGame}
-          className="px-4 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-1.5"
+          className="px-4 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shrink-0"
         >
-          <Play className="w-3.5 h-3.5" /> {running ? 'Перезапуск' : 'Старт игры!'}
+          <Play className="w-3.5 h-3.5" /> {running ? 'Перезапуск' : 'Старт игры'}
         </button>
       </div>
 
@@ -186,36 +239,51 @@ const WolfEggsGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveSc
           ref={canvasRef}
           width={420}
           height={260}
-          className="w-full max-w-[440px] rounded-2xl border border-sky-400/30 bg-[#0b1220] shadow-xl"
+          onClick={() => {
+            if (!running) startGame();
+          }}
+          className="w-full max-w-[440px] h-auto rounded-2xl border border-sky-400/30 bg-[#0b1220] shadow-xl cursor-pointer select-none touch-none"
         />
         {gameOver && (
-          <div className="text-xs text-amber-300 font-semibold">
+          <div className="text-xs text-amber-300 font-semibold text-center">
             Игра окончена! Ваш счёт: <b>{score}</b> (сохранён в таблицу рекордов 🏆)
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 w-full max-w-[440px]">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 w-full max-w-[440px] select-none">
           <button
-            onClick={() => setPos(0)}
-            className={`py-3 rounded-xl font-bold text-xs border ${basketPos === 0 ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-950 text-white border-white/15'}`}
+            type="button"
+            onPointerDown={() => setPos(0)}
+            className={`py-3 rounded-xl font-bold text-xs border touch-manipulation ${
+              basketPos === 0 ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-950 text-white border-white/15'
+            }`}
           >
             ↖ Верх-Лево (Q)
           </button>
           <button
-            onClick={() => setPos(2)}
-            className={`py-3 rounded-xl font-bold text-xs border ${basketPos === 2 ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-950 text-white border-white/15'}`}
+            type="button"
+            onPointerDown={() => setPos(2)}
+            className={`py-3 rounded-xl font-bold text-xs border touch-manipulation ${
+              basketPos === 2 ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-950 text-white border-white/15'
+            }`}
           >
             ↗ Верх-Право (E)
           </button>
           <button
-            onClick={() => setPos(1)}
-            className={`py-3 rounded-xl font-bold text-xs border ${basketPos === 1 ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-950 text-white border-white/15'}`}
+            type="button"
+            onPointerDown={() => setPos(1)}
+            className={`py-3 rounded-xl font-bold text-xs border touch-manipulation ${
+              basketPos === 1 ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-950 text-white border-white/15'
+            }`}
           >
             ↙ Низ-Лево (A)
           </button>
           <button
-            onClick={() => setPos(3)}
-            className={`py-3 rounded-xl font-bold text-xs border ${basketPos === 3 ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-950 text-white border-white/15'}`}
+            type="button"
+            onPointerDown={() => setPos(3)}
+            className={`py-3 rounded-xl font-bold text-xs border touch-manipulation ${
+              basketPos === 3 ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-950 text-white border-white/15'
+            }`}
           >
             ↘ Низ-Право (D)
           </button>
@@ -234,6 +302,47 @@ const DoodleJumpGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
   const [running, setRunning] = useState(false);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
+
+  const startJump = () => {
+    setScore(0);
+    setGameOver(false);
+    setRunning(true);
+  };
+
+  // Draw initial idle preview frame
+  useEffect(() => {
+    if (running) return;
+    const cvs = canvasRef.current;
+    const ctx = cvs?.getContext('2d');
+    if (!cvs || !ctx) return;
+
+    ctx.fillStyle = '#090e1a';
+    ctx.fillRect(0, 0, 340, 400);
+    [
+      { x: 135, y: 350, c: '#22c55e' },
+      { x: 55, y: 270, c: '#38bdf8' },
+      { x: 205, y: 190, c: '#f43f5e' },
+      { x: 95, y: 115, c: '#22c55e' },
+    ].forEach((p) => {
+      ctx.fillStyle = p.c;
+      ctx.beginPath();
+      ctx.roundRect(p.x, p.y, 65, 10, 5);
+      ctx.fill();
+    });
+    ctx.fillStyle = '#a855f7';
+    ctx.beginPath();
+    ctx.arc(168, 325, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      gameOver ? `Финиш • Высота: ${score} м` : 'Нажмите на поле или кнопку «Прыгать»',
+      170,
+      55
+    );
+    ctx.textAlign = 'start';
+  }, [running, gameOver, score]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -307,6 +416,7 @@ const DoodleJumpGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
       }
 
       if (py > H + 20) {
+        moveDir.current = 0;
         setRunning(false);
         setGameOver(true);
         if (bestHeight > 0) onSaveScore(bestHeight);
@@ -326,7 +436,6 @@ const DoodleJumpGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
           ctx.fill();
         });
 
-        // Cyber Doodler
         ctx.fillStyle = '#a855f7';
         ctx.beginPath();
         ctx.arc(px, py, 13, 0, Math.PI * 2);
@@ -347,39 +456,51 @@ const DoodleJumpGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
     return () => cancelAnimationFrame(anim);
   }, [running]);
 
+  const holdDir = (dir: number) => {
+    if (!running && !gameOver) startJump();
+    moveDir.current = dir;
+  };
+
   return (
-    <div className="flex flex-col items-center space-y-3">
-      <div className="flex items-center justify-between w-full max-w-[340px]">
-        <span className="text-xs text-slate-300">Стрелки ⬅️ ➡️ или A / D</span>
+    <div className="flex flex-col items-center space-y-3 min-w-0">
+      <div className="flex items-center justify-between w-full max-w-[340px] gap-2">
+        <span className="text-xs text-slate-300">Стрелки ⬅️ ➡️ или кнопки</span>
         <button
-          onClick={() => {
-            setScore(0);
-            setGameOver(false);
-            setRunning(true);
-          }}
-          className="px-4 py-1.5 rounded-xl bg-purple-500 text-white font-bold text-xs"
+          type="button"
+          onClick={startJump}
+          className="px-4 py-1.5 rounded-xl bg-purple-500 text-white font-bold text-xs shrink-0"
         >
-          🚀 {running ? 'Заново' : 'Прыгать!'}
+          🚀 {running ? 'Заново' : 'Прыгать'}
         </button>
       </div>
-      <canvas ref={canvasRef} width={340} height={400} className="rounded-2xl border border-purple-400/35 bg-[#090e1a]" />
+      <canvas
+        ref={canvasRef}
+        width={340}
+        height={400}
+        onClick={() => {
+          if (!running) startJump();
+        }}
+        className="w-full max-w-[340px] h-auto rounded-2xl border border-purple-400/35 bg-[#090e1a] cursor-pointer select-none touch-none"
+      />
       {gameOver && <div className="text-xs text-amber-300 font-semibold">Финиш! Высота: <b>{score} м</b> 🏆</div>}
-      <div className="grid grid-cols-2 gap-3 w-full max-w-[340px]">
+      <div className="grid grid-cols-2 gap-3 w-full max-w-[340px] select-none">
         <button
-          onMouseDown={() => (moveDir.current = -1)}
-          onMouseUp={() => (moveDir.current = 0)}
-          onTouchStart={() => (moveDir.current = -1)}
-          onTouchEnd={() => (moveDir.current = 0)}
-          className="py-3 rounded-xl bg-slate-950 border border-white/15 text-white font-bold text-sm active:bg-purple-500/40"
+          type="button"
+          onPointerDown={() => holdDir(-1)}
+          onPointerUp={() => (moveDir.current = 0)}
+          onPointerLeave={() => (moveDir.current = 0)}
+          onPointerCancel={() => (moveDir.current = 0)}
+          className="py-3 rounded-xl bg-slate-950 border border-white/15 text-white font-bold text-sm active:bg-purple-500/40 touch-manipulation select-none"
         >
           ⬅️ Влево
         </button>
         <button
-          onMouseDown={() => (moveDir.current = 1)}
-          onMouseUp={() => (moveDir.current = 0)}
-          onTouchStart={() => (moveDir.current = 1)}
-          onTouchEnd={() => (moveDir.current = 0)}
-          className="py-3 rounded-xl bg-slate-950 border border-white/15 text-white font-bold text-sm active:bg-purple-500/40"
+          type="button"
+          onPointerDown={() => holdDir(1)}
+          onPointerUp={() => (moveDir.current = 0)}
+          onPointerLeave={() => (moveDir.current = 0)}
+          onPointerCancel={() => (moveDir.current = 0)}
+          className="py-3 rounded-xl bg-slate-950 border border-white/15 text-white font-bold text-sm active:bg-purple-500/40 touch-manipulation select-none"
         >
           Вправо ➡️
         </button>
@@ -411,6 +532,33 @@ const NeonTetrisGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
     rotate: () => {},
     drop: () => {},
   });
+
+  const startTetris = () => {
+    setScore(0);
+    setGameOver(false);
+    setRunning(true);
+  };
+
+  // Draw initial grid preview
+  useEffect(() => {
+    if (running) return;
+    const cvs = canvasRef.current;
+    const ctx = cvs?.getContext('2d');
+    if (!cvs || !ctx) return;
+    ctx.fillStyle = '#090d18';
+    ctx.fillRect(0, 0, 200, 400);
+    for (let r = 0; r < 20; r++) {
+      for (let c = 0; c < 10; c++) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.strokeRect(c * 20, r * 20, 20, 20);
+      }
+    }
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(gameOver ? `Счёт: ${score}` : 'Нажмите для старта', 100, 195);
+    ctx.textAlign = 'start';
+  }, [running, gameOver, score]);
 
   useEffect(() => {
     if (!running) return;
@@ -528,6 +676,9 @@ const NeonTetrisGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
     };
 
     const onKey = (e: KeyboardEvent) => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) {
+        e.preventDefault();
+      }
       if (e.key === 'ArrowLeft') ctrlRef.current.move(-1);
       else if (e.key === 'ArrowRight') ctrlRef.current.move(1);
       else if (e.key === 'ArrowUp') ctrlRef.current.rotate();
@@ -544,34 +695,63 @@ const NeonTetrisGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
   }, [running]);
 
   return (
-    <div className="flex flex-col items-center space-y-3">
-      <div className="flex items-center justify-between w-full max-w-[260px]">
+    <div className="flex flex-col items-center space-y-3 min-w-0">
+      <div className="flex items-center justify-between w-full max-w-[260px] gap-2">
         <span className="text-xs font-mono text-sky-300 font-bold">СЧЁТ: {score}</span>
         <button
-          onClick={() => {
-            setScore(0);
-            setGameOver(false);
-            setRunning(true);
-          }}
-          className="px-3.5 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold text-xs"
+          type="button"
+          onClick={startTetris}
+          className="px-3.5 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold text-xs shrink-0"
         >
           🧱 {running ? 'Рестарт' : 'Играть в Тетрис'}
         </button>
       </div>
-      <canvas ref={canvasRef} width={200} height={400} className="rounded-xl border border-sky-400/35 bg-[#090d18]" />
+      <canvas
+        ref={canvasRef}
+        width={200}
+        height={400}
+        onClick={() => {
+          if (!running) startTetris();
+        }}
+        className="w-full max-w-[210px] h-auto rounded-xl border border-sky-400/35 bg-[#090d18] cursor-pointer select-none touch-none"
+      />
       {gameOver && <div className="text-xs text-amber-300 font-semibold">Стакан полон! Счёт: <b>{score}</b> 🏆</div>}
-      <div className="grid grid-cols-4 gap-2 w-full max-w-[280px]">
-        <button onClick={() => ctrlRef.current.move(-1)} className="py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white text-xs font-bold">⬅️</button>
-        <button onClick={() => ctrlRef.current.rotate()} className="py-2.5 rounded-xl bg-purple-500/30 border border-purple-400/40 text-white text-xs font-bold">🔄</button>
-        <button onClick={() => ctrlRef.current.drop()} className="py-2.5 rounded-xl bg-amber-500/30 border border-amber-400/40 text-white text-xs font-bold">⏬</button>
-        <button onClick={() => ctrlRef.current.move(1)} className="py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white text-xs font-bold">➡️</button>
+      <div className="grid grid-cols-4 gap-2 w-full max-w-[280px] select-none">
+        <button
+          type="button"
+          onPointerDown={() => (running ? ctrlRef.current.move(-1) : startTetris())}
+          className="py-3 rounded-xl bg-slate-950 border border-white/15 text-white text-xs font-bold touch-manipulation"
+        >
+          ⬅️
+        </button>
+        <button
+          type="button"
+          onPointerDown={() => (running ? ctrlRef.current.rotate() : startTetris())}
+          className="py-3 rounded-xl bg-purple-500/30 border border-purple-400/40 text-white text-xs font-bold touch-manipulation"
+        >
+          🔄
+        </button>
+        <button
+          type="button"
+          onPointerDown={() => (running ? ctrlRef.current.drop() : startTetris())}
+          className="py-3 rounded-xl bg-amber-500/30 border border-amber-400/40 text-white text-xs font-bold touch-manipulation"
+        >
+          ⏬
+        </button>
+        <button
+          type="button"
+          onPointerDown={() => (running ? ctrlRef.current.move(1) : startTetris())}
+          className="py-3 rounded-xl bg-slate-950 border border-white/15 text-white text-xs font-bold touch-manipulation"
+        >
+          ➡️
+        </button>
       </div>
     </div>
   );
 };
 
 // ============================================================================
-// 4. NEXUS CYBER CLICKER
+// 4. ENERGY CLICKER
 // ============================================================================
 const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveScore }) => {
   const [energy, setEnergy] = useState(0);
@@ -587,38 +767,51 @@ const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSa
   const upgrades = [
     { name: '⚡ Двойной свитч мыши (+2 за клик)', cost: 25, buy: () => setClickPower((p) => p + 2) },
     { name: '🤖 Авто-Скрипт на Python (+5/сек)', cost: 80, buy: () => setAutoPerSec((a) => a + 5) },
-    { name: '🖥 Квантовый Кластер (+25/сек)', cost: 300, buy: () => setAutoPerSec((a) => a + 25) },
-    { name: '🌌 Квантовый Стенд Реквием (+15 за клик & +80/сек)', cost: 1000, buy: () => { setClickPower((p) => p + 15); setAutoPerSec((a) => a + 80); } },
+    { name: '🖥 Вычислительный кластер (+25/сек)', cost: 300, buy: () => setAutoPerSec((a) => a + 25) },
+    {
+      name: '🌌 Квантовый ускоритель (+15 за клик & +80/сек)',
+      cost: 1000,
+      buy: () => {
+        setClickPower((p) => p + 15);
+        setAutoPerSec((a) => a + 80);
+      },
+    },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-center">
-      <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-950/90 border border-emerald-400/30 space-y-4">
-        <div className="text-xs text-emerald-300 uppercase tracking-wider">Накоплено Нейро-Энергии</div>
-        <div className="text-4xl font-black font-mono text-white">{energy.toLocaleString('ru-RU')} ⚡</div>
-        <div className="text-xs text-slate-400">
-          Сила клика: <b className="text-white">+{clickPower}</b> • Авто-добыча: <b className="text-emerald-300">+{autoPerSec}/сек</b>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-center min-w-0">
+      <div className="flex flex-col items-center justify-center p-5 sm:p-6 rounded-2xl bg-slate-950/90 border border-emerald-400/30 space-y-4 select-none">
+        <div className="text-xs text-emerald-300 uppercase tracking-wider">Накоплено энергии</div>
+        <div className="text-3xl sm:text-4xl font-black font-mono text-white">
+          {energy.toLocaleString('ru-RU')} ⚡
+        </div>
+        <div className="text-xs text-slate-400 text-center">
+          Клик: <b className="text-white">+{clickPower}</b> • Авто: <b className="text-emerald-300">+{autoPerSec}/сек</b>
         </div>
         <button
-          onClick={() => setEnergy((e) => e + clickPower)}
-          className="w-36 h-36 rounded-full bg-gradient-to-br from-emerald-400 via-sky-500 to-purple-600 shadow-2xl shadow-emerald-500/30 active:scale-95 transition flex flex-col items-center justify-center text-slate-950 font-black"
+          type="button"
+          onPointerDown={() => setEnergy((e) => e + clickPower)}
+          className="w-32 h-32 sm:w-36 sm:h-36 rounded-full bg-gradient-to-br from-emerald-400 via-sky-500 to-purple-600 shadow-2xl shadow-emerald-500/30 active:scale-95 transition flex flex-col items-center justify-center text-slate-950 font-black touch-manipulation select-none"
         >
           <span className="text-4xl">⚡</span>
           <span className="text-xs mt-1">ТАПАЙ!</span>
         </button>
         <button
+          type="button"
+          disabled={energy <= 0}
           onClick={() => energy > 0 && onSaveScore(energy)}
-          className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 text-xs font-semibold"
+          className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-40 border border-amber-400/40 text-amber-200 text-xs font-semibold text-center"
         >
-          🏆 Зафиксировать {energy} очк. в глобальный рейтинг (+XP)
+          🏆 Сохранить {energy} очк. в рейтинг (+XP)
         </button>
       </div>
 
-      <div className="space-y-2.5">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Магазин апгрейдов реактора:</h4>
+      <div className="space-y-2.5 min-w-0">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Улучшения генератора:</h4>
         {upgrades.map((u) => (
           <button
             key={u.name}
+            type="button"
             disabled={energy < u.cost}
             onClick={() => {
               if (energy >= u.cost) {
@@ -626,7 +819,7 @@ const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSa
                 u.buy();
               }
             }}
-            className="w-full p-3.5 rounded-xl bg-slate-950 border border-white/10 disabled:opacity-40 hover:border-emerald-400/50 text-left flex items-center justify-between transition"
+            className="w-full p-3.5 rounded-xl bg-slate-950 border border-white/10 disabled:opacity-40 hover:border-emerald-400/50 text-left flex items-center justify-between gap-2 transition"
           >
             <span className="text-xs text-white font-medium">{u.name}</span>
             <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono text-xs shrink-0">
@@ -654,7 +847,9 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSy
   }, [activeTool]);
 
   const loadHighscores = () => {
-    apiGet('/api/v2/games/highscores?game_id=all').then((r) => setHighscores(r.highscores || []));
+    apiGet('/api/v2/games/highscores?game_id=all')
+      .then((r) => setHighscores(r.highscores || []))
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -666,7 +861,7 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSy
       const r = await apiPost('/api/v2/games/score', { game_id: gameId, score });
       setHighscores(r.highscores || []);
       onSync();
-      onToast(`Рекорд ${score} сохранён! Начислено +${r.xp_earned} XP 🏆`);
+      onToast(`Рекорд ${score} сохранён (+${r.xp_earned} XP) 🏆`);
       loadHighscores();
     } catch (e: any) {
       onToast(e.message);
@@ -674,8 +869,8 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSy
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-5 min-w-0">
+      <div className="hidden lg:flex flex-wrap gap-2">
         {[
           { id: 'wolf', tool: 'arcade_wolf', label: '🐺 Волк ловит яйца (Ну, погоди!)' },
           { id: 'doodle', tool: 'arcade_doodle', label: '🚀 Doodle Cyber Jump' },
@@ -684,6 +879,7 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSy
         ].map((g) => (
           <button
             key={g.id}
+            type="button"
             onClick={() => {
               setGameTab(g.id as any);
               onSelectTool(g.tool);
@@ -700,34 +896,45 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSy
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <div className="lg:col-span-8 rounded-2xl border border-white/10 bg-slate-900/75 p-5">
+        <div className="lg:col-span-8 rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 min-w-0">
           {gameTab === 'wolf' && <WolfEggsGame onSaveScore={(s) => saveScore('arcade_wolf', s)} />}
           {gameTab === 'doodle' && <DoodleJumpGame onSaveScore={(s) => saveScore('arcade_doodle', s)} />}
           {gameTab === 'tetris' && <NeonTetrisGame onSaveScore={(s) => saveScore('arcade_tetris', s)} />}
           {gameTab === 'clicker' && <CyberClickerGame onSaveScore={(s) => saveScore('arcade_clicker', s)} />}
         </div>
 
-        <div className="lg:col-span-4 rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-3">
+        <div className="lg:col-span-4 rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 space-y-3 min-w-0">
           <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
-            <Trophy className="w-4 h-4" /> Зал Славы Аркады
+            <Trophy className="w-4 h-4 shrink-0" /> Зал Славы Аркады
           </div>
           <p className="text-xs text-slate-400">
-            Каждая сыгранная партия приносит XP в ваш глобальный профиль и поднимает вас в общем рейтинге!
+            Каждая сыгранная партия приносит XP в ваш профиль и поднимает вас в общем рейтинге.
           </p>
-          <div className="space-y-2">
-            {highscores.map((h, i) => (
-              <div key={i} className="p-2.5 rounded-xl bg-slate-950/90 border border-white/10 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{h.avatar_emoji || '⚡'}</span>
-                  <div>
-                    <div className="font-semibold text-white">{h.first_name}</div>
-                    <div className="text-[10px] text-slate-400">{h.game_id}</div>
+          {highscores.length === 0 ? (
+            <div className="p-4 rounded-xl bg-slate-950/70 border border-white/5 text-center text-xs text-slate-400">
+              Рекордов от игроков из Telegram пока нет — сыграйте первым!
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {highscores.map((h, i) => (
+                <div
+                  key={i}
+                  className="p-2.5 rounded-xl bg-slate-950/90 border border-white/10 flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base shrink-0">{h.avatar_emoji || '⚡'}</span>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white truncate">{h.first_name}</div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {GAME_NAMES[h.game_id] || h.game_id}
+                      </div>
+                    </div>
                   </div>
+                  <span className="font-mono font-bold text-emerald-300 shrink-0">{h.best_score}</span>
                 </div>
-                <span className="font-mono font-bold text-emerald-300">{h.best_score}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

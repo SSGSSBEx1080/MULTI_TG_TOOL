@@ -4,6 +4,8 @@ import { apiGet, apiPost, copyText } from '../../lib/api';
 
 interface Props {
   activeTool: string;
+  onSelectTool?: (t: string) => void;
+  onSync?: () => void;
   onToast: (msg: string) => void;
 }
 
@@ -35,7 +37,15 @@ const TOOL_MAP: Record<string, string> = {
   phys_heat: 'heat_boiling',
 };
 
-export const PhysicsHub: React.FC<Props> = ({ activeTool, onToast }) => {
+const CALC_TO_TOOL: Record<string, string> = {
+  kinematics_uniform: 'phys_kinematics',
+  newton_force: 'phys_force',
+  work_power_eff: 'phys_power',
+  ohm_electric: 'phys_electric',
+  heat_boiling: 'phys_heat',
+};
+
+export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
   const [calculators, setCalculators] = useState<PhysCalc[]>([]);
   const [materials, setMaterials] = useState<{ id: string; label: string; c: number }[]>([]);
   const [selectedCalcId, setSelectedCalcId] = useState<string>('kinematics_uniform');
@@ -107,6 +117,7 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onToast }) => {
         params: numericParams,
       });
       setResult(res);
+      onSync?.();
     } catch (e: any) {
       onToast(e.message || 'Ошибка расчёта');
     } finally {
@@ -119,7 +130,7 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onToast }) => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       {/* Module selector */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {calculators.map((c) => {
@@ -127,8 +138,12 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onToast }) => {
           return (
             <button
               key={c.id}
-              onClick={() => setSelectedCalcId(c.id)}
-              className={`p-2.5 rounded-xl border text-left transition ${
+              type="button"
+              onClick={() => {
+                setSelectedCalcId(c.id);
+                if (CALC_TO_TOOL[c.id]) onSelectTool?.(CALC_TO_TOOL[c.id]);
+              }}
+              className={`p-2.5 rounded-xl border text-left transition min-w-0 ${
                 isSel
                   ? 'bg-sky-600/25 border-sky-400 text-white'
                   : 'bg-slate-900/70 border-white/10 text-slate-300 hover:border-white/25'
@@ -246,7 +261,7 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onToast }) => {
               </button>
             </div>
 
-            <div className="space-y-1 text-xs text-slate-300 font-mono bg-slate-900/80 p-3 rounded-lg border border-white/5">
+            <div className="space-y-1 text-xs text-slate-300 font-mono bg-slate-900/80 p-3 rounded-lg border border-white/5 overflow-x-auto break-words">
               <div>Формула: {result.formula}</div>
               {(result.steps_list || []).map((s: string, i: number) => (
                 <div key={i}>Расчёт: {s}</div>

@@ -107,17 +107,21 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
   };
 
   useEffect(() => {
-    calcVodka();
-    loadBoredom();
-    calcPencil();
-  }, []);
+    if (subTab === 'vodka' && !alkoRes) calcVodka();
+    else if (subTab === 'boredom' && !boredRes) loadBoredom();
+    else if (subTab === 'pencil' && !pencilRes) calcPencil();
+  }, [subTab]);
 
   const toggleLiguria = async () => {
-    if (!showLiguria && !liguriaData) {
-      const d = await apiGet('/api/v2/party/liguria');
-      setLiguriaData(d);
+    try {
+      if (!showLiguria && !liguriaData) {
+        const d = await apiGet('/api/v2/party/liguria');
+        setLiguriaData(d);
+      }
+      setShowLiguria(!showLiguria);
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка загрузки');
     }
-    setShowLiguria(!showLiguria);
   };
 
   const levelColor =
@@ -130,9 +134,9 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
       : 'text-rose-300 border-rose-500/50 bg-rose-500/20';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 min-w-0">
       {/* Sub-navigation */}
-      <div className="flex flex-wrap gap-2">
+      <div className="hidden lg:flex flex-wrap gap-2">
         {[
           { id: 'vodka', tool: 'vodka_calc', label: '🥃 Алко-Калькулятор 0..40 (Без догона)' },
           { id: 'boredom', tool: 'boredom_advisor', label: '💡 Что делать если скучно (105+ идей + Лигурия)' },

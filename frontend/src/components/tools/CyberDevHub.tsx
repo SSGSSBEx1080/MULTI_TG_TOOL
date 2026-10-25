@@ -112,17 +112,35 @@ export const CyberDevHub: React.FC<Props> = ({
     }
   }, [activeCategory, secTab]);
 
-  const refreshTotp = async (customSecret?: string) => {
+  const refreshTotp = async (customSecret?: string, silent?: boolean) => {
     try {
       const res = await apiPost('/api/tools/security/totp', {
         secret: customSecret !== undefined ? customSecret : totpSecret,
       });
       setTotpInfo(res);
-      if (!totpSecret) setTotpSecret(res.secret);
+      if (!totpSecret || customSecret === '') {
+        setTotpSecret(res.secret);
+      }
+      if (!silent) onSync();
     } catch (e: any) {
-      onToast(e.message);
+      if (!silent) onToast(e.message);
     }
   };
+
+  useEffect(() => {
+    if (activeCategory !== 'security' || secTab !== 'jwt' || !totpInfo) return;
+    const t = setInterval(() => {
+      setTotpInfo((prev: any) => {
+        if (!prev) return prev;
+        if ((prev.remaining_seconds ?? 0) <= 1) {
+          refreshTotp(prev.secret, true);
+          return prev;
+        }
+        return { ...prev, remaining_seconds: prev.remaining_seconds - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [activeCategory, secTab, Boolean(totpInfo)]);
 
   const runAes = async (action: 'encrypt' | 'decrypt') => {
     try {
@@ -185,8 +203,8 @@ export const CyberDevHub: React.FC<Props> = ({
   // =========================================================================
   if (activeCategory === 'security') {
     return (
-      <div className="space-y-5">
-        <div className="flex flex-wrap gap-2">
+      <div className="space-y-5 min-w-0">
+        <div className="hidden lg:flex flex-wrap gap-2">
           {[
             { id: 'pass', tool: 'pass_forge', label: '🛡️ Генератор Паролей' },
             { id: 'aes', tool: 'aes_cipher', label: '🧬 Шифратор AES-256 NX1' },
@@ -469,13 +487,14 @@ export const CyberDevHub: React.FC<Props> = ({
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Timer className="w-4 h-4 text-sky-400" /> Живой 2FA TOTP Генератор (RFC 6238)
+                  <Timer className="w-4 h-4 text-sky-400 shrink-0" /> Живой 2FA TOTP Генератор (RFC 6238)
                 </h4>
                 <button
+                  type="button"
                   onClick={() => refreshTotp('')}
-                  className="text-xs text-sky-300 hover:underline"
+                  className="text-xs text-sky-300 hover:underline shrink-0"
                 >
                   Новый Base32 ключ
                 </button>
@@ -485,11 +504,12 @@ export const CyberDevHub: React.FC<Props> = ({
                   value={totpSecret}
                   onChange={(e) => setTotpSecret(e.target.value)}
                   placeholder="Base32 секрет (JBSWY3DPEHPK3PXP)"
-                  className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 font-mono text-xs text-white"
+                  className="min-w-0 flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 font-mono text-xs text-white"
                 />
                 <button
+                  type="button"
                   onClick={() => refreshTotp(totpSecret)}
-                  className="px-4 py-2 rounded-xl bg-sky-500 text-slate-950 font-semibold text-xs"
+                  className="shrink-0 px-3.5 py-2 rounded-xl bg-sky-500 text-slate-950 font-semibold text-xs"
                 >
                   Обновить
                 </button>
@@ -576,8 +596,8 @@ export const CyberDevHub: React.FC<Props> = ({
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-5 min-w-0">
+      <div className="hidden lg:flex flex-wrap gap-2">
         {[
           { id: 'json', tool: 'json_yaml', label: '🧩 JSON ↔ YAML ↔ CSV' },
           { id: 'regex', tool: 'regex_lab', label: '🎯 Regex Лаборатория' },
@@ -734,10 +754,14 @@ export const CyberDevHub: React.FC<Props> = ({
           />
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => {
                 setCodecDir('encode');
                 apiPost('/api/tools/dev/codec', { text: codecText, codec_name: codecName, direction: 'encode' })
-                  .then((r) => setCodecOut(r.output))
+                  .then((r) => {
+                    setCodecOut(r.output);
+                    onSync();
+                  })
                   .catch((e) => onToast(e.message));
               }}
               className="flex-1 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-semibold text-xs"
@@ -745,10 +769,14 @@ export const CyberDevHub: React.FC<Props> = ({
               Закодировать (Encode)
             </button>
             <button
+              type="button"
               onClick={() => {
                 setCodecDir('decode');
                 apiPost('/api/tools/dev/codec', { text: codecText, codec_name: codecName, direction: 'decode' })
-                  .then((r) => setCodecOut(r.output))
+                  .then((r) => {
+                    setCodecOut(r.output);
+                    onSync();
+                  })
                   .catch((e) => onToast(e.message));
               }}
               className="flex-1 py-2.5 rounded-xl bg-white/10 text-white font-semibold text-xs"

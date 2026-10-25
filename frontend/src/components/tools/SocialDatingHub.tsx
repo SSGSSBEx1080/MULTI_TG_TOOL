@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bot,
   Crown,
@@ -32,10 +32,23 @@ const toolToSocialTab = (tool: string): 'top' | 'altushka' | 'bibinto' | 'turing
   return 'top';
 };
 
+const GAME_LABELS: Record<string, string> = {
+  arcade_wolf: '🐺 Ну, погоди!',
+  wolf: '🐺 Ну, погоди!',
+  arcade_doodle: '🚀 Doodle Jump',
+  doodle: '🚀 Doodle Jump',
+  arcade_tetris: '🧱 Тетрис',
+  tetris: '🧱 Тетрис',
+  arcade_clicker: '⚡ Кликер',
+  clicker: '⚡ Кликер',
+};
+
 export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
   const [subTab, setSubTab] = useState<'top' | 'altushka' | 'bibinto' | 'turing' | 'anon' | 'author'>(() =>
     toolToSocialTab(activeTool)
   );
+  const profileInspectorRef = useRef<HTMLDivElement | null>(null);
+  const altChatEndRef = useRef<HTMLDivElement | null>(null);
 
   // --- Leaderboard & Public Profile ---
   const [sortBy, setSortBy] = useState<'xp' | 'games' | 'views' | 'respects' | 'tools'>('xp');
@@ -92,6 +105,11 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
       const p = await apiGet(`/api/v2/social/profile/${uid}`);
       setSelectedProfile(p);
       loadLeaders(sortBy);
+      setTimeout(() => {
+        if (window.innerWidth < 1024) {
+          profileInspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }, 60);
     } catch (e: any) {
       onToast(e.message);
     }
@@ -193,8 +211,15 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
     }
   };
 
+  useEffect(() => {
+    altChatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [altMessages.length]);
+
   const createBibintoCard = async () => {
-    if (!newBibName.trim()) return;
+    if (!newBibName.trim()) {
+      onToast('Введите имя или ник для анкеты');
+      return;
+    }
     try {
       const r = await apiPost('/api/v2/social/bibinto/create', {
         display_name: newBibName,
@@ -206,6 +231,8 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
       });
       setBibintoProfiles(r.profiles || []);
       setShowCreateBib(false);
+      setNewBibName('');
+      setNewBibBio('');
       setBibIdx(0);
       onToast('Ваша карточка опубликована в Bibinto! 💎');
     } catch (e: any) {
@@ -215,39 +242,55 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
 
   const guessTuring = async (guess: 'human' | 'ai') => {
     if (!turingRound || turingVerdict) return;
-    const r = await apiPost('/api/v2/social/turing', { round_id: turingRound.id, guess });
-    setTuringVerdict(r);
-    setTuringScore((s) => ({ right: s.right + (r.correct ? 1 : 0), total: s.total + 1 }));
-    setSeenRounds((prev) => [...prev.slice(-8), turingRound.id]);
-    onSync();
+    try {
+      const r = await apiPost('/api/v2/social/turing', { round_id: turingRound.id, guess });
+      setTuringVerdict(r);
+      setTuringScore((s) => ({ right: s.right + (r.correct ? 1 : 0), total: s.total + 1 }));
+      setSeenRounds((prev) => [...prev.slice(-8), turingRound.id]);
+      onSync();
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка проверки ответа');
+    }
   };
 
   const nextTuring = async () => {
-    setTuringVerdict(null);
-    const r = await apiGet(`/api/v2/social/turing?exclude=${seenRounds.join(',')}`);
-    setTuringRound(r);
+    try {
+      setTuringVerdict(null);
+      const r = await apiGet(`/api/v2/social/turing?exclude=${seenRounds.join(',')}`);
+      setTuringRound(r);
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка загрузки раунда');
+    }
   };
 
   const switchAnonRoom = async (room: string) => {
     setAnonRoom(room);
-    const r = await apiGet(`/api/v2/social/anon?room=${room}`);
-    setAnonMsgs(r.messages || []);
+    try {
+      const r = await apiGet(`/api/v2/social/anon?room=${room}`);
+      setAnonMsgs(r.messages || []);
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка переключения комнаты');
+    }
   };
 
   const sendAnon = async () => {
     if (!anonInput.trim()) return;
-    const r = await apiPost('/api/v2/social/anon', { text: anonInput, room: anonRoom });
-    setAnonMsgs(r.messages || []);
-    setAnonInput('');
-    onSync();
+    try {
+      const r = await apiPost('/api/v2/social/anon', { text: anonInput, room: anonRoom });
+      setAnonMsgs(r.messages || []);
+      setAnonInput('');
+      onSync();
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка отправки');
+    }
   };
 
   const currentBib = bibintoProfiles[bibIdx % Math.max(1, bibintoProfiles.length)];
 
   return (
-    <div className="space-y-5">
-      {/* Sub-tabs */}
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-5 min-w-0">
+      {/* Sub-tabs (Desktop only — mobile already has sticky sub-tool strip) */}
+      <div className="hidden lg:flex flex-wrap gap-2">
         {[
           { id: 'top', tool: 'leaderboard_hub', label: '🏆 Топ Игроков & Визиты Профилей' },
           { id: 'altushka', tool: 'altushka_chat', label: '🖤 Альтушки 18+ (Дейтинг-Чат)' },
@@ -296,21 +339,25 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
 
             {showEditMe && (
               <div className="p-3.5 rounded-xl bg-slate-950 border border-sky-400/40 space-y-2.5 text-xs">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap sm:flex-nowrap gap-2">
                   <input
                     value={myEmoji}
                     onChange={(e) => setMyEmoji(e.target.value)}
                     maxLength={4}
                     placeholder="⚡"
-                    className="w-16 rounded-lg bg-slate-900 border border-white/10 px-2.5 py-1.5 text-center text-base"
+                    className="w-16 shrink-0 rounded-lg bg-slate-900 border border-white/10 px-2.5 py-1.5 text-center text-base"
                   />
                   <input
                     value={myBio}
                     onChange={(e) => setMyBio(e.target.value)}
                     placeholder="Напишите статус / биографию своего профиля..."
-                    className="flex-1 rounded-lg bg-slate-900 border border-white/10 px-3 py-1.5 text-white"
+                    className="min-w-[150px] flex-1 rounded-lg bg-slate-900 border border-white/10 px-3 py-1.5 text-white"
                   />
-                  <button onClick={saveMyProfile} className="px-4 py-1.5 rounded-lg bg-sky-500 text-slate-950 font-bold">
+                  <button
+                    type="button"
+                    onClick={saveMyProfile}
+                    className="w-full sm:w-auto shrink-0 px-4 py-1.5 rounded-lg bg-sky-500 text-slate-950 font-bold"
+                  >
                     Сохранить
                   </button>
                 </div>
@@ -386,25 +433,28 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
           </div>
 
           {/* Detailed Profile Inspector */}
-          <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/75 p-5 flex flex-col justify-between">
+          <div ref={profileInspectorRef} className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 flex flex-col justify-between min-w-0">
             {selectedProfile ? (
               <div className="space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500/30 to-purple-600/30 border border-white/15 flex items-center justify-center text-3xl">
+                <div className="flex flex-wrap sm:flex-nowrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-14 h-14 shrink-0 rounded-2xl bg-gradient-to-br from-sky-500/30 to-purple-600/30 border border-white/15 flex items-center justify-center text-3xl">
                       {selectedProfile.avatar_emoji || '⚡'}
                     </div>
-                    <div>
-                      <h4 className="font-bold text-base text-white">{selectedProfile.first_name}</h4>
-                      <div className="text-xs text-slate-400">@{selectedProfile.username}</div>
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-base text-white truncate">{selectedProfile.first_name}</h4>
+                      <div className="text-xs text-slate-400 truncate">
+                        {selectedProfile.username ? `@${selectedProfile.username}` : `ID ${selectedProfile.user_id}`}
+                      </div>
                       <span className="inline-block mt-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30">
                         {selectedProfile.rank_title}
                       </span>
                     </div>
                   </div>
                   <button
+                    type="button"
                     onClick={() => sendRespect(selectedProfile.user_id)}
-                    className="px-3 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-slate-950 font-bold text-xs flex items-center gap-1 shadow-lg"
+                    className="shrink-0 px-3 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-slate-950 font-bold text-xs flex items-center gap-1 shadow-lg"
                   >
                     <Flame className="w-4 h-4" /> Респект ({selectedProfile.respects})
                   </button>
@@ -441,7 +491,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
                     <div className="text-xs font-semibold text-slate-400">Лучшие дисциплины игрока:</div>
                     {selectedProfile.game_records.map((g: any, idx: number) => (
                       <div key={idx} className="flex justify-between text-xs p-2 rounded-lg bg-slate-950/70">
-                        <span className="text-slate-300">{g.game_id}</span>
+                        <span className="text-slate-300">{GAME_LABELS[g.game_id] || g.game_id}</span>
                         <span className="font-mono text-emerald-300 font-bold">{g.score}</span>
                       </div>
                     ))}
@@ -461,29 +511,31 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
 
       {/* 2. ALTUSHKA 18+ DATING CHAT */}
       {subTab === 'altushka' && activePersona && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          <div className="lg:col-span-4 rounded-2xl border border-white/10 bg-slate-900/75 p-4 space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+          <div className="lg:col-span-4 rounded-2xl border border-white/10 bg-slate-900/75 p-3.5 sm:p-4 space-y-2.5 min-w-0">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">🖤 Выбери Альтушку (18+)</h3>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-400/30">18+ Roleplay</span>
+              <h3 className="text-sm font-bold text-white">🖤 Персонажи (18+)</h3>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-400/30">18+</span>
             </div>
-            <div className="space-y-2">
+            {/* Compact horizontal strip on mobile, vertical list on desktop */}
+            <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0 no-scrollbar">
               {personas.map((p) => (
                 <button
                   key={p.id}
+                  type="button"
                   onClick={() => selectPersona(p)}
-                  className={`w-full p-3 rounded-xl border text-left transition ${
+                  className={`shrink-0 w-52 lg:w-full p-2.5 sm:p-3 rounded-xl border text-left transition ${
                     activePersona.id === p.id
                       ? 'bg-rose-500/20 border-rose-400/60'
                       : 'bg-slate-950/80 border-white/10 hover:bg-slate-950'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-white">{p.emoji} {p.name}, {p.age}</span>
-                    <span className="text-[10px] text-rose-300">Онлайн</span>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-bold text-xs sm:text-sm text-white truncate">{p.emoji} {p.name}, {p.age}</span>
+                    <span className="text-[10px] text-rose-300 shrink-0">Онлайн</span>
                   </div>
-                  <div className="text-[11px] text-purple-300 mt-0.5">{p.archetype}</div>
-                  <div className="text-[11px] text-slate-400 mt-1 line-clamp-2">{p.style}</div>
+                  <div className="text-[11px] text-purple-300 mt-0.5 truncate">{p.archetype}</div>
+                  <div className="hidden lg:block text-[11px] text-slate-400 mt-1 line-clamp-2">{p.style}</div>
                 </button>
               ))}
             </div>
@@ -522,6 +574,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
                   </div>
                 </div>
               ))}
+              <div ref={altChatEndRef} />
             </div>
 
             {/* Quick Flirt Prompts + Input */}
@@ -607,6 +660,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
                     <button
                       key={num}
+                      type="button"
                       onClick={() => rateBibinto(currentBib.id, num)}
                       className={`py-2.5 rounded-xl font-bold text-xs border transition ${
                         num >= 8
@@ -618,6 +672,29 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
                     </button>
                   ))}
                 </div>
+                {bibintoProfiles.length > 1 && (
+                  <div className="flex items-center justify-between pt-3 text-xs text-slate-400">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBibIdx((i) => (i - 1 + bibintoProfiles.length) % bibintoProfiles.length)
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+                    >
+                      ← Предыдущая
+                    </button>
+                    <span>
+                      {(bibIdx % bibintoProfiles.length) + 1} / {bibintoProfiles.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setBibIdx((i) => (i + 1) % bibintoProfiles.length)}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+                    >
+                      Следующая →
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -714,10 +791,14 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
               value={anonInput}
               onChange={(e) => setAnonInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendAnon()}
-              placeholder="Написать анонимное сообщение под крипто-маской..."
-              className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-4 py-2.5 text-xs sm:text-sm text-white"
+              placeholder="Написать анонимное сообщение..."
+              className="min-w-0 flex-1 rounded-xl bg-slate-950 border border-white/10 px-3.5 py-2.5 text-xs sm:text-sm text-white"
             />
-            <button onClick={sendAnon} className="px-4 py-2.5 rounded-xl bg-purple-500 text-slate-950 font-bold text-xs flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={sendAnon}
+              className="shrink-0 px-3.5 sm:px-4 py-2.5 rounded-xl bg-purple-500 text-slate-950 font-bold text-xs flex items-center gap-1.5"
+            >
               <Send className="w-3.5 h-3.5" /> В эфир
             </button>
           </div>
