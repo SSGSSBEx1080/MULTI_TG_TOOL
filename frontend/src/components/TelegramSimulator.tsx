@@ -121,7 +121,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
     if (btn.web_app_url) {
       const m = btn.web_app_url.match(/tool=([a-z_]+)/);
       onOpenMiniAppTool(m ? m[1] : undefined);
-      onToast('Открыт NEXUS Mini App Studio 🚀');
+      onToast('Открыт раздел в приложении');
       return;
     }
     if (btn.switch_inline !== undefined) {
@@ -171,13 +171,13 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
     setLoading(true);
     try {
       const fd = new FormData();
-      fd.append('secret_text', '🚀 Секретный протокол NEXUS-OMEGA: доступ открыт!');
+      fd.append('secret_text', 'Секретный текст MULTI_TG_TOOL: проверка LSB');
       fd.append('password', '');
       const stego = await apiForm('/api/tools/stego/encode', fd);
       const blob = await (await fetch(stego.image_data_url)).blob();
-      const demoFile = new File([blob], 'nexus_secret_stego.png', { type: 'image/png' });
+      const demoFile = new File([blob], 'secret_stego.png', { type: 'image/png' });
       await handleFileUpload(demoFile, 'document');
-      onToast('Стего-PNG отправлен в чат! Нажмите «🔓 Найти тайну (Stego)»');
+      onToast('Стего-PNG отправлен в чат. Нажмите «Найти тайну (Stego)»');
     } catch (e: any) {
       onToast(e.message);
       setLoading(false);
@@ -189,13 +189,13 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
     setLoading(true);
     try {
       const qr = await apiPost('/api/tools/code-card', {
-        code: 'def nexus_power():\n    return "Smart Media Drop Active!"',
+        code: 'def run_tool():\n    return "MULTI_TG_TOOL Ready"',
         language: 'python',
         title: 'demo_photo.py',
         theme: 'tokyo',
       });
       const blob = await (await fetch(qr.image_data_url)).blob();
-      const photoFile = new File([blob], 'cyber_card.png', { type: 'image/png' });
+      const photoFile = new File([blob], 'code_card.png', { type: 'image/png' });
       await handleFileUpload(photoFile, 'photo');
     } catch (e: any) {
       onToast(e.message);
@@ -208,11 +208,11 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
     setLoading(true);
     try {
       const pdf = await apiPost('/api/tools/pdf/from-text', {
-        title: 'Технический паспорт NEXUS',
-        content: '# Спецификация NEXUS 2.0\n- Движок Telegram: aiogram 3.x\n- Поддержка кириллицы и AES-256 защиты',
+        title: 'Документ MULTI_TG_TOOL',
+        content: '# Описание MULTI_TG_TOOL\n- Движок Telegram: aiogram 3.x\n- Поддержка кириллицы и AES-256 защиты',
       });
       const blob = await (await fetch(pdf.download_url)).blob();
-      const pdfFile = new File([blob], 'nexus_spec.pdf', { type: 'application/pdf' });
+      const pdfFile = new File([blob], 'document_spec.pdf', { type: 'application/pdf' });
       await handleFileUpload(pdfFile, 'document');
     } catch (e: any) {
       onToast(e.message);
@@ -327,12 +327,12 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
           </div>
         </div>
 
-        {/* Inline Query Bar Drawer (@nexus_multitool_bot ...) */}
+        {/* Inline Query Bar Drawer (@multi_tg_bot ...) */}
         {inlineModeOpen && (
           <div className="bg-[#161f36] border-b border-purple-500/30 p-3 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-purple-300 bg-purple-500/15 px-2 py-1 rounded-lg border border-purple-500/30 shrink-0">
-                @nexus_multitool_bot
+                @multi_tg_bot
               </span>
               <input
                 value={inlineQuery}
@@ -491,7 +491,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
           {showCmdMenu && (
             <div className="absolute bottom-16 left-3 w-80 max-h-72 overflow-y-auto rounded-2xl bg-[#162038] border border-white/15 shadow-2xl p-1.5 z-30">
               <div className="px-3 py-1.5 text-[11px] font-semibold text-sky-300 uppercase tracking-wider">
-                Команды бота NEXUS
+                Команды бота MULTI_TG_TOOL
               </div>
               {commands.map((c) => (
                 <button

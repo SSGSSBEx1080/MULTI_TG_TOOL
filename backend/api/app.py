@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.api import routes_admin, routes_simulator, routes_tools, routes_v2, routes_workspace
 from backend.bot.factory import bot_manager
-from backend.config import BOT_TOKEN, DATA_DIR, STATIC_UI_DIR
+from backend.config import BOT_TOKEN, GENERATED_DIR, STATIC_UI_DIR, UPLOADS_DIR
 from backend.database import db
 
 
@@ -62,7 +62,10 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "MULTI_TG_TOOL"}
 
-    app.mount("/media", StaticFiles(directory=str(DATA_DIR)), name="media")
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/media/generated", StaticFiles(directory=str(GENERATED_DIR)), name="media_generated")
+    app.mount("/media/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="media_uploads")
 
     assets_dir = STATIC_UI_DIR / "assets"
     if assets_dir.exists():
@@ -70,6 +73,8 @@ def create_app() -> FastAPI:
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
+        if full_path == "api" or full_path == "media" or full_path.startswith(("api/", "media/")):
+            raise HTTPException(status_code=404, detail="Not Found")
         static_root = STATIC_UI_DIR.resolve()
         if full_path:
             candidate = (STATIC_UI_DIR / full_path).resolve()

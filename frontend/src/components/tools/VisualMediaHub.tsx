@@ -102,13 +102,13 @@ export const VisualMediaHub: React.FC<Props> = ({
   const [vcardTg, setVcardTg] = useState('@QLSCENR');
   const [qrResult, setQrResult] = useState<any>(null);
 
-  const [bcVal, setBcVal] = useState('NEXUS-2026-X9');
+  const [bcVal, setBcVal] = useState('MT-2026-001');
   const [bcKind, setBcKind] = useState('code128');
   const [bcResult, setBcResult] = useState<any>(null);
 
   // --- Image, Stego & Code Card State ---
   const [imgSubTab, setImgSubTab] = useState<'stego' | 'code' | 'exif' | 'transform'>('stego');
-  const [stegoSecret, setStegoSecret] = useState('Секретная фраза доступа: ORBIT-7749-NEXUS');
+  const [stegoSecret, setStegoSecret] = useState('Скрытое сообщение в PNG-контейнере');
   const [stegoPassword, setStegoPassword] = useState('omega2026');
   const [stegoCover, setStegoCover] = useState<File | null>(null);
   const [stegoEncoded, setStegoEncoded] = useState<any>(null);
@@ -118,11 +118,11 @@ export const VisualMediaHub: React.FC<Props> = ({
   const [stegoDecodedResult, setStegoDecodedResult] = useState<any>(null);
 
   const [codeSnippet, setCodeSnippet] = useState(
-    `from aiogram import Router\n\nrouter = Router(name="nexus")\n\nasync def launch_multitool(user_id: int) -> dict:\n    # 🌌 Выжимаем максимум из Telegram Bot API\n    return {"user": user_id, "status": "CYBER_READY"}`
+    `from aiogram import Router\n\nrouter = Router(name="main")\n\nasync def launch_tool(user_id: int) -> dict:\n    return {"user": user_id, "status": "ok"}`
   );
   const [codeLang, setCodeLang] = useState('python');
   const [codeTheme, setCodeTheme] = useState('tokyo');
-  const [codeTitle, setCodeTitle] = useState('nexus_engine.py');
+  const [codeTitle, setCodeTitle] = useState('bot_handler.py');
   const [codeCardRes, setCodeCardRes] = useState<any>(null);
 
   const [imgWorkFile, setImgWorkFile] = useState<File | null>(null);
@@ -334,7 +334,7 @@ export const VisualMediaHub: React.FC<Props> = ({
   const getOrMakeDemoImageFile = async (): Promise<File> => {
     if (imgWorkFile) return imgWorkFile;
     const card = await apiPost('/api/tools/code-card', {
-      code: 'print("NEXUS Image Lab Sample")',
+      code: 'print("MULTI_TG_TOOL Image Sample")',
       language: 'python',
       title: 'sample.py',
       theme: 'emerald',
@@ -400,7 +400,7 @@ export const VisualMediaHub: React.FC<Props> = ({
       content: pdfBody,
     });
     const blob = await (await fetch(created.download_url)).blob();
-    return new File([blob], 'nexus_demo.pdf', { type: 'application/pdf' });
+    return new File([blob], 'demo_document.pdf', { type: 'application/pdf' });
   };
 
   const runPdfInspect = async () => {
@@ -933,7 +933,7 @@ export const VisualMediaHub: React.FC<Props> = ({
                 <Eye className="w-4 h-4" /> Извлечь тайное послание из PNG
               </div>
               <p className="text-xs text-slate-400">
-                Загрузите любой PNG-контейнер, созданный в боте или студии NEXUS, и введите пароль (если он задавался):
+                Загрузите PNG-контейнер со скрытым сообщением и введите пароль (если он задавался):
               </p>
               <input
                 type="file"

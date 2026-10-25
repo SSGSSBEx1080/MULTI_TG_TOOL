@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from aiogram.types import CallbackQuery, Chat, Document, InlineQuery, Message, PhotoSize, Update, User
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from backend.bot.factory import bot_manager
@@ -14,12 +14,12 @@ from backend.config import DEFAULT_DEMO_USER_ID
 router = APIRouter(prefix="/api/sim", tags=["simulator"])
 
 
-def _sim_user(user_id: int = DEFAULT_DEMO_USER_ID, first_name: str = "Алексей") -> User:
-    return User(id=user_id, is_bot=False, first_name=first_name, username="nexus_user")
+def _sim_user(user_id: int = DEFAULT_DEMO_USER_ID, first_name: str = "Гость") -> User:
+    return User(id=user_id, is_bot=False, first_name=first_name, username="guest_user")
 
 
-def _sim_chat(user_id: int = DEFAULT_DEMO_USER_ID, first_name: str = "Алексей") -> Chat:
-    return Chat(id=user_id, type="private", first_name=first_name, username="nexus_user")
+def _sim_chat(user_id: int = DEFAULT_DEMO_USER_ID, first_name: str = "Гость") -> Chat:
+    return Chat(id=user_id, type="private", first_name=first_name, username="guest_user")
 
 
 def _snapshot(user_id: int) -> dict[str, Any]:
@@ -127,7 +127,9 @@ async def sim_upload(
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
     sess = bot_manager.sim_session
-    raw = await file.read()
+    raw = await file.read(15 * 1024 * 1024 + 1)
+    if len(raw) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой (максимум 15 МБ)")
     fname = file.filename or "upload.bin"
     mime = file.content_type or "application/octet-stream"
     reg = sess.register_uploaded_file(fname, raw, mime_type=mime)

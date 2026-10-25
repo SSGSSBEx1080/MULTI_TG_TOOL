@@ -145,11 +145,14 @@ async def api_physics_solve(req: PhysicsSolveReq, request: Request) -> dict[str,
 # File Download & Send-to-Telegram-Chat Helpers (for Telegram WebView)
 # ==============================================================================
 def _resolve_media_path(download_url: str) -> Path:
+    from backend.config import GENERATED_DIR, UPLOADS_DIR
+
     rel = download_url.strip()
     if rel.startswith("/media/"):
         rel = rel[len("/media/") :]
     target = (DATA_DIR / rel).resolve()
-    if not str(target).startswith(str(DATA_DIR.resolve())) or not target.is_file():
+    allowed_roots = (GENERATED_DIR.resolve(), UPLOADS_DIR.resolve())
+    if not any(target.is_relative_to(root) for root in allowed_roots) or not target.is_file():
         raise HTTPException(status_code=404, detail="Файл не найден на сервере")
     return target
 
@@ -408,10 +411,14 @@ async def api_qr_decode(
 ) -> dict[str, Any]:
     uid = await resolve_api_user(request, user_id)
     try:
-        raw = await file.read()
+        raw = await file.read(15 * 1024 * 1024 + 1)
+        if len(raw) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Файл слишком большой (максимум 15 МБ)")
         res = await asyncio.to_thread(decode_qr_from_bytes, raw)
         await db.record_tool_use(uid, "qr_decoder", "visual", "miniapp", "QR Scan", xp_gain=10)
         return res
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка чтения изображения: {e}")
 
@@ -682,5 +689,11 @@ class AuthorUpdateReq(BaseModel):
 
 
 @router.post("/api/v2/author")
-async def api_save_author(req: AuthorUpdateReq) -> dict[str, Any]:
+async def api_save_author(req: AuthorUpdateReq, request: Request) -> dict[str, Any]:
+    import hmac
+    from backend.config import ADMIN_SECRET
+
+    provided_secret = (request.headers.get("X-Admin-Secret") or "").strip()
+    if not ADMIN_SECRET or not hmac.compare_digest(provided_secret, ADMIN_SECRET):
+        raise HTTPException(status_code=403, detail="Изменение ссылок автора доступно только администратору")
     return await db.save_author_info(req.model_dump())

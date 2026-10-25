@@ -186,7 +186,7 @@ async def _process_birth_date(target: Message | CallbackQuery, state: FSMContext
     )
 
 
-@router.message(ToolState.birth_date_waiting)
+@router.message(ToolState.birth_date_waiting, F.text, ~F.text.startswith("/"))
 async def msg_birth_date_input(message: Message, state: FSMContext) -> None:
     await _process_birth_date(message, state, message.text or "")
 
@@ -259,11 +259,14 @@ async def _process_compat(target: Message | CallbackQuery, state: FSMContext, fi
     )
 
 
-@router.message(ToolState.compat_waiting_dates)
+@router.message(ToolState.compat_waiting_dates, F.text, ~F.text.startswith("/"))
 async def msg_compat_input(message: Message, state: FSMContext) -> None:
     parts = [p for p in re.split(r"[\s,;+]+", (message.text or "").strip()) if p]
     if len(parts) < 2:
-        await message.answer("Укажите две даты рождения или два знака через пробел, например: <code>15.05.2002 21.09.2003</code>")
+        await message.answer(
+            "Укажите две даты рождения или два знака через пробел, например: <code>15.05.2002 21.09.2003</code>",
+            parse_mode="HTML",
+        )
         return
     await _process_compat(message, state, parts[0], parts[1])
 
@@ -355,7 +358,7 @@ async def cb_add_habit_prompt(call: CallbackQuery, state: FSMContext) -> None:
     )
 
 
-@router.message(ToolState.habit_waiting_title)
+@router.message(ToolState.habit_waiting_title, F.text, ~F.text.startswith("/"))
 async def msg_add_habit_save(message: Message, state: FSMContext) -> None:
     title = (message.text or "").strip()
     if not title:
@@ -481,7 +484,7 @@ async def cb_physics_demo(call: CallbackQuery, state: FSMContext) -> None:
     await _execute_physics_bot(call, state, calc_id, active_target["var"], params)
 
 
-@router.message(ToolState.physics_waiting_params)
+@router.message(ToolState.physics_waiting_params, F.text, ~F.text.startswith("/"))
 async def msg_physics_solve(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     calc_id = data.get("calc_id", "kinematics_uniform")

@@ -15,6 +15,16 @@ class UserContextMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
+        # Automatically clear stale FSM states on slash commands or top-level section/tool navigation
+        state = data.get("state")
+        if state is not None:
+            if isinstance(event, Message) and event.text and event.text.strip().startswith("/"):
+                await state.clear()
+                data["raw_state"] = None
+            elif isinstance(event, CallbackQuery) and event.data and event.data.startswith(("nav:", "tool:open:")):
+                await state.clear()
+                data["raw_state"] = None
+
         from_user = getattr(event, "from_user", None)
         bot = data.get("bot")
         is_live_tg = bool(bot and getattr(bot, "token", "") != SIMULATOR_BOT_TOKEN)

@@ -63,7 +63,7 @@ CODE_THEMES: dict[str, dict[str, Any]] = {
 }
 
 
-def generate_cover_art(width: int = 640, height: int = 420, title: str = "NEXUS VAULT") -> Image.Image:
+def generate_cover_art(width: int = 640, height: int = 420, title: str = "MULTI_TG_TOOL") -> Image.Image:
     img = Image.new("RGB", (width, height), (14, 19, 34))
     draw = ImageDraw.Draw(img)
     for y in range(height):
@@ -175,7 +175,7 @@ def stego_decode_png(image_bytes: bytes, password: str = "") -> dict[str, Any]:
 
     header = extract_bytes(0, header_len)
     if header[:5] != STEGO_MAGIC:
-        raise ValueError("В этом изображении не найдено скрытое сообщение NEXUS Stego")
+        raise ValueError("В этом изображении не найдено скрытое сообщение (LSB Stego)")
 
     flag, payload_len, expected_crc = struct.unpack(">BII", header[5:14])
     total_bits = (header_len + payload_len) * 8
@@ -335,7 +335,7 @@ def transform_image(
 def render_code_card(
     code: str,
     language: str = "python",
-    title: str = "nexus_snippet.py",
+    title: str = "snippet.py",
     theme: str = "tokyo",
 ) -> bytes:
     from pygments import lex

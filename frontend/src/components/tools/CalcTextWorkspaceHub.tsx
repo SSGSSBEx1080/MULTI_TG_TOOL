@@ -61,10 +61,10 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   const [txtTab, setTxtTab] = useState<'rhyme' | 'layout' | 'fonts' | 'diff' | 'random'>('rhyme');
   const [rhymeWord, setRhymeWord] = useState('любовь');
   const [rhymeRes, setRhymeRes] = useState<any>(null);
-  const [layoutText, setLayoutText] = useState('Ghbdtn? rfr ltkf& Эnj ntcnbhjdfybt NEXUS!');
+  const [layoutText, setLayoutText] = useState('Ghbdtn? rfr ltkf&');
   const [layoutRes, setLayoutRes] = useState<any>(null);
 
-  const [fontInput, setFontInput] = useState('NEXUS Cyber Bot 2026');
+  const [fontInput, setFontInput] = useState('MULTI_TG_TOOL 2026');
   const [fontRes, setFontRes] = useState<any>(null);
 
   const [diffA, setDiffA] = useState('Первая версия конфигурации:\nhost: 127.0.0.1\nport: 3000\ndebug: true');

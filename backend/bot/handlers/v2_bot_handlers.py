@@ -185,22 +185,47 @@ async def cb_show_liguria(call: CallbackQuery) -> None:
 # ==============================================================================
 # 4. Биометрический калькулятор длины пениса / члена
 # ==============================================================================
-@router.callback_query(F.data == "tool:open:pencil_calc")
-async def cb_open_pencil(call: CallbackQuery) -> None:
-    res = calculate_pencil_index(height_cm=182, shoe_size_eu=43, linux_user=True, gym_pushups=50)
+async def _render_pencil_bot(call: CallbackQuery, height_cm: int = 182, shoe_eu: int = 43) -> None:
+    res = calculate_pencil_index(height_cm=height_cm, shoe_size_eu=shoe_eu, linux_user=False, gym_pushups=35)
     b = InlineKeyboardBuilder()
-    b.row(webapp_button("🎛 Ввести все 10 параметров в Mini App!", tab="party"))
-    b.row(InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:party"), InlineKeyboardButton(text="🏠 Домой", callback_data="nav:home"))
+    for h_val, s_val, lbl in [
+        (172, 41, "172 см / 41"),
+        (180, 43, "180 см / 43"),
+        (188, 45, "188 см / 45"),
+        (196, 46, "196 см / 46"),
+    ]:
+        mark = "🔘 " if (h_val == height_cm and s_val == shoe_eu) else ""
+        b.button(text=f"{mark}{lbl}", callback_data=f"v2:pen:{h_val}:{s_val}")
+    b.adjust(2)
+    b.row(webapp_button("🎛 Все 10 параметров в приложении", tab="party"))
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:party"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
     await render_hud(
         call,
         f"<b>📏 Биометрический калькулятор длины члена</b>\n"
-        f"<blockquote>Демо-расчёт (рост 182 см, обувь 43 EU, 50 отжиманий, Linux):</blockquote>\n\n"
-        f"🎯 <b>Длина пениса: {res['estimated_cm']} см ({res['estimated_inches']}\")</b>\n"
-        f"🏅 Вердикт: <b>{esc(res['rank_title'])}</b>\n"
-        f"📊 Процентиль: выше, чем у <b>{res['percentile']}%</b> респондентов!\n\n"
-        f"<i>Откройте Mini App ниже, чтобы покрутить все 10 ползунков (рост, обувь, нос, ладонь, тембр, Дота MMR, отжимания и др.).</i>",
+        f"<blockquote>Параметры: рост {height_cm} см, обувь {shoe_eu} EU, 35 отжиманий</blockquote>\n\n"
+        f"• Длина пениса: <b>{res['estimated_cm']} см ({res['estimated_inches']}\")</b>\n"
+        f"• Категория: <b>{esc(res['rank_title'])}</b>\n"
+        f"• Процентиль: выше, чем у <b>{res['percentile']}%</b> выборки\n\n"
+        f"Выберите пресет ниже или откройте все 10 параметров в приложении:",
         reply_markup=b.as_markup(),
     )
+
+
+@router.callback_query(F.data == "tool:open:pencil_calc")
+async def cb_open_pencil(call: CallbackQuery) -> None:
+    await _render_pencil_bot(call, 180, 43)
+
+
+@router.callback_query(F.data.startswith("v2:pen:"))
+async def cb_calc_pencil_preset(call: CallbackQuery) -> None:
+    parts = call.data.split(":")
+    h_val = int(parts[2])
+    s_val = int(parts[3])
+    await db.record_tool_use(call.from_user.id, "pencil_calc", "party", "bot", f"{h_val}/{s_val}", xp_gain=6)
+    await _render_pencil_bot(call, h_val, s_val)
 
 
 # ==============================================================================
@@ -305,15 +330,18 @@ async def cb_open_url_transformer(call: CallbackQuery, state: FSMContext) -> Non
 @router.message(ToolState.url_transform_waiting, F.text, ~F.text.startswith("/"))
 async def handle_url_transform(message: Message) -> None:
     try:
+        from backend.config import WEBAPP_URL
+
         cleaned = inspect_and_clean_url(message.text or "")
         row = await db.create_link_pair(message.from_user.id, cleaned["cleaned_url"])
         await db.record_tool_use(message.from_user.id, "url_transformer", "qr", "bot", cleaned["domain"])
+        base = WEBAPP_URL.rstrip("/")
         await render_hud(
             message,
-            f"<b>🔗 Ссылка обработана!</b>\n\n"
+            f"<b>🔗 Ссылка обработана</b>\n\n"
             f"🧹 <b>Чистая (без UTM):</b> <code>{esc(cleaned['cleaned_url'])}</code>\n"
-            f"⚡ <b>Короткий код редиректа:</b> <code>/s/{row['code']}</code>\n"
-            f"🐍 <b>Гипер-длинная ссылка:</b>\n<code>/long/{row['long_code']}?utm_epic=nexus_quantum_hyper_redirect_9000</code>",
+            f"⚡ <b>Короткая ссылка:</b> <code>{esc(base)}/s/{row['code']}</code>\n"
+            f"🐍 <b>Длинная ссылка:</b>\n<code>{esc(base)}/long/{row['long_code']}</code>",
             reply_markup=tool_back_kb("url_transformer"),
         )
     except ValueError as e:
@@ -422,17 +450,17 @@ async def cb_open_arcade_bot(call: CallbackQuery) -> None:
         for h in highs
     ) or "Пока нет рекордов — станьте первым!"
     b = InlineKeyboardBuilder()
-    b.row(webapp_button("🎮 Играть прямо сейчас в NEXUS Mini App!", tab="arcade"))
-    b.row(InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:arcade"), InlineKeyboardButton(text="🏠 Домой", callback_data="nav:home"))
+    b.row(webapp_button("🎮 Открыть игры в приложении", tab="arcade"))
+    b.row(InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:arcade"), InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"))
     await render_hud(
         call,
-        f"<b>🎮 Игровая Аркада NEXUS (60 FPS HTML5 Canvas)</b>\n"
-        f"<blockquote>• 🐺 Волк ловит яйца («Ну, погоди!»)\n"
-        f"• 🚀 Doodle Cyber Jump\n"
-        f"• 🧱 Неоновый Тетрис\n"
-        f"• ⚡ Кибер-Кликер с прокачкой</blockquote>\n\n"
-        f"🏆 <b>Текущие рекорды арены:</b>\n{top_str}\n\n"
-        f"👇 Нажмите кнопку ниже, чтобы запустить игровой зал!",
+        f"<b>🎮 Мини-игры MULTI_TG_TOOL (HTML5 Canvas)</b>\n"
+        f"<blockquote>• 🐺 Волк ловит яйца\n"
+        f"• 🚀 Doodle Jump\n"
+        f"• 🧱 Тетрис\n"
+        f"• ⚡ Кликер</blockquote>\n\n"
+        f"🏆 <b>Рекорды игроков:</b>\n{top_str}\n\n"
+        f"Нажмите кнопку ниже, чтобы запустить игру:",
         reply_markup=b.as_markup(),
     )
 

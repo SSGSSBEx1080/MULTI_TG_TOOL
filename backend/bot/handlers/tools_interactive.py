@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from aiogram import Bot, F, Router
 from aiogram.dispatcher.event.bases import SkipHandler
@@ -124,7 +125,7 @@ async def cb_open_tool(
             callback,
             "<b>🏷️ Генератор Штрихкодов (Code128 / EAN-13)</b>\n\n"
             "Отправьте артикул (латиница/цифры для Code128 или 12–13 цифр для EAN-13):\n"
-            "Пример: <code>NEXUS-2026-PRO</code> или <code>460700123456</code>",
+            "Пример: <code>MT-2026-PRO</code> или <code>460700123456</code>",
             reply_markup=tool_back_kb(tool_id, is_fav),
         )
         return
@@ -206,7 +207,7 @@ async def cb_open_tool(
         return
 
     if tool_id == "jwt_totp":
-        totp = generate_totp_info(account=f"user_{uid}@nexus")
+        totp = generate_totp_info(account=f"user_{uid}@multi_tg_tool")
         await state.set_state(ToolState.jwt_waiting_input)
         await db.record_tool_use(uid, "jwt_totp", "security", "bot", "2FA + JWT Ready")
         await render_hud(
@@ -236,7 +237,7 @@ async def cb_open_tool(
             callback,
             "<b>🎯 Regex Лаборатория</b>\n\n"
             "Отправьте шаблон и проверяемый текст через <code>|</code>:\n"
-            "Пример: <code>([a-z0-9_]+)@([a-z.]+) | Почта dev@nexus.io и support@tg.org</code>",
+            "Пример: <code>([a-z0-9_]+)@([a-z.]+) | Почта dev@tg.org и support@tg.org</code>",
             reply_markup=tool_back_kb(tool_id, is_fav),
         )
         return
@@ -328,7 +329,7 @@ async def cb_open_tool(
         await render_hud(
             callback,
             "<b>✨ Генератор Стильных Шрифтов & Регистров</b>\n\n"
-            "Отправьте слово или фразу (например <code>NEXUS Cyber Studio</code>):",
+            "Отправьте слово или фразу (например <code>MULTI_TG_TOOL</code>):",
             reply_markup=tool_back_kb(tool_id, is_fav),
         )
         return
@@ -433,10 +434,12 @@ async def cmd_qr(message: Message, user_favorites: list[str]) -> None:
     parts = [p.strip() for p in arg.split("|")]
     payload = parts[0]
     badge = parts[1] if len(parts) > 1 else "MT"
-    png = generate_styled_qr(payload, theme="cyber", shape="rounded", badge_text=badge, caption=payload[:42])
+    png = await asyncio.to_thread(
+        generate_styled_qr, payload, theme="cyber", shape="rounded", badge_text=badge, caption=payload[:42]
+    )
     await db.record_tool_use(message.from_user.id, "qr_studio", "qr", "bot", payload[:50])
     await message.answer_photo(
-        BufferedInputFile(png, filename="nexus_qr.png"),
+        BufferedInputFile(png, filename="qr_code.png"),
         caption=f"✨ <b>QR-код готов!</b>\nСодержимое: <code>{esc(payload[:120])}</code>",
         parse_mode="HTML",
         reply_markup=tool_back_kb("qr_studio", "qr_studio" in user_favorites),
@@ -457,7 +460,9 @@ async def handle_qr_input(message: Message, state: FSMContext, user_favorites: l
         email = parts[2] if len(parts) > 2 else ""
         org = parts[3] if len(parts) > 3 else ""
         payload = build_vcard_payload(name, phone=phone, email=email, org=org)
-        png = generate_styled_qr(payload, theme="royal", shape="rounded", badge_text="ID", caption=name)
+        png = await asyncio.to_thread(
+            generate_styled_qr, payload, theme="royal", shape="rounded", badge_text="ID", caption=name
+        )
         await state.clear()
         await db.record_tool_use(message.from_user.id, "vcard_qr", "qr", "bot", name)
         await message.answer_photo(
@@ -471,11 +476,13 @@ async def handle_qr_input(message: Message, state: FSMContext, user_favorites: l
     parts = [p.strip() for p in raw.split("|")]
     payload = parts[0]
     badge = parts[1] if len(parts) > 1 else ""
-    png = generate_styled_qr(payload, theme=theme, shape=shape, badge_text=badge, caption=payload[:44])
+    png = await asyncio.to_thread(
+        generate_styled_qr, payload, theme=theme, shape=shape, badge_text=badge, caption=payload[:44]
+    )
     await state.clear()
     await db.record_tool_use(message.from_user.id, "qr_studio", "qr", "bot", payload[:50])
     await message.answer_photo(
-        BufferedInputFile(png, filename="nexus_qr.png"),
+        BufferedInputFile(png, filename="qr_code.png"),
         caption=f"✨ <b>Дизайнерский QR-код готов!</b>\nДанные: <code>{esc(payload[:150])}</code>",
         parse_mode="HTML",
         reply_markup=tool_back_kb("qr_studio", "qr_studio" in user_favorites),
@@ -488,7 +495,9 @@ async def handle_wifi_qr(message: Message, state: FSMContext, user_favorites: li
     ssid = parts[0] if parts else "WiFi"
     pwd = parts[1] if len(parts) > 1 else ""
     payload = build_wifi_payload(ssid, pwd)
-    png = generate_styled_qr(payload, theme="emerald", shape="rounded", badge_text="WiFi", caption=f"Wi-Fi: {ssid}")
+    png = await asyncio.to_thread(
+        generate_styled_qr, payload, theme="emerald", shape="rounded", badge_text="WiFi", caption=f"Wi-Fi: {ssid}"
+    )
     await state.clear()
     await db.record_tool_use(message.from_user.id, "wifi_qr", "qr", "bot", ssid)
     await message.answer_photo(
@@ -504,7 +513,7 @@ async def handle_barcode_input(message: Message, state: FSMContext, user_favorit
     raw = (message.text or "").strip()
     kind = "ean13" if (raw.isdigit() and len(raw) in (12, 13)) else "code128"
     try:
-        png = generate_barcode_png(raw, kind=kind)
+        png = await asyncio.to_thread(generate_barcode_png, raw, kind=kind)
     except Exception as exc:
         await message.answer(f"⚠️ Ошибка: {esc(exc)}")
         return
@@ -530,11 +539,11 @@ async def cmd_stego(message: Message, user_favorites: list[str]) -> None:
     parts = [p.strip() for p in arg.split("|")]
     secret_msg = parts[0]
     pwd = parts[1] if len(parts) > 1 else ""
-    png, meta = stego_encode_png(secret_msg, password=pwd)
+    png, meta = await asyncio.to_thread(stego_encode_png, secret_msg, password=pwd)
     await db.record_tool_use(message.from_user.id, "stego_lab", "image", "bot", "LSB Encode")
     lock_str = "🔒 Защищено AES-256 паролем" if meta["encrypted"] else "🔓 Открытый LSB контейнер"
     await message.answer_document(
-        BufferedInputFile(png, filename="nexus_stego_carrier.png"),
+        BufferedInputFile(png, filename="stego_carrier.png"),
         caption=(
             f"🕵️ <b>Секрет спрятан внутри PNG без потери качества!</b>\n"
             f"<blockquote>{lock_str}\n"
@@ -560,7 +569,7 @@ async def handle_stego_hide_text(message: Message, state: FSMContext, bot: Bot, 
     parts = [p.strip() for p in (message.text or "").split("|")]
     secret_msg = parts[0]
     pwd = parts[1] if len(parts) > 1 else ""
-    png, meta = stego_encode_png(secret_msg, password=pwd, cover_bytes=cover_bytes)
+    png, meta = await asyncio.to_thread(stego_encode_png, secret_msg, password=pwd, cover_bytes=cover_bytes)
     await state.clear()
     await db.record_tool_use(message.from_user.id, "stego_lab", "image", "bot", "LSB Encode")
     lock_str = "🔒 Зашифровано AES-256" if meta["encrypted"] else "🔓 Без пароля"
@@ -669,11 +678,11 @@ async def cb_image_action(
         return
 
     if action == "topdf":
-        pdf_bytes = images_to_pdf([raw])
+        pdf_bytes = await asyncio.to_thread(images_to_pdf, [raw])
         await callback.answer("PDF создан!")
         await db.record_tool_use(uid, "img_to_pdf", "pdf", "bot", "Photo->PDF")
         await callback.message.answer_document(
-            BufferedInputFile(pdf_bytes, filename="nexus_image.pdf"),
+            BufferedInputFile(pdf_bytes, filename="image_document.pdf"),
             caption="📄 <b>Изображение упаковано в PDF документ!</b>",
             parse_mode="HTML",
             reply_markup=tool_back_kb("img_to_pdf", "img_to_pdf" in user_favorites),
@@ -681,7 +690,7 @@ async def cb_image_action(
         return
 
     # Visual transforms: sticker / cyberpunk / pixelate
-    out_bytes, meta = transform_image(raw, action=action)
+    out_bytes, meta = await asyncio.to_thread(transform_image, raw, action=action)
     await callback.answer("Готово!")
     await db.record_tool_use(uid, "img_transform", "image", "bot", action)
     if action == "sticker":
@@ -696,7 +705,7 @@ async def cb_image_action(
         )
     else:
         await callback.message.answer_photo(
-            BufferedInputFile(out_bytes, filename=f"nexus_{action}.webp"),
+            BufferedInputFile(out_bytes, filename=f"image_{action}.webp"),
             caption=f"✨ Эффект <b>{esc(action)}</b> применён ({meta['dimensions']}, {meta['after_kb']} КБ)",
             parse_mode="HTML",
             reply_markup=tool_back_kb("img_transform", "img_transform" in user_favorites),
@@ -707,12 +716,12 @@ async def cb_image_action(
 async def cmd_code_card(message: Message, user_favorites: list[str]) -> None:
     snippet = (message.text or "").partition(" ")[2].strip()
     if not snippet:
-        snippet = 'async def start_nexus():\n    print("🌌 NEXUS Multi-Tool Ready!")\n    return True'
-    png = render_code_card(snippet, language="python", title="nexus_bot.py", theme="tokyo")
+        snippet = 'async def start_bot():\n    print("MULTI_TG_TOOL Ready")\n    return True'
+    png = await asyncio.to_thread(render_code_card, snippet, language="python", title="bot.py", theme="tokyo")
     await db.record_tool_use(message.from_user.id, "code_card", "image", "bot", "Carbon PNG")
     await message.answer_photo(
         BufferedInputFile(png, filename="code_card.png"),
-        caption="📸 <b>Carbon-карточка кода сгенерирована!</b>",
+        caption="📸 <b>Карточка кода сгенерирована!</b>",
         parse_mode="HTML",
         reply_markup=tool_back_kb("code_card", "code_card" in user_favorites),
     )
@@ -720,11 +729,11 @@ async def cmd_code_card(message: Message, user_favorites: list[str]) -> None:
 
 @router.message(ToolState.code_card_waiting_code, F.text, ~F.text.startswith("/"))
 async def handle_code_card(message: Message, state: FSMContext, user_favorites: list[str]) -> None:
-    png = render_code_card(message.text or "", language="", title="snippet", theme="tokyo")
+    png = await asyncio.to_thread(render_code_card, message.text or "", language="", title="snippet", theme="tokyo")
     await state.clear()
     await db.record_tool_use(message.from_user.id, "code_card", "image", "bot", "Carbon PNG")
     await message.answer_photo(
-        BufferedInputFile(png, filename="nexus_code.png"),
+        BufferedInputFile(png, filename="code_card.png"),
         caption="📸 <b>Ваш скриншот кода готов!</b>",
         parse_mode="HTML",
         reply_markup=tool_back_kb("code_card", "code_card" in user_favorites),
@@ -738,12 +747,12 @@ async def handle_code_card(message: Message, state: FSMContext, user_favorites: 
 async def handle_text_to_pdf(message: Message, state: FSMContext, user_favorites: list[str]) -> None:
     raw = (message.text or "").strip()
     lines = raw.splitlines()
-    title = lines[0].lstrip("# ").strip()[:80] if lines else "Документ NEXUS"
-    pdf_bytes = render_text_to_pdf(title=title, content=raw)
+    title = lines[0].lstrip("# ").strip()[:80] if lines else "Документ MULTI_TG_TOOL"
+    pdf_bytes = await asyncio.to_thread(render_text_to_pdf, title=title, content=raw)
     await state.clear()
     await db.record_tool_use(message.from_user.id, "text_to_pdf", "pdf", "bot", title[:40])
     await message.answer_document(
-        BufferedInputFile(pdf_bytes, filename="nexus_document.pdf"),
+        BufferedInputFile(pdf_bytes, filename="document.pdf"),
         caption=f"📑 <b>PDF документ свёрстан!</b>\nЗаголовок: <b>{esc(title)}</b>",
         parse_mode="HTML",
         reply_markup=tool_back_kb("text_to_pdf", "text_to_pdf" in user_favorites),
@@ -853,7 +862,7 @@ async def handle_aes_cipher(message: Message, state: FSMContext, user_favorites:
 async def handle_hash_lab(message: Message, state: FSMContext, user_favorites: list[str]) -> None:
     raw = (message.text or "").strip()
     if raw.startswith("/hash"):
-        raw = raw.partition(" ")[2].strip() or "NEXUS"
+        raw = raw.partition(" ")[2].strip() or "MULTI_TG_TOOL"
     await state.clear()
     hashes_res = compute_hashes(raw)
     detected = identify_hash(raw)
@@ -1258,8 +1267,8 @@ async def _render_notes_view(
         body = "\n\n".join(chunks)
 
     text = (
-        f"<b>📝 Облачные Заметки NEXUS ({len(notes)})</b>\n"
-        f"<blockquote>Синхронизируются в реальном времени с Telegram Mini App!</blockquote>\n\n"
+        f"<b>📝 Заметки ({len(notes)})</b>\n"
+        f"<blockquote>Синхронизируются с приложением в реальном времени</blockquote>\n\n"
         f"{body}\n\n"
         f"✍️ <b>Чтобы добавить заметку</b>, отправьте в чат: <code>Заголовок | Текст заметки</code>"
     )

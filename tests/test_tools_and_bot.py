@@ -105,8 +105,9 @@ def test_security_and_crypto() -> None:
     h = compute_hashes("nexus")
     assert "SHA-256" in identify_hash(h["SHA-256"])
 
-    tok = sign_jwt({"user": "alex"}, "s3cr3t", expires_minutes=30)
-    jwt_info = inspect_jwt(tok, "s3cr3t")
+    jwt_key = "multi-tg-tool-test-hmac-secret-key-32b"
+    tok = sign_jwt({"user": "alex"}, jwt_key, expires_minutes=30)
+    jwt_info = inspect_jwt(tok, jwt_key)
     assert "Подпись подтверждена" in (jwt_info["signature_verified"] or "")
 
     totp = generate_totp_info()
@@ -438,4 +439,171 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         assert "max-age=" in av_res.headers.get("cache-control", "")
 
     await db.close()
+
+
+def _make_signed_init_data(bot_token: str, user_id: int, username: str, first_name: str) -> str:
+    import hashlib
+    import hmac
+    import json
+    from urllib.parse import urlencode
+
+    user_json = json.dumps(
+        {"id": user_id, "first_name": first_name, "username": username, "language_code": "ru"},
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    fields = {"auth_date": "1761380000", "query_id": "AAHdF6IQAAAAAN0XohDhrOrc", "user": user_json}
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+    sig = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    return urlencode({**fields, "hash": sig})
+
+
+@pytest.mark.asyncio
+async def test_exhaustive_nested_bot_callbacks_fsm_and_all_api_endpoints(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(db, "db_path", tmp_path / "test_exhaustive.db")
+    bot_manager.sim_session.chats.clear()
+    await db.init()
+    await bot_manager.init_simulator()
+
+    test_bot_token = "111222333:AAH_TEST_HMAC_VERIFICATION_SECRET_TOKEN"
+    await db.set_setting("bot_token", test_bot_token)
+    tg_headers = {
+        "X-Telegram-Init-Data": _make_signed_init_data(test_bot_token, 555777999, "real_tester", "Дмитрий")
+    }
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Verify HMAC-signed Telegram user gets XP from ALL routes_tools.py endpoints
+        tool_post_matrix = [
+            ("/api/tools/omni", {"text": "256 * 4"}),
+            ("/api/tools/qr", {"mode": "wifi", "wifi_ssid": "TestNet", "wifi_password": "secretpassword"}),
+            ("/api/tools/barcode", {"value": "MT-2026-777", "kind": "code128"}),
+            ("/api/tools/code-card", {"code": "x = 42\nprint(x)", "language": "python", "title": "t.py"}),
+            ("/api/tools/pdf/from-text", {"title": "Отчёт", "content": "# Заголовок\nТекст кириллицей"}),
+            ("/api/tools/security/passwords", {"length": 18, "count": 3}),
+            ("/api/tools/security/aes", {"action": "encrypt", "text": "Тайна", "password": "key"}),
+            ("/api/tools/security/hash", {"text": "MULTI_TG_TOOL"}),
+            ("/api/tools/security/jwt", {"mode": "sign", "payload_json": '{"sub":"555"}', "secret": "a" * 36}),
+            ("/api/tools/security/totp", {"account": "dim@tg"}),
+            ("/api/tools/dev/format", {"raw_text": '{"ok":true}', "target_fmt": "yaml"}),
+            ("/api/tools/dev/regex", {"pattern": r"\d+", "test_text": "v1 and v2"}),
+            ("/api/tools/dev/codec", {"text": "Привет", "codec_name": "base64", "direction": "encode"}),
+            ("/api/tools/dev/cron-uuid", {"cron_expr": "0 9 * * 1-5", "id_kind": "uuid4", "id_count": 2}),
+            ("/api/tools/calc/eval", {"expression": "(150 + 50) * 3"}),
+            ("/api/tools/calc/units", {"value": 10, "category": "length", "from_unit": "km", "to_unit": "m"}),
+            ("/api/tools/calc/finance", {"mode": "compound", "principal": 100000, "rate_annual_pct": 16, "months": 12}),
+            ("/api/tools/calc/subnet", {"cidr": "192.168.1.0/24"}),
+            ("/api/tools/text/layout", {"text": "Ghbdtn"}),
+            ("/api/tools/text/fonts", {"text": "MULTI_TG"}),
+            ("/api/tools/text/diff", {"text_a": "line1\nline2", "text_b": "line1\nline3"}),
+            ("/api/tools/text/random", {"mode": "dice", "dice_expr": "2d6+2"}),
+            ("/api/v2/party/alcohol", {"people_count": 4}),
+            ("/api/v2/party/pencil", {"height_cm": 184, "shoe_size_eu": 44}),
+            ("/api/v2/units/smart", {"query": "100 км/ч в м/с"}),
+            ("/api/v2/rhyme", {"word": "рассвет"}),
+            ("/api/v2/knowledge/roll-stand", {"name": "Дмитрий"}),
+            ("/api/v2/games/score", {"game_id": "wolf", "score": 320}),
+            ("/api/v2/social/altushka", {"persona_id": "ksyusha", "message": "Привет!", "affection": 30}),
+            ("/api/v2/social/anon", {"text": "Всем привет в чате!", "room": "global"}),
+        ]
+        for url, payload in tool_post_matrix:
+            resp = await client.post(url, json=payload, headers=tg_headers)
+            assert resp.status_code == 200, f"POST {url} failed: {resp.status_code} {resp.text}"
+
+        # Check real Telegram user accumulated XP and appears #1 in Leaderboard (and NO fake 777000 exists!)
+        lb = (await client.get("/api/v2/social/leaderboard?sort_by=xp")).json()["users"]
+        assert len(lb) == 1
+        assert lb[0]["user_id"] == 555777999
+        assert lb[0]["tools_used"] >= 25
+        assert lb[0]["xp"] >= 250
+
+        # 2. Security protection checks: unauthenticated admin endpoints MUST return 403, oversized upload -> 413
+        forb_tok = await client.post("/api/admin/bot-token", json={"bot_token": "hacked"})
+        assert forb_tok.status_code == 403
+        forb_auth = await client.post(
+            "/api/v2/author",
+            json={"title": "x", "tagline": "x", "bio": "x", "links": [], "donation_note": "x"},
+        )
+        assert forb_auth.status_code == 403
+
+        # Ensure SQLite DB and arbitrary files in DATA_DIR can NEVER be downloaded via /media or /api/v2/files/download
+        db_leak_1 = await client.get("/media/nexus.db")
+        assert db_leak_1.status_code == 404
+        db_leak_2 = await client.get("/api/v2/files/download?url=/media/nexus.db")
+        assert db_leak_2.status_code == 404
+        db_leak_3 = await client.get("/api/v2/files/download?url=../config.py")
+        assert db_leak_3.status_code == 404
+
+        # Ensure forged X-Telegram-Init-Data without valid HMAC hash is rejected (cannot spoof real user)
+        spoof_headers = {"X-Telegram-Init-Data": 'user={"id":999888777,"first_name":"Spoofer"}'}
+        await client.post("/api/tools/calc/eval", json={"expression": "2+2"}, headers=spoof_headers)
+        lb_after_spoof = (await client.get("/api/v2/social/leaderboard?sort_by=xp")).json()["users"]
+        assert all(u["user_id"] != 999888777 for u in lb_after_spoof)
+
+        admin_dash = await client.get("/api/admin/dashboard")
+        assert admin_dash.status_code == 200
+        assert admin_dash.json()["analytics"]["summary"]["total_users"] == 1
+
+        # 3. Bot FSM auto-clear when user sends a slash command mid-flow + nested inline button sweep
+        await client.get("/api/sim/state")
+        # Enter compatibility FSM waiting state via command without args
+        cmp_open = await client.post("/api/sim/send-text", json={"text": "/compat"})
+        assert cmp_open.status_code == 200
+        # Immediately send another command (/pass) instead of dates -> MUST NOT fail as invalid date!
+        pass_override = await client.post("/api/sim/send-text", json={"text": "/pass"})
+        assert pass_override.status_code == 200
+        last_bot_text = pass_override.json()["messages"][-1]["text"]
+        assert "парол" in last_bot_text.lower()
+
+        # Crawl nested inline buttons inside bot tools (horoscope, physics, party, security, qr, social)
+        cat_res = await client.get("/api/tools/catalog")
+        visited_cbs: set[str] = set()
+        sim_state = await client.post("/api/sim/reset", json={})
+        cur_msg = sim_state.json()["messages"][-1]
+
+        # Check every WebApp button points to real HTTPS Amvera domain (never nexus-tma.local)
+        for row in cur_msg["inline_keyboard"]:
+            for btn in row:
+                if btn.get("web_app_url"):
+                    assert btn["web_app_url"].startswith("https://")
+                    assert "nexus-tma.local" not in btn["web_app_url"]
+
+        for cat_obj in cat_res.json()["categories"]:
+            for tool_obj in cat_obj["tools"]:
+                r_open = await client.post(
+                    "/api/sim/callback",
+                    json={"message_id": cur_msg["message_id"], "callback_data": f"tool:open:{tool_obj['id']}"},
+                )
+                assert r_open.status_code == 200
+                cur_msg = r_open.json()["messages"][-1]
+                # Click up to 4 unique nested action buttons inside each tool screen
+                nested_btns = [
+                    btn["callback_data"]
+                    for row in cur_msg.get("inline_keyboard", [])
+                    for btn in row
+                    if btn.get("callback_data")
+                    and not btn["callback_data"].startswith(("nav:", "tool:open:", "fav:"))
+                    and btn["callback_data"] not in visited_cbs
+                ]
+                for nested_cb in nested_btns[:4]:
+                    visited_cbs.add(nested_cb)
+                    r_nested = await client.post(
+                        "/api/sim/callback",
+                        json={"message_id": cur_msg["message_id"], "callback_data": nested_cb},
+                    )
+                    assert r_nested.status_code == 200, f"Nested callback {nested_cb} failed!"
+                    cur_msg = r_nested.json()["messages"][-1]
+
+        assert len(visited_cbs) >= 25
+
+        # 4. Inline query mode check
+        for iq in ("", "1024 / 16", "Ghbdtn"):
+            iq_res = await client.post("/api/sim/inline", json={"query": iq})
+            assert iq_res.status_code == 200
+            assert len(iq_res.json()["results"]) >= 1
+
+    await db.close()
+
 

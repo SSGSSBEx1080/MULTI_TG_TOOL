@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import secrets
 import time
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
+from backend.api.tg_auth import resolve_api_user
 from backend.config import DEFAULT_DEMO_USER_ID, GENERATED_DIR
 from backend.database import db
 from backend.tools import TOOL_CATEGORIES
@@ -68,11 +70,18 @@ from backend.tools.text_studio import (
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
-
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MiB safety cap for 512 MB RAM containers
 _CLEANUP_COUNTER = 0
 
 
-def _persist_generated_sync(raw: bytes, ext: str, prefix: str = "nx") -> str:
+async def _read_upload_safe(file: UploadFile, max_bytes: int = MAX_UPLOAD_BYTES) -> bytes:
+    raw = await file.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=413, detail="Файл слишком большой (максимум 15 МБ)")
+    return raw
+
+
+def _persist_generated_sync(raw: bytes, ext: str, prefix: str = "mt") -> str:
     global _CLEANUP_COUNTER
     fname = f"{prefix}_{int(time.time() * 1000)}_{secrets.token_hex(4)}.{ext.lstrip('.')}"
     (GENERATED_DIR / fname).write_bytes(raw)
@@ -108,10 +117,11 @@ class OmniReq(BaseModel):
 
 
 @router.post("/omni")
-async def api_omni(req: OmniReq) -> dict[str, Any]:
+async def api_omni(req: OmniReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = smart_omni_detect(req.text)
     if res["kind"] != "empty":
-        await db.record_tool_use(req.user_id, res.get("tool_id", "omni"), "omni", "miniapp", res["kind"], xp_gain=6)
+        await db.record_tool_use(uid, res.get("tool_id", "omni"), "omni", "miniapp", res["kind"], xp_gain=6)
     return res
 
 
@@ -137,20 +147,21 @@ class QrReq(BaseModel):
 
 
 @router.post("/qr")
-async def api_qr(req: QrReq) -> dict[str, Any]:
+async def api_qr(req: QrReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         if req.mode == "wifi":
-            payload = build_wifi_payload(req.wifi_ssid or "NEXUS_5G", req.wifi_password, req.wifi_security)
+            payload = build_wifi_payload(req.wifi_ssid or "HOME_5G", req.wifi_password, req.wifi_security)
         elif req.mode == "vcard":
             payload = build_vcard_payload(
-                req.vcard_name or "Алексей NEXUS",
+                req.vcard_name or "Контакт",
                 phone=req.vcard_phone,
                 email=req.vcard_email,
                 org=req.vcard_org,
                 telegram=req.vcard_telegram,
             )
         else:
-            payload = req.data or "https://t.me/nexus_multitool_bot"
+            payload = req.data or "https://t.me/multi_tg_bot"
 
         png = await asyncio.to_thread(
             generate_styled_qr,
@@ -163,13 +174,15 @@ async def api_qr(req: QrReq) -> dict[str, Any]:
             bg_hex=req.bg_hex,
         )
         url = await asyncio.to_thread(_persist_generated_sync, png, "png", "qr")
-        await db.record_tool_use(req.user_id, "qr_studio", "qr", "miniapp", req.mode)
+        await db.record_tool_use(uid, "qr_studio", "qr", "miniapp", req.mode)
         return {
             "payload": payload,
             "inspection": inspect_qr_payload(payload),
             "image_data_url": _b64_data_uri(png, "image/png"),
             "download_url": url,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -181,11 +194,12 @@ class BarcodeReq(BaseModel):
 
 
 @router.post("/barcode")
-async def api_barcode(req: BarcodeReq) -> dict[str, Any]:
+async def api_barcode(req: BarcodeReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         png = await asyncio.to_thread(generate_barcode_png, req.value, req.kind)
         url = await asyncio.to_thread(_persist_generated_sync, png, "png", "barcode")
-        await db.record_tool_use(req.user_id, "barcode_gen", "qr", "miniapp", f"{req.kind}:{req.value[:20]}")
+        await db.record_tool_use(uid, "barcode_gen", "qr", "miniapp", f"{req.kind}:{req.value[:20]}")
         return {
             "image_data_url": _b64_data_uri(png, "image/png"),
             "download_url": url,
@@ -198,17 +212,18 @@ async def api_barcode(req: BarcodeReq) -> dict[str, Any]:
 class CodeCardReq(BaseModel):
     code: str
     language: str = "python"
-    title: str = "nexus_snippet.py"
+    title: str = "snippet.py"
     theme: str = "tokyo"
     user_id: int = DEFAULT_DEMO_USER_ID
 
 
 @router.post("/code-card")
-async def api_code_card(req: CodeCardReq) -> dict[str, Any]:
+async def api_code_card(req: CodeCardReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         png = await asyncio.to_thread(render_code_card, req.code, req.language, req.title, req.theme)
         url = await asyncio.to_thread(_persist_generated_sync, png, "png", "codecard")
-        await db.record_tool_use(req.user_id, "code_card", "image", "miniapp", req.language)
+        await db.record_tool_use(uid, "code_card", "image", "miniapp", req.language)
         return {
             "image_data_url": _b64_data_uri(png, "image/png"),
             "download_url": url,
@@ -219,100 +234,117 @@ async def api_code_card(req: CodeCardReq) -> dict[str, Any]:
 
 @router.post("/stego/encode")
 async def api_stego_encode(
+    request: Request,
     secret_text: str = Form(...),
     password: str = Form(""),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
     file: UploadFile | None = File(None),
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     try:
-        cover_bytes = await file.read() if file is not None else None
+        cover_bytes = await _read_upload_safe(file) if file is not None else None
         png, meta = await asyncio.to_thread(stego_encode_png, secret_text, password=password, cover_bytes=cover_bytes)
         url = await asyncio.to_thread(_persist_generated_sync, png, "png", "stego_carrier")
-        await db.record_tool_use(user_id, "stego_lab", "image", "miniapp", "LSB Encode")
+        await db.record_tool_use(uid, "stego_lab", "image", "miniapp", "LSB Encode")
         return {
             "meta": meta,
             "image_data_url": _b64_data_uri(png, "image/png"),
             "download_url": url,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/stego/decode")
 async def api_stego_decode(
+    request: Request,
     file: UploadFile = File(...),
     password: str = Form(""),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     try:
-        raw = await file.read()
+        raw = await _read_upload_safe(file)
         res = await asyncio.to_thread(stego_decode_png, raw, password=password)
-        await db.record_tool_use(user_id, "stego_lab", "image", "miniapp", "LSB Decode")
+        await db.record_tool_use(uid, "stego_lab", "image", "miniapp", "LSB Decode")
         return res
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/image/exif")
 async def api_image_exif(
+    request: Request,
     file: UploadFile = File(...),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     try:
-        raw = await file.read()
+        raw = await _read_upload_safe(file)
         clean_bytes, info = await asyncio.to_thread(inspect_and_clean_image, raw)
         ext = info["output_format"].lower()
         mime = "image/png" if ext == "png" else "image/jpeg"
         url = await asyncio.to_thread(_persist_generated_sync, clean_bytes, ext, "clean_exif")
-        await db.record_tool_use(user_id, "exif_clean", "image", "miniapp", "EXIF Clean")
+        await db.record_tool_use(uid, "exif_clean", "image", "miniapp", "EXIF Clean")
         return {
             "info": info,
             "clean_image_data_url": _b64_data_uri(clean_bytes, mime),
             "download_url": url,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/image/transform")
 async def api_image_transform(
+    request: Request,
     file: UploadFile = File(...),
     action: str = Form("sticker"),
     target_format: str = Form("WEBP"),
     quality: int = Form(85),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     try:
-        raw = await file.read()
+        raw = await _read_upload_safe(file)
         out_bytes, meta = await asyncio.to_thread(
             transform_image, raw, action=action, target_format=target_format, quality=quality
         )
         ext = meta["format"].lower()
         mime = f"image/{ext}"
         url = await asyncio.to_thread(_persist_generated_sync, out_bytes, ext, f"img_{action}")
-        await db.record_tool_use(user_id, "img_transform", "image", "miniapp", action)
+        await db.record_tool_use(uid, "img_transform", "image", "miniapp", action)
         return {
             "meta": meta,
             "image_data_url": _b64_data_uri(out_bytes, mime),
             "download_url": url,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # --- 3. PDF Forge ---
 class TextPdfReq(BaseModel):
-    title: str = "Документ NEXUS"
+    title: str = "Документ MULTI_TG_TOOL"
     content: str
     user_id: int = DEFAULT_DEMO_USER_ID
 
 
 @router.post("/pdf/from-text")
-async def api_pdf_from_text(req: TextPdfReq) -> dict[str, Any]:
+async def api_pdf_from_text(req: TextPdfReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         pdf_bytes = await asyncio.to_thread(render_text_to_pdf, req.title, req.content)
         url = await asyncio.to_thread(_persist_generated_sync, pdf_bytes, "pdf", "doc")
-        await db.record_tool_use(req.user_id, "text_to_pdf", "pdf", "miniapp", req.title[:30])
+        await db.record_tool_use(uid, "text_to_pdf", "pdf", "miniapp", req.title[:30])
         return {
             "size_kb": round(len(pdf_bytes) / 1024, 1),
             "download_url": url,
@@ -323,56 +355,70 @@ async def api_pdf_from_text(req: TextPdfReq) -> dict[str, Any]:
 
 @router.post("/pdf/from-images")
 async def api_pdf_from_images(
+    request: Request,
     files: list[UploadFile] = File(...),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     try:
-        blobs = [await f.read() for f in files]
+        if len(files) > 25:
+            raise HTTPException(status_code=400, detail="Максимум 25 изображений за раз")
+        blobs = [await _read_upload_safe(f, max_bytes=8 * 1024 * 1024) for f in files]
         pdf_bytes = await asyncio.to_thread(images_to_pdf, blobs)
         url = await asyncio.to_thread(_persist_generated_sync, pdf_bytes, "pdf", "photos")
-        await db.record_tool_use(user_id, "img_to_pdf", "pdf", "miniapp", f"{len(blobs)} imgs")
+        await db.record_tool_use(uid, "img_to_pdf", "pdf", "miniapp", f"{len(blobs)} imgs")
         return {
             "pages": len(blobs),
             "size_kb": round(len(pdf_bytes) / 1024, 1),
             "download_url": url,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/pdf/inspect")
 async def api_pdf_inspect(
+    request: Request,
     file: UploadFile = File(...),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     try:
-        raw = await file.read()
+        raw = await _read_upload_safe(file)
         info = await asyncio.to_thread(inspect_pdf, raw)
-        await db.record_tool_use(user_id, "pdf_inspect", "pdf", "miniapp", f"{info['page_count']}p")
+        await db.record_tool_use(uid, "pdf_inspect", "pdf", "miniapp", f"{info['page_count']}p")
         return info
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/pdf/transform")
 async def api_pdf_transform(
+    request: Request,
     file: UploadFile = File(...),
     pages_spec: str = Form(""),
     rotate_deg: int = Form(0),
     password: str = Form(""),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     try:
-        raw = await file.read()
+        raw = await _read_upload_safe(file)
         out_bytes, meta = await asyncio.to_thread(
             transform_pdf, raw, pages_spec=pages_spec, rotate_deg=rotate_deg, password=password
         )
         url = await asyncio.to_thread(_persist_generated_sync, out_bytes, "pdf", "transformed")
-        await db.record_tool_use(user_id, "pdf_protect", "pdf", "miniapp", "Transform PDF")
+        await db.record_tool_use(uid, "pdf_protect", "pdf", "miniapp", "Transform PDF")
         return {
             "meta": meta,
             "download_url": url,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -391,7 +437,8 @@ class PassReq(BaseModel):
 
 
 @router.post("/security/passwords")
-async def api_passwords(req: PassReq) -> dict[str, Any]:
+async def api_passwords(req: PassReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = generate_passwords(
         length=req.length,
         count=req.count,
@@ -402,7 +449,7 @@ async def api_passwords(req: PassReq) -> dict[str, Any]:
         mode=req.mode,
         words_count=req.words_count,
     )
-    await db.record_tool_use(req.user_id, "pass_forge", "security", "miniapp", f"{req.mode}:{req.length}")
+    await db.record_tool_use(uid, "pass_forge", "security", "miniapp", f"{req.mode}:{req.length}")
     return res
 
 
@@ -414,13 +461,14 @@ class AesReq(BaseModel):
 
 
 @router.post("/security/aes")
-async def api_aes(req: AesReq) -> dict[str, Any]:
+async def api_aes(req: AesReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         if req.action == "decrypt":
             out = await asyncio.to_thread(decrypt_nx1, req.text, req.password)
         else:
             out = await asyncio.to_thread(encrypt_nx1, req.text, req.password)
-        await db.record_tool_use(req.user_id, "aes_cipher", "security", "miniapp", req.action)
+        await db.record_tool_use(uid, "aes_cipher", "security", "miniapp", req.action)
         return {"action": req.action, "output": out}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -433,10 +481,11 @@ class HashReq(BaseModel):
 
 
 @router.post("/security/hash")
-async def api_hash(req: HashReq) -> dict[str, Any]:
+async def api_hash(req: HashReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     hashes_res = compute_hashes(req.text, req.hmac_key)
     identified = identify_hash(req.text)
-    await db.record_tool_use(req.user_id, "hash_lab", "security", "miniapp", hashes_res["mode"])
+    await db.record_tool_use(uid, "hash_lab", "security", "miniapp", hashes_res["mode"])
     return {"hashes": hashes_res, "identified_as": identified}
 
 
@@ -444,23 +493,24 @@ class JwtReq(BaseModel):
     mode: str = "inspect"  # inspect | sign
     token: str = ""
     secret: str = ""
-    payload_json: str = '{"sub": "777000", "role": "architect"}'
+    payload_json: str = '{"sub": "1001", "role": "user"}'
     expires_minutes: int = 60
     user_id: int = DEFAULT_DEMO_USER_ID
 
 
 @router.post("/security/jwt")
-async def api_jwt(req: JwtReq) -> dict[str, Any]:
-    import json
+async def api_jwt(req: JwtReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         if req.mode == "sign":
             pld = json.loads(req.payload_json)
-            tok = sign_jwt(pld, req.secret or "nexus-secret", expires_minutes=req.expires_minutes)
-            info = inspect_jwt(tok, req.secret or "nexus-secret")
-            await db.record_tool_use(req.user_id, "jwt_totp", "security", "miniapp", "JWT Sign")
+            secret_str = req.secret or "multi-tg-tool-hmac-secret-key-256bit"
+            tok = sign_jwt(pld, secret_str, expires_minutes=req.expires_minutes)
+            info = inspect_jwt(tok, secret_str)
+            await db.record_tool_use(uid, "jwt_totp", "security", "miniapp", "JWT Sign")
             return {"token": tok, **info}
         info = inspect_jwt(req.token, req.secret)
-        await db.record_tool_use(req.user_id, "jwt_totp", "security", "miniapp", "JWT Inspect")
+        await db.record_tool_use(uid, "jwt_totp", "security", "miniapp", "JWT Inspect")
         return info
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -468,14 +518,16 @@ async def api_jwt(req: JwtReq) -> dict[str, Any]:
 
 class TotpReq(BaseModel):
     secret: str = ""
-    account: str = "operator@nexus"
+    account: str = "user@multi_tg_tool"
     user_id: int = DEFAULT_DEMO_USER_ID
 
 
 @router.post("/security/totp")
-async def api_totp(req: TotpReq) -> dict[str, Any]:
+async def api_totp(req: TotpReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = generate_totp_info(req.secret, account=req.account)
+        await db.record_tool_use(uid, "jwt_totp", "security", "miniapp", "TOTP")
         return res
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -490,10 +542,11 @@ class FormatReq(BaseModel):
 
 
 @router.post("/dev/format")
-async def api_dev_format(req: FormatReq) -> dict[str, Any]:
+async def api_dev_format(req: FormatReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = format_convert_data(req.raw_text, req.source_fmt, req.target_fmt)
-        await db.record_tool_use(req.user_id, "json_yaml", "dev", "miniapp", req.target_fmt)
+        await db.record_tool_use(uid, "json_yaml", "dev", "miniapp", req.target_fmt)
         return res
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -508,10 +561,11 @@ class RegexReq(BaseModel):
 
 
 @router.post("/dev/regex")
-async def api_dev_regex(req: RegexReq) -> dict[str, Any]:
+async def api_dev_regex(req: RegexReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = evaluate_regex(req.pattern, req.test_text, req.flags_str, req.replace_with)
-        await db.record_tool_use(req.user_id, "regex_lab", "dev", "miniapp", f"Matches:{res['count']}")
+        await db.record_tool_use(uid, "regex_lab", "dev", "miniapp", f"Matches:{res['count']}")
         return res
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -525,10 +579,11 @@ class CodecReq(BaseModel):
 
 
 @router.post("/dev/codec")
-async def api_dev_codec(req: CodecReq) -> dict[str, Any]:
+async def api_dev_codec(req: CodecReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         out = transform_codec(req.text, req.codec_name, req.direction)
-        await db.record_tool_use(req.user_id, "encoders", "dev", "miniapp", f"{req.codec_name}:{req.direction}")
+        await db.record_tool_use(uid, "encoders", "dev", "miniapp", f"{req.codec_name}:{req.direction}")
         return {"output": out}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -543,11 +598,12 @@ class CronUuidReq(BaseModel):
 
 
 @router.post("/dev/cron-uuid")
-async def api_dev_cron_uuid(req: CronUuidReq) -> dict[str, Any]:
+async def api_dev_cron_uuid(req: CronUuidReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         cron_res = explain_cron(req.cron_expr) if req.cron_expr.strip() else None
         ids_res = generate_ids_and_timestamps(req.id_kind, req.id_count, req.ts_input)
-        await db.record_tool_use(req.user_id, "cron_uuid", "dev", "miniapp", req.id_kind)
+        await db.record_tool_use(uid, "cron_uuid", "dev", "miniapp", req.id_kind)
         return {"cron": cron_res, **ids_res}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -560,10 +616,11 @@ class CalcReq(BaseModel):
 
 
 @router.post("/calc/eval")
-async def api_calc_eval(req: CalcReq) -> dict[str, Any]:
+async def api_calc_eval(req: CalcReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = evaluate_math(req.expression)
-        await db.record_tool_use(req.user_id, "smart_calc", "calc", "miniapp", req.expression[:30])
+        await db.record_tool_use(uid, "smart_calc", "calc", "miniapp", req.expression[:30])
         return res
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -578,10 +635,11 @@ class UnitReq(BaseModel):
 
 
 @router.post("/calc/units")
-async def api_calc_units(req: UnitReq) -> dict[str, Any]:
+async def api_calc_units(req: UnitReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = convert_units(req.value, req.category, req.from_unit, req.to_unit)
-        await db.record_tool_use(req.user_id, "unit_conv", "calc", "miniapp", req.category)
+        await db.record_tool_use(uid, "unit_conv", "calc", "miniapp", req.category)
         return res
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -599,7 +657,8 @@ class FinanceReq(BaseModel):
 
 
 @router.post("/calc/finance")
-async def api_calc_finance(req: FinanceReq) -> dict[str, Any]:
+async def api_calc_finance(req: FinanceReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = calculate_finance(
         mode=req.mode,
         principal=req.principal,
@@ -609,7 +668,7 @@ async def api_calc_finance(req: FinanceReq) -> dict[str, Any]:
         people_count=req.people_count,
         tip_pct=req.tip_pct,
     )
-    await db.record_tool_use(req.user_id, "finance_calc", "calc", "miniapp", req.mode)
+    await db.record_tool_use(uid, "finance_calc", "calc", "miniapp", req.mode)
     return res
 
 
@@ -619,10 +678,11 @@ class SubnetReq(BaseModel):
 
 
 @router.post("/calc/subnet")
-async def api_calc_subnet(req: SubnetReq) -> dict[str, Any]:
+async def api_calc_subnet(req: SubnetReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = calculate_subnet(req.cidr)
-        await db.record_tool_use(req.user_id, "subnet_calc", "calc", "miniapp", res["cidr"])
+        await db.record_tool_use(uid, "subnet_calc", "calc", "miniapp", res["cidr"])
         return res
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -636,9 +696,10 @@ class LayoutReq(BaseModel):
 
 
 @router.post("/text/layout")
-async def api_text_layout(req: LayoutReq) -> dict[str, Any]:
+async def api_text_layout(req: LayoutReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = fix_keyboard_layout(req.text, req.direction)
-    await db.record_tool_use(req.user_id, "layout_fixer", "text", "miniapp", req.direction)
+    await db.record_tool_use(uid, "layout_fixer", "text", "miniapp", req.direction)
     return res
 
 
@@ -648,10 +709,11 @@ class FontReq(BaseModel):
 
 
 @router.post("/text/fonts")
-async def api_text_fonts(req: FontReq) -> dict[str, Any]:
+async def api_text_fonts(req: FontReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = stylize_text(req.text)
-        await db.record_tool_use(req.user_id, "font_styler", "text", "miniapp", "Fonts")
+        await db.record_tool_use(uid, "font_styler", "text", "miniapp", "Fonts")
         return res
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -664,9 +726,10 @@ class DiffReq(BaseModel):
 
 
 @router.post("/text/diff")
-async def api_text_diff(req: DiffReq) -> dict[str, Any]:
+async def api_text_diff(req: DiffReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = analyze_and_diff_text(req.text_a, req.text_b)
-    await db.record_tool_use(req.user_id, "text_diff", "text", "miniapp", "Analytics/Diff")
+    await db.record_tool_use(uid, "text_diff", "text", "miniapp", "Analytics/Diff")
     return res
 
 
@@ -679,10 +742,11 @@ class RandomReq(BaseModel):
 
 
 @router.post("/text/random")
-async def api_text_random(req: RandomReq) -> dict[str, Any]:
+async def api_text_random(req: RandomReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = run_randomizer(req.mode, req.dice_expr, req.items_raw, req.teams_count)
-        await db.record_tool_use(req.user_id, "randomizer", "text", "miniapp", req.mode)
+        await db.record_tool_use(uid, "randomizer", "text", "miniapp", req.mode)
         return res
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

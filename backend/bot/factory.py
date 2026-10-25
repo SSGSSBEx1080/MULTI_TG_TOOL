@@ -6,7 +6,7 @@ from typing import Any
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, ErrorEvent
 
 from backend.bot.handlers import (
     inline_mode,
@@ -20,7 +20,7 @@ from backend.bot.middlewares import UserContextMiddleware
 from backend.bot.simulator_session import SimulatorSession
 from backend.config import BOT_TOKEN, SIMULATOR_BOT_TOKEN
 
-logger = logging.getLogger("nexus.bot")
+logger = logging.getLogger("multi_tg_tool.bot")
 
 BOT_COMMANDS = [
     BotCommand(command="start", description="Главное меню"),
@@ -70,6 +70,20 @@ class BotRuntimeManager:
         dp.include_router(inline_mode.router)
         # omni_router MUST be last so FSM states & commands match first
         dp.include_router(omni_router.router)
+
+        @dp.error()
+        async def _global_bot_error_handler(event: ErrorEvent) -> bool:
+            logger.exception("Handled bot exception: %s", event.exception)
+            upd = event.update
+            try:
+                if upd.callback_query:
+                    await upd.callback_query.answer("Произошла ошибка обработки запроса", show_alert=False)
+                elif upd.message:
+                    await upd.message.answer("⚠️ Не удалось обработать запрос. Проверьте формат данных или нажмите /start.")
+            except Exception:
+                pass
+            return True
+
         return dp
 
     async def init_simulator(self) -> None:
