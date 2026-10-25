@@ -189,6 +189,16 @@ class Database:
                     PRIMARY KEY (user_id, tool_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS user_checklists (
+                    user_id INTEGER NOT NULL,
+                    scope TEXT NOT NULL,
+                    item_id TEXT NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (user_id, scope, item_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_user_checklists_scope
+                    ON user_checklists (user_id, scope);
+
                 CREATE TABLE IF NOT EXISTS notes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
@@ -1159,6 +1169,93 @@ class Database:
                 return row[0]
             self._settings_cache[key] = None
             return default
+
+    async def get_user_checklist(self, user_id: int, scope: str) -> list[str]:
+        async with self._session() as conn:
+            cur = await conn.execute(
+                "SELECT item_id FROM user_checklists WHERE user_id = ? AND scope = ? ORDER BY updated_at ASC",
+                (user_id, scope),
+            )
+            return [str(r[0]) for r in await cur.fetchall()]
+
+    async def get_all_user_checklists(self, user_id: int) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {"marvel": [], "dc": [], "zitraks": []}
+        async with self._session() as conn:
+            cur = await conn.execute(
+                "SELECT scope, item_id FROM user_checklists WHERE user_id = ? ORDER BY updated_at ASC",
+                (user_id,),
+            )
+            for row in await cur.fetchall():
+                out.setdefault(str(row[0]), []).append(str(row[1]))
+        return out
+
+    async def toggle_user_checklist_item(self, user_id: int, scope: str, item_id: str) -> tuple[bool, list[str]]:
+        now = time.time()
+        async with self._session() as conn:
+            cur = await conn.execute(
+                "SELECT 1 FROM user_checklists WHERE user_id = ? AND scope = ? AND item_id = ?",
+                (user_id, scope, item_id),
+            )
+            exists = await cur.fetchone() is not None
+            if exists:
+                await conn.execute(
+                    "DELETE FROM user_checklists WHERE user_id = ? AND scope = ? AND item_id = ?",
+                    (user_id, scope, item_id),
+                )
+                checked_now = False
+            else:
+                await conn.execute(
+                    "INSERT INTO user_checklists (user_id, scope, item_id, updated_at) VALUES (?, ?, ?, ?)",
+                    (user_id, scope, item_id, now),
+                )
+                checked_now = True
+            await conn.commit()
+
+            list_cur = await conn.execute(
+                "SELECT item_id FROM user_checklists WHERE user_id = ? AND scope = ? ORDER BY updated_at ASC",
+                (user_id, scope),
+            )
+            items = [str(r[0]) for r in await list_cur.fetchall()]
+        return checked_now, items
+
+    async def bulk_update_user_checklist(
+        self,
+        user_id: int,
+        scope: str,
+        item_ids: list[str],
+        mode: str = "add",
+    ) -> list[str]:
+        """mode: 'add' (mark list), 'remove' (unmark list), or 'replace' (overwrite entire scope)."""
+        now = time.time()
+        async with self._session() as conn:
+            if mode == "replace":
+                await conn.execute(
+                    "DELETE FROM user_checklists WHERE user_id = ? AND scope = ?",
+                    (user_id, scope),
+                )
+                if item_ids:
+                    await conn.executemany(
+                        "INSERT OR IGNORE INTO user_checklists (user_id, scope, item_id, updated_at) VALUES (?, ?, ?, ?)",
+                        [(user_id, scope, k, now) for k in item_ids],
+                    )
+            elif mode == "remove":
+                if item_ids:
+                    await conn.executemany(
+                        "DELETE FROM user_checklists WHERE user_id = ? AND scope = ? AND item_id = ?",
+                        [(user_id, scope, k) for k in item_ids],
+                    )
+            else:
+                if item_ids:
+                    await conn.executemany(
+                        "INSERT OR IGNORE INTO user_checklists (user_id, scope, item_id, updated_at) VALUES (?, ?, ?, ?)",
+                        [(user_id, scope, k, now) for k in item_ids],
+                    )
+            await conn.commit()
+            cur = await conn.execute(
+                "SELECT item_id FROM user_checklists WHERE user_id = ? AND scope = ? ORDER BY updated_at ASC",
+                (user_id, scope),
+            )
+            return [str(r[0]) for r in await cur.fetchall()]
 
     async def get_analytics(self) -> dict[str, Any]:
         async with self._session() as conn:

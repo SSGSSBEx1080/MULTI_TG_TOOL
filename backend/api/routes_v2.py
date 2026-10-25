@@ -45,6 +45,17 @@ from backend.tools.rhyme_and_links import (
     inspect_and_clean_url,
 )
 from backend.tools.smart_units_nlp import smart_parse_and_convert
+from backend.tools.universes_hub import (
+    VALID_SCOPES,
+    compute_dc_summary,
+    compute_marvel_summary,
+    compute_zitraks_summary,
+    export_zmsave_code,
+    filter_valid_ids,
+    get_universes_catalog,
+    is_valid_item_id,
+    parse_zmsave_code,
+)
 from backend.tools.social_and_dating import (
     altushka_chat_reply,
     check_turing_guess,
@@ -697,3 +708,150 @@ async def api_save_author(req: AuthorUpdateReq, request: Request) -> dict[str, A
     if not ADMIN_SECRET or not hmac.compare_digest(provided_secret, ADMIN_SECRET):
         raise HTTPException(status_code=403, detail="Изменение ссылок автора доступно только администратору")
     return await db.save_author_info(req.model_dump())
+
+
+# ==============================================================================
+# 7. Киновселенные (Marvel / DC) и Мод ZitraksMode (Forge 1.19.2)
+# ==============================================================================
+def _build_scope_summary(scope: str, checked: list[str]) -> dict[str, Any]:
+    if scope == "marvel":
+        return compute_marvel_summary(checked)
+    if scope == "dc":
+        return compute_dc_summary(checked)
+    return compute_zitraks_summary(checked)
+
+
+@router.get("/api/v2/universes/catalog")
+async def api_universes_catalog() -> dict[str, Any]:
+    return get_universes_catalog()
+
+
+@router.get("/api/v2/universes/state")
+async def api_universes_state(request: Request, user_id: int = DEFAULT_DEMO_USER_ID) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
+    all_checked = await db.get_all_user_checklists(uid)
+    marvel_c = filter_valid_ids("marvel", all_checked.get("marvel", []))
+    dc_c = filter_valid_ids("dc", all_checked.get("dc", []))
+    zm_c = filter_valid_ids("zitraks", all_checked.get("zitraks", []))
+    user_row = await db.ensure_user(uid)
+    nick = (user_row.get("first_name") if user_row else None) or "Игрок"
+    return {
+        "checked": {
+            "marvel": marvel_c,
+            "dc": dc_c,
+            "zitraks": zm_c,
+        },
+        "summaries": {
+            "marvel": compute_marvel_summary(marvel_c),
+            "dc": compute_dc_summary(dc_c),
+            "zitraks": compute_zitraks_summary(zm_c),
+        },
+        "zmsave_code": export_zmsave_code(zm_c, nick=nick),
+    }
+
+
+class UniverseToggleReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    scope: str
+    item_id: str
+
+
+@router.post("/api/v2/universes/toggle")
+async def api_universes_toggle(req: UniverseToggleReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    scope = req.scope.strip().lower()
+    if scope not in VALID_SCOPES:
+        raise HTTPException(status_code=400, detail="Неизвестный раздел")
+    if not is_valid_item_id(scope, req.item_id):
+        raise HTTPException(status_code=400, detail="Неизвестный элемент списка")
+
+    checked_now, raw_list = await db.toggle_user_checklist_item(uid, scope, req.item_id)
+    valid_list = filter_valid_ids(scope, raw_list)
+    tool_map = {
+        "marvel": "marvel_checklist",
+        "dc": "dc_checklist",
+        "zitraks": "zitraksmode_wiki",
+    }
+    if checked_now:
+        await db.record_tool_use(uid, tool_map[scope], "universes", "miniapp", req.item_id[:40], xp_gain=4)
+
+    out: dict[str, Any] = {
+        "scope": scope,
+        "item_id": req.item_id,
+        "checked_now": checked_now,
+        "checked": valid_list,
+        "summary": _build_scope_summary(scope, valid_list),
+    }
+    if scope == "zitraks":
+        user_row = await db.ensure_user(uid)
+        nick = (user_row.get("first_name") if user_row else None) or "Игрок"
+        out["zmsave_code"] = export_zmsave_code(valid_list, nick=nick)
+    return out
+
+
+class UniverseBulkReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    scope: str
+    item_ids: list[str]
+    mode: str = "add"  # add | remove | replace
+
+
+@router.post("/api/v2/universes/bulk")
+async def api_universes_bulk(req: UniverseBulkReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    scope = req.scope.strip().lower()
+    if scope not in VALID_SCOPES:
+        raise HTTPException(status_code=400, detail="Неизвестный раздел")
+    if req.mode not in ("add", "remove", "replace"):
+        raise HTTPException(status_code=400, detail="Некорректный режим обновления")
+
+    clean_ids = filter_valid_ids(scope, req.item_ids)
+    updated_raw = await db.bulk_update_user_checklist(uid, scope, clean_ids, mode=req.mode)
+    valid_list = filter_valid_ids(scope, updated_raw)
+    tool_map = {
+        "marvel": "marvel_checklist",
+        "dc": "dc_checklist",
+        "zitraks": "zitraksmode_wiki",
+    }
+    if req.mode in ("add", "replace") and clean_ids:
+        await db.record_tool_use(uid, tool_map[scope], "universes", "miniapp", f"bulk:{len(clean_ids)}", xp_gain=8)
+
+    out: dict[str, Any] = {
+        "scope": scope,
+        "checked": valid_list,
+        "summary": _build_scope_summary(scope, valid_list),
+    }
+    if scope == "zitraks":
+        user_row = await db.ensure_user(uid)
+        nick = (user_row.get("first_name") if user_row else None) or "Игрок"
+        out["zmsave_code"] = export_zmsave_code(valid_list, nick=nick)
+    return out
+
+
+class ZmSaveImportReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    code: str
+    merge: bool = True
+
+
+@router.post("/api/v2/universes/zmsave/import")
+async def api_zmsave_import(req: ZmSaveImportReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    try:
+        imported_ids = parse_zmsave_code(req.code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    mode = "add" if req.merge else "replace"
+    updated_raw = await db.bulk_update_user_checklist(uid, "zitraks", imported_ids, mode=mode)
+    valid_list = filter_valid_ids("zitraks", updated_raw)
+    await db.record_tool_use(uid, "zitraksmode_wiki", "universes", "miniapp", f"import:{len(imported_ids)}", xp_gain=10)
+    user_row = await db.ensure_user(uid)
+    nick = (user_row.get("first_name") if user_row else None) or "Игрок"
+    return {
+        "imported_count": len(imported_ids),
+        "checked": valid_list,
+        "summary": compute_zitraks_summary(valid_list),
+        "zmsave_code": export_zmsave_code(valid_list, nick=nick),
+    }
+
