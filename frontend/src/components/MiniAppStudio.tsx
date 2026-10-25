@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { Search, Sparkles, Star, Wand2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Search, Star, X } from 'lucide-react';
 import {
+  HabitItem,
   NoteItem,
   TodoItem,
   ToolCategory,
   UserProfile,
   apiPost,
   copyText,
+  getTelegramWebApp,
 } from '../lib/api';
 import { VisualMediaHub } from './tools/VisualMediaHub';
 import { CyberDevHub } from './tools/CyberDevHub';
@@ -15,20 +17,25 @@ import { PartyFunHub } from './tools/PartyFunHub';
 import { KnowledgeMegaHub } from './tools/KnowledgeMegaHub';
 import { ArcadeGamesHub } from './tools/ArcadeGamesHub';
 import { SocialDatingHub } from './tools/SocialDatingHub';
+import { HoroscopeHub } from './tools/HoroscopeHub';
+import { PhysicsHub } from './tools/PhysicsHub';
 
 interface Props {
   categories: ToolCategory[];
   activeCategory: string;
   activeTool: string;
+  mobileDrillOpen: boolean;
   onSelectCategory: (catId: string) => void;
   onSelectTool: (catId: string, toolId: string) => void;
+  onBackToCategories: () => void;
   profile: UserProfile | null;
   favorites: string[];
+  onToggleFav: (toolId: string) => void;
   notes: NoteItem[];
   todos: TodoItem[];
-  onToggleFav: (toolId: string) => void;
-  onOpenSearch: () => void;
+  habits: HabitItem[];
   onRefreshWorkspace: () => void;
+  onOpenPalette: () => void;
   onToast: (msg: string) => void;
 }
 
@@ -36,232 +43,100 @@ export const MiniAppStudio: React.FC<Props> = ({
   categories,
   activeCategory,
   activeTool,
+  mobileDrillOpen,
   onSelectCategory,
   onSelectTool,
+  onBackToCategories,
   profile,
   favorites,
+  onToggleFav,
   notes,
   todos,
-  onToggleFav,
-  onOpenSearch,
+  habits,
   onRefreshWorkspace,
+  onOpenPalette,
   onToast,
 }) => {
-  const [omniInput, setOmniInput] = useState('');
-  const [omniResult, setOmniResult] = useState<any>(null);
+  const [quickInput, setQuickInput] = useState('');
+  const [quickRes, setQuickRes] = useState<{ kind: string; title: string; output: string } | null>(null);
+  const [quickBusy, setQuickBusy] = useState(false);
+  const topAnchorRef = useRef<HTMLDivElement>(null);
 
-  const runOmni = async () => {
-    if (!omniInput.trim()) return;
+  const currentCat = categories.find((c) => c.id === activeCategory) || categories[0];
+
+  // Scroll to top immediately when switching category or entering a section on mobile
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    topAnchorRef.current?.scrollIntoView({ block: 'start' });
+  }, [activeCategory, mobileDrillOpen]);
+
+  // Wire native Telegram BackButton on mobile drill-down
+  useEffect(() => {
+    const tg = getTelegramWebApp();
+    const bb = tg?.BackButton;
+    if (!bb) return;
+
+    const handleBack = () => {
+      onBackToCategories();
+    };
+
+    if (mobileDrillOpen && window.innerWidth < 1024) {
+      bb.show();
+      bb.onClick(handleBack);
+    } else {
+      bb.hide();
+    }
+    return () => {
+      try {
+        bb.offClick(handleBack);
+      } catch {
+        // ignore
+      }
+    };
+  }, [mobileDrillOpen, onBackToCategories]);
+
+  const runQuickBar = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const q = quickInput.trim();
+    if (!q) return;
+    setQuickBusy(true);
     try {
-      const res = await apiPost('/api/tools/omni', { text: omniInput });
-      setOmniResult(res);
+      try {
+        const u = await apiPost('/api/v2/units/smart', { query: q });
+        const topConv = (u.conversions || [])
+          .slice(0, 3)
+          .map((c: any) => `${c.formatted} ${c.unit}`)
+          .join(' • ');
+        setQuickRes({
+          kind: 'Конвертер величин',
+          title: `${u.value} ${u.from_label}`,
+          output: topConv + (u.fun_comparison ? ` (${u.fun_comparison})` : ''),
+        });
+        onRefreshWorkspace();
+        return;
+      } catch {
+        // fallback to omni
+      }
+
+      const r = await apiPost('/api/tools/omni', { text: q });
+      setQuickRes({ kind: r.kind, title: r.title, output: r.output });
       onRefreshWorkspace();
-    } catch (e: any) {
-      onToast(e.message);
+    } catch (err: any) {
+      onToast(err.message || 'Запрос не распознан');
+    } finally {
+      setQuickBusy(false);
     }
   };
 
-  const allToolsById: Record<string, { catId: string; title: string; emoji: string }> = {};
-  categories.forEach((c) => {
-    c.tools.forEach((t) => {
-      allToolsById[t.id] = { catId: c.id, title: t.title, emoji: t.emoji };
-    });
-  });
-
-  const renderOmniSummary = () => {
-    if (!omniResult || omniResult.kind === 'empty') return null;
-    const r = omniResult.result;
-    if (omniResult.kind === 'smart_unit' && r?.conversions) {
-      return r.conversions
-        .slice(0, 4)
-        .map((c: any) => `${c.formatted} ${c.label}`)
-        .join('  •  ');
+  const renderActiveHub = () => {
+    if (activeCategory === 'horoscope') {
+      return <HoroscopeHub activeTool={activeTool} onToast={onToast} />;
     }
-    if (omniResult.kind === 'rhyme' && r?.exact_rhymes) {
-      return `Точные: ${(r.exact_rhymes || []).slice(0, 8).join(', ')}`;
+    if (activeCategory === 'physics') {
+      return <PhysicsHub activeTool={activeTool} onToast={onToast} />;
     }
-    if (omniResult.kind === 'population' && r?.places?.[0]) {
-      return `${r.places[0].name}: ${r.places[0].formatted_pop} чел.`;
-    }
-    return (
-      r?.fixed ||
-      r?.formatted ||
-      r?.human_ru ||
-      r?.network_address ||
-      JSON.stringify(r).slice(0, 180)
-    );
-  };
-
-  return (
-    <div className="space-y-5">
-      {/* Operator Status + Smart Omni-Input Bar */}
-      <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#121a2f] via-[#0f1628] to-[#16132b] p-4 sm:p-5 shadow-xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-400 via-purple-500 to-rose-500 flex items-center justify-center text-xl shadow-lg shadow-sky-500/20">
-              🌌
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-bold text-base text-white">NEXUS v2 Mega-Studio</h2>
-                {profile && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-400/30">
-                    {profile.rank.title} • {profile.xp} XP
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-400">
-                50+ инструментов, Мини-Игры, База Знаний, 105+ Идей, Соцсеть & Дейтинг
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onOpenSearch}
-            className="px-3.5 py-2 rounded-xl bg-slate-950/80 hover:bg-slate-900 border border-white/10 text-xs text-slate-300 flex items-center gap-2 transition"
-          >
-            <Search className="w-3.5 h-3.5 text-sky-400" />
-            <span>Быстрый поиск всех утилит…</span>
-            <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-slate-300 font-mono">⌘K</kbd>
-          </button>
-        </div>
-
-        {/* Smart Omni-Input */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Wand2 className="w-4 h-4 text-purple-400 absolute left-3.5 top-3" />
-            <input
-              value={omniInput}
-              onChange={(e) => setOmniInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') runOmni();
-              }}
-              placeholder="Smart Omni-Bar: напишите «6 дюймов», «рифма к любовь», «население Токио», Ghbdtn, (1450*1.2)/3…"
-              className="w-full rounded-xl bg-slate-950/90 border border-white/10 pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-purple-400"
-            />
-          </div>
-          <button
-            onClick={runOmni}
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-sky-500 hover:from-purple-400 hover:to-sky-400 text-slate-950 font-semibold text-xs flex items-center justify-center gap-1.5 shrink-0"
-          >
-            <Sparkles className="w-4 h-4" /> Распознать
-          </button>
-        </div>
-
-        {omniResult && omniResult.kind !== 'empty' && (
-          <div className="p-3.5 rounded-xl bg-slate-950/90 border border-purple-400/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="space-y-1 min-w-0">
-              <div className="font-semibold text-purple-300">{omniResult.title}</div>
-              <div className="text-slate-200 font-mono break-all">{renderOmniSummary()}</div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {omniResult.result?.fixed && (
-                <button
-                  onClick={() => copyText(omniResult.result.fixed, onToast)}
-                  className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-200 border border-purple-400/40"
-                >
-                  Копировать
-                </button>
-              )}
-              <button
-                onClick={() => setOmniResult(null)}
-                className="text-slate-400 hover:text-white px-2"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Favorites Strip */}
-        {favorites.length > 0 && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pt-1">
-            <span className="text-[11px] text-amber-300 flex items-center gap-1 shrink-0 mr-1">
-              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> Избранное:
-            </span>
-            {favorites.map((fid) => {
-              const meta = allToolsById[fid];
-              if (!meta) return null;
-              return (
-                <button
-                  key={fid}
-                  onClick={() => onSelectTool(meta.catId, fid)}
-                  className="shrink-0 px-2.5 py-1 rounded-full bg-white/5 hover:bg-amber-500/20 border border-white/10 text-[11px] text-slate-200 transition"
-                >
-                  {meta.emoji} {meta.title}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 12 Category Navigation Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2">
-        {categories.map((cat) => {
-          const active = cat.id === activeCategory;
-          return (
-            <button
-              key={cat.id}
-              onClick={() => onSelectCategory(cat.id)}
-              className={`p-3 rounded-2xl border text-left transition ${
-                active
-                  ? 'bg-sky-500/20 border-sky-400/60 shadow-lg shadow-sky-500/10'
-                  : 'bg-slate-900/60 border-white/10 hover:bg-slate-800/70'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xl">{cat.emoji}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400">{cat.tools.length}</span>
-              </div>
-              <div className={`text-xs font-semibold truncate ${active ? 'text-white' : 'text-slate-200'}`}>
-                {cat.title}
-              </div>
-              <div className="text-[10px] text-slate-400 truncate mt-0.5">{cat.short}</div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* v2 Mega Hubs */}
-      {activeCategory === 'party' && (
-        <PartyFunHub
-          activeTool={activeTool}
-          onSelectTool={(t) => onSelectTool('party', t)}
-          onSync={onRefreshWorkspace}
-          onToast={onToast}
-        />
-      )}
-
-      {activeCategory === 'knowledge' && (
-        <KnowledgeMegaHub
-          activeTool={activeTool}
-          onSelectTool={(t) => onSelectTool('knowledge', t)}
-          onSync={onRefreshWorkspace}
-          onToast={onToast}
-        />
-      )}
-
-      {activeCategory === 'arcade' && (
-        <ArcadeGamesHub
-          activeTool={activeTool}
-          onSelectTool={(t) => onSelectTool('arcade', t)}
-          onSync={onRefreshWorkspace}
-          onToast={onToast}
-        />
-      )}
-
-      {activeCategory === 'social' && (
-        <SocialDatingHub
-          activeTool={activeTool}
-          onSelectTool={(t) => onSelectTool('social', t)}
-          onSync={onRefreshWorkspace}
-          onToast={onToast}
-        />
-      )}
-
-      {/* v1 + Extended Hubs */}
-      {(activeCategory === 'qr' || activeCategory === 'image' || activeCategory === 'pdf') && (
+    if (activeCategory === 'qr' || activeCategory === 'image' || activeCategory === 'pdf') {
+      return (
         <VisualMediaHub
           activeCategory={activeCategory}
           activeTool={activeTool}
@@ -271,9 +146,10 @@ export const MiniAppStudio: React.FC<Props> = ({
           onSync={onRefreshWorkspace}
           onToast={onToast}
         />
-      )}
-
-      {(activeCategory === 'security' || activeCategory === 'dev') && (
+      );
+    }
+    if (activeCategory === 'security' || activeCategory === 'dev') {
+      return (
         <CyberDevHub
           activeCategory={activeCategory}
           activeTool={activeTool}
@@ -281,19 +157,451 @@ export const MiniAppStudio: React.FC<Props> = ({
           onSync={onRefreshWorkspace}
           onToast={onToast}
         />
-      )}
-
-      {(activeCategory === 'calc' || activeCategory === 'text' || activeCategory === 'workspace') && (
-        <CalcTextWorkspaceHub
-          activeCategory={activeCategory}
+      );
+    }
+    if (activeCategory === 'party') {
+      return (
+        <PartyFunHub
           activeTool={activeTool}
-          onSelectTool={(t) => onSelectTool(activeCategory, t)}
-          notes={notes}
-          todos={todos}
-          onRefreshWorkspace={onRefreshWorkspace}
+          onSelectTool={(t) => onSelectTool('party', t)}
+          onSync={onRefreshWorkspace}
           onToast={onToast}
         />
-      )}
+      );
+    }
+    if (activeCategory === 'knowledge') {
+      return (
+        <KnowledgeMegaHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('knowledge', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'arcade') {
+      return (
+        <ArcadeGamesHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('arcade', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'social') {
+      return (
+        <SocialDatingHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('social', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    return (
+      <CalcTextWorkspaceHub
+        activeCategory={activeCategory}
+        activeTool={activeTool}
+        onSelectTool={(t) => onSelectTool(activeCategory, t)}
+        notes={notes}
+        todos={todos}
+        habits={habits}
+        onRefreshWorkspace={onRefreshWorkspace}
+        onToast={onToast}
+      />
+    );
+  };
+
+  // Resolve favorite tool items for quick strip
+  const favoriteItems = favorites
+    .map((fid) => {
+      for (const cat of categories) {
+        const found = cat.tools.find((t) => t.id === fid);
+        if (found) return { ...found, catId: cat.id };
+      }
+      return null;
+    })
+    .filter(Boolean) as { id: string; title: string; emoji: string; catId: string }[];
+
+  return (
+    <div ref={topAnchorRef} className="w-full max-w-[1440px] mx-auto px-3 sm:px-5 pt-3 pb-20 lg:pb-8">
+      {/* =====================================================================
+          DESKTOP LAYOUT (>= 1024px): Sidebar + Immediate Workspace (No Scroll)
+          ===================================================================== */}
+      <div className="hidden lg:grid lg:grid-cols-12 lg:gap-5 items-start">
+        {/* Left Sidebar */}
+        <aside className="col-span-3 sticky top-16 rounded-2xl bg-slate-900/85 border border-white/10 p-3 space-y-3 max-h-[calc(100vh-5rem)] overflow-y-auto">
+          {profile && (
+            <div className="px-2.5 py-2 rounded-xl bg-slate-950/80 border border-white/5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img src="/avatar.png" alt="Logo" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-white truncate">{profile.first_name}</div>
+                  <div className="text-[11px] text-slate-400 truncate">
+                    Ур. {profile.rank.level} • {profile.rank.xp} XP
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={onOpenPalette}
+                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+                title="Поиск по всем инструментам (Ctrl+K)"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <div className="px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Разделы ({categories.length})
+            </div>
+            {categories.map((cat) => {
+              const active = cat.id === activeCategory;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => onSelectCategory(cat.id)}
+                  className={`w-full px-3 py-2.5 rounded-xl text-left transition flex items-center gap-2.5 ${
+                    active
+                      ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                      : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <span className="text-base shrink-0">{cat.emoji}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs leading-snug truncate">{cat.title}</div>
+                  </div>
+                  <span className={`text-[10px] ${active ? 'text-indigo-200' : 'text-slate-500'}`}>
+                    {cat.tools.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Right Main Content */}
+        <section className="col-span-9 space-y-4 min-w-0">
+          {/* Quick Bar */}
+          <form
+            onSubmit={runQuickBar}
+            className="rounded-2xl bg-slate-900/80 border border-white/10 p-2.5 flex items-center gap-2"
+          >
+            <Search className="w-4 h-4 text-slate-400 ml-2 shrink-0" />
+            <input
+              value={quickInput}
+              onChange={(e) => setQuickInput(e.target.value)}
+              placeholder="Быстрый расчёт или конвертация: 75 кг в фунты, (1450 * 1.2) / 3, Ghbdtn..."
+              className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
+            />
+            {quickInput && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickInput('');
+                  setQuickRes(null);
+                }}
+                className="p-1 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={quickBusy}
+              className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shrink-0"
+            >
+              {quickBusy ? '...' : 'Выполнить'}
+            </button>
+          </form>
+
+          {quickRes && (
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-indigo-500/30 flex items-center justify-between gap-3 text-sm">
+              <div className="min-w-0">
+                <span className="text-xs text-indigo-300 font-medium">{quickRes.title}: </span>
+                <span className="font-mono text-white break-all">{quickRes.output}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => copyText(quickRes.output, onToast)}
+                  className="px-2.5 py-1 rounded-lg bg-white/10 text-xs text-white"
+                >
+                  Копировать
+                </button>
+                <button onClick={() => setQuickRes(null)} className="text-slate-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Active Category Header + Sub-tools */}
+          {currentCat && (
+            <div className="rounded-2xl bg-slate-900/80 border border-white/10 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl">{currentCat.emoji}</span>
+                  <div>
+                    <h2 className="text-lg font-bold text-white leading-tight">{currentCat.title}</h2>
+                    <p className="text-xs text-slate-400">{currentCat.short}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => onToggleFav(activeTool)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition ${
+                    favorites.includes(activeTool)
+                      ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                      : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <Star className="w-3.5 h-3.5" />
+                  {favorites.includes(activeTool) ? 'В избранном' : 'В избранное'}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {currentCat.tools.map((t) => {
+                  const isAct = t.id === activeTool;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => onSelectTool(currentCat.id, t.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition flex items-center gap-1.5 ${
+                        isAct
+                          ? 'bg-indigo-600 border-indigo-400 text-white'
+                          : 'bg-slate-950/70 border-white/10 text-slate-300 hover:border-white/25 hover:text-white'
+                      }`}
+                    >
+                      <span>{t.emoji}</span>
+                      <span>{t.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Active Tool Workspace */}
+          <div>{renderActiveHub()}</div>
+        </section>
+      </div>
+
+      {/* =====================================================================
+          MOBILE & TABLET LAYOUT (< 1024px): 2-Level Drill-Down (Zero Scroll Confusion!)
+          ===================================================================== */}
+      <div className="lg:hidden space-y-3">
+        {!mobileDrillOpen ? (
+          /* LEVEL 1: CLEAN CATEGORY DIRECTORY */
+          <>
+            {/* Compact Mobile Top Bar */}
+            <div className="rounded-2xl bg-slate-900/90 border border-white/10 p-3 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <img src="/avatar.png" alt="Logo" className="w-9 h-9 rounded-xl object-cover border border-white/15 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">MULTI_TG_TOOL</div>
+                    {profile && (
+                      <div className="text-[11px] text-slate-400 truncate">
+                        {profile.first_name} • Ур. {profile.rank.level} ({profile.rank.xp} XP)
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={onOpenPalette}
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 flex items-center gap-1.5 shrink-0"
+                >
+                  <Search className="w-3.5 h-3.5 text-indigo-400" /> Поиск
+                </button>
+              </div>
+
+              {/* Instant Converter / Calc Bar */}
+              <form onSubmit={runQuickBar} className="flex gap-1.5">
+                <input
+                  value={quickInput}
+                  onChange={(e) => setQuickInput(e.target.value)}
+                  placeholder="Пример, величина (75 кг в фунты) или текст..."
+                  className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-400"
+                />
+                <button
+                  type="submit"
+                  disabled={quickBusy}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold shrink-0"
+                >
+                  {quickBusy ? '...' : 'ОК'}
+                </button>
+              </form>
+
+              {quickRes && (
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-indigo-500/30 flex items-center justify-between gap-2 text-xs">
+                  <div className="min-w-0">
+                    <span className="text-indigo-300 font-medium">{quickRes.title}: </span>
+                    <span className="text-white font-mono break-all">{quickRes.output}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => copyText(quickRes.output, onToast)}
+                      className="px-2 py-1 rounded bg-white/10 text-white"
+                    >
+                      Коп.
+                    </button>
+                    <button onClick={() => setQuickRes(null)} className="p-1 text-slate-400">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Favorites Quick Strip (if any) */}
+            {favoriteItems.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="px-1 text-[11px] font-semibold text-slate-400">⭐ Избранное</div>
+                <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                  {favoriteItems.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => onSelectTool(f.catId, f.id)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-900 border border-amber-400/30 text-xs text-slate-100 whitespace-nowrap flex items-center gap-1.5 shrink-0"
+                    >
+                      <span>{f.emoji}</span>
+                      <span>{f.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 2-Column Category Grid */}
+            <div className="grid grid-cols-2 gap-2.5">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => onSelectCategory(cat.id)}
+                  className="p-3.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 active:scale-[0.99] border border-white/10 text-left transition flex flex-col justify-between min-h-[104px]"
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-2xl">{cat.emoji}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400">
+                      {cat.tools.length}
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-xs sm:text-sm font-bold text-white leading-snug">{cat.title}</div>
+                    <div className="text-[11px] text-slate-400 line-clamp-2 mt-0.5 leading-tight">
+                      {cat.short}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          /* LEVEL 2: IMMEDIATE TOOL VIEW AT TOP OF SCREEN */
+          <div className="space-y-3">
+            {/* Sticky Back Header + Horizontal Tool Switcher */}
+            <div className="sticky top-0 z-20 -mx-3 px-3 py-2.5 bg-[#080c16]/95 backdrop-blur-md border-b border-white/10 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  onClick={onBackToCategories}
+                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white flex items-center gap-1.5 shrink-0"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Разделы
+                </button>
+                {currentCat && (
+                  <div className="text-xs sm:text-sm font-bold text-white truncate">
+                    {currentCat.emoji} {currentCat.title}
+                  </div>
+                )}
+                <button
+                  onClick={() => onToggleFav(activeTool)}
+                  className={`p-2 rounded-xl border transition shrink-0 ${
+                    favorites.includes(activeTool)
+                      ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
+                      : 'bg-white/5 border-white/10 text-slate-400'
+                  }`}
+                  title="В избранное"
+                >
+                  <Star className="w-4 h-4" />
+                </button>
+              </div>
+
+              {currentCat && currentCat.tools.length > 1 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                  {currentCat.tools.map((t) => {
+                    const isAct = t.id === activeTool;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => onSelectTool(currentCat.id, t.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap border transition shrink-0 ${
+                          isAct
+                            ? 'bg-indigo-600 border-indigo-400 text-white'
+                            : 'bg-slate-900 border-white/10 text-slate-300'
+                        }`}
+                      >
+                        {t.emoji} {t.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Active Tool Immediately Visible */}
+            <div>{renderActiveHub()}</div>
+          </div>
+        )}
+
+        {/* Mobile Bottom Navigation Bar */}
+        <nav className="fixed bottom-0 inset-x-0 z-30 bg-[#0a101f]/95 backdrop-blur-lg border-t border-white/10 px-2 py-1.5 grid grid-cols-5 gap-1">
+          <button
+            onClick={onBackToCategories}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              !mobileDrillOpen ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">🗂️</span>
+            <span className="mt-0.5">Разделы</span>
+          </button>
+          <button
+            onClick={() => onSelectCategory('horoscope')}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              mobileDrillOpen && activeCategory === 'horoscope' ? 'text-purple-300 bg-purple-500/15' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">🌟</span>
+            <span className="mt-0.5">Гороскоп</span>
+          </button>
+          <button
+            onClick={() => onSelectCategory('physics')}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              mobileDrillOpen && activeCategory === 'physics' ? 'text-sky-300 bg-sky-500/15' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">⚛️</span>
+            <span className="mt-0.5">Физика</span>
+          </button>
+          <button
+            onClick={() => onSelectCategory('workspace')}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              mobileDrillOpen && activeCategory === 'workspace' ? 'text-emerald-300 bg-emerald-500/15' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">✅</span>
+            <span className="mt-0.5">Привычки</span>
+          </button>
+          <button
+            onClick={onOpenPalette}
+            className="py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium text-slate-400 active:text-white"
+          >
+            <span className="text-base leading-none">🔍</span>
+            <span className="mt-0.5">Поиск</span>
+          </button>
+        </nav>
+      </div>
     </div>
   );
 };

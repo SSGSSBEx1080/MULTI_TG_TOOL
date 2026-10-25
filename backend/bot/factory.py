@@ -8,7 +8,14 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
 
-from backend.bot.handlers import inline_mode, navigation, omni_router, tools_interactive, v2_bot_handlers
+from backend.bot.handlers import (
+    inline_mode,
+    navigation,
+    omni_router,
+    tools_interactive,
+    v2_bot_handlers,
+    v3_bot_handlers,
+)
 from backend.bot.middlewares import UserContextMiddleware
 from backend.bot.simulator_session import SimulatorSession
 from backend.config import BOT_TOKEN, SIMULATOR_BOT_TOKEN
@@ -16,20 +23,20 @@ from backend.config import BOT_TOKEN, SIMULATOR_BOT_TOKEN
 logger = logging.getLogger("nexus.bot")
 
 BOT_COMMANDS = [
-    BotCommand(command="start", description="🌌 Главное меню MULTI_TG_TOOL"),
-    BotCommand(command="bored", description="💡 Что делать если скучно (105+ идей)"),
-    BotCommand(command="alcohol", description="🥃 Алко-калькулятор 0..40 без догона"),
-    BotCommand(command="units", description="🔮 Умный конвертер («6 дюймов»)"),
-    BotCommand(command="rhyme", description="🎤 Генератор русских рифм"),
-    BotCommand(command="stand", description="🌟 Случайный Стенд JoJo + Мульти-Вики"),
-    BotCommand(command="top", description="🏆 Топ игроков и визиты профилей"),
-    BotCommand(command="altushka", description="💘 Дейтинг-чат с альтушками 18+"),
-    BotCommand(command="turing", description="🤖 Игра: Человек или ИИ?"),
-    BotCommand(command="author", description="🕶️ Официальные ссылки & Поддержка"),
-    BotCommand(command="pass", description="🛡️ Генератор криптостойких паролей"),
-    BotCommand(command="qr", description="✨ Быстрый градиентный QR-код"),
-    BotCommand(command="profile", description="👤 Мой профиль и ранг XP"),
-    BotCommand(command="help", description="📖 Все команды и фишки"),
+    BotCommand(command="start", description="Главное меню"),
+    BotCommand(command="horoscope", description="Гороскоп по знакам зодиака"),
+    BotCommand(command="compat", description="Совместимость по датам рождения"),
+    BotCommand(command="physics", description="Физические расчёты"),
+    BotCommand(command="habits", description="Трекер привычек"),
+    BotCommand(command="units", description="Конвертер единиц измерения"),
+    BotCommand(command="qr", description="Создание QR-кода"),
+    BotCommand(command="pass", description="Генератор паролей"),
+    BotCommand(command="rhyme", description="Подбор рифм к слову"),
+    BotCommand(command="bored", description="Идеи чем заняться"),
+    BotCommand(command="alcohol", description="Калькулятор алкоголя"),
+    BotCommand(command="top", description="Рейтинг пользователей"),
+    BotCommand(command="author", description="Ссылки и поддержка"),
+    BotCommand(command="help", description="Список команд"),
 ]
 
 
@@ -57,8 +64,9 @@ class BotRuntimeManager:
         dp.inline_query.middleware(mw)
 
         dp.include_router(navigation.router)
-        dp.include_router(tools_interactive.router)
+        dp.include_router(v3_bot_handlers.router)
         dp.include_router(v2_bot_handlers.router)
+        dp.include_router(tools_interactive.router)
         dp.include_router(inline_mode.router)
         # omni_router MUST be last so FSM states & commands match first
         dp.include_router(omni_router.router)
@@ -69,40 +77,41 @@ class BotRuntimeManager:
 
     async def start_live_polling(self, token: str) -> dict[str, Any]:
         await self.stop_live_polling()
-        clean_token = (token or "").strip()
-        if not clean_token:
+        if not token or ":" not in token:
             self.live_status = {
                 "configured": False,
                 "running": False,
                 "bot_username": None,
-                "error": None,
+                "error": "Токен бота не задан.",
             }
             return self.live_status
 
-        self.live_status["configured"] = True
         try:
-            bot = Bot(token=clean_token)
-            me = await asyncio.wait_for(bot.get_me(), timeout=6.0)
-            await asyncio.wait_for(bot.set_my_commands(BOT_COMMANDS), timeout=6.0)
+            bot = Bot(token=token)
+            me = await asyncio.wait_for(bot.get_me(), timeout=8.0)
+            await asyncio.wait_for(bot.set_my_commands(BOT_COMMANDS), timeout=8.0)
+            await asyncio.wait_for(bot.delete_webhook(drop_pending_updates=True), timeout=8.0)
+
             self.live_bot = bot
             self.polling_task = asyncio.create_task(
-                self.dp.start_polling(bot, handle_signals=False)
+                self.dp.start_polling(bot, handle_signals=False),
+                name="live_telegram_polling",
             )
             self.live_status = {
                 "configured": True,
                 "running": True,
                 "bot_username": me.username,
-                "bot_id": me.id,
-                "first_name": me.first_name,
+                "bot_name": me.first_name,
                 "error": None,
             }
+            logger.info("Live Telegram bot @%s started polling", me.username)
         except Exception as exc:
             logger.warning("Live Telegram connection unavailable in current network: %s", exc)
             self.live_status = {
                 "configured": True,
                 "running": False,
                 "bot_username": None,
-                "error": f"Токен сохранён (нет прямого доступа к api.telegram.org из песочницы или токен неверен: {type(exc).__name__})",
+                "error": f"Нет доступа к api.telegram.org: {type(exc).__name__}",
             }
         return self.live_status
 

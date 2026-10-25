@@ -8,19 +8,22 @@ from backend.config import WEBAPP_URL
 from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
 
 
-def _webapp_button(text: str = "🚀 Открыть MULTI_TG_TOOL", tab: str = "") -> InlineKeyboardButton:
+def _webapp_button(text: str = "📱 Открыть приложение", tab: str = "") -> InlineKeyboardButton:
     base = WEBAPP_URL.rstrip("/") if WEBAPP_URL.startswith("https://") else ""
     if base:
         url = f"{base}/?tma=1" + (f"&tool={tab}" if tab else "")
         return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
-    # Inside local Simulator or HTTP dev, pass virtual tma:// or relative marker recognized by Simulator UI
     sim_url = f"/?mode=miniapp" + (f"&tool={tab}" if tab else "")
     return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=f"https://nexus-tma.local{sim_url}"))
 
 
+def webapp_button(text: str = "📱 Открыть приложение", tab: str = "") -> InlineKeyboardButton:
+    return _webapp_button(text=text, tab=tab)
+
+
 def main_menu_kb(favorites_count: int = 0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(_webapp_button("🌌 Открыть MULTI_TG_TOOL (Mini App)"))
+    builder.row(_webapp_button("📱 Открыть приложение MULTI_TG_TOOL"))
 
     cat_buttons = [
         InlineKeyboardButton(
@@ -35,11 +38,11 @@ def main_menu_kb(favorites_count: int = 0) -> InlineKeyboardMarkup:
     fav_label = f"⭐ Избранное ({favorites_count})" if favorites_count else "⭐ Избранное"
     builder.row(
         InlineKeyboardButton(text=fav_label, callback_data="nav:favorites"),
-        InlineKeyboardButton(text="🏆 Профиль и Ранг", callback_data="nav:profile"),
+        InlineKeyboardButton(text="👤 Профиль", callback_data="nav:profile"),
     )
     builder.row(
-        InlineKeyboardButton(text="⚡ Инлайн-режим", switch_inline_query_current_chat="256 * 16"),
-        InlineKeyboardButton(text="📖 Гид и Фишки", callback_data="nav:help"),
+        InlineKeyboardButton(text="🔍 Инлайн-поиск", switch_inline_query_current_chat="256 * 16"),
+        InlineKeyboardButton(text="📖 Команды", callback_data="nav:help"),
     )
     return builder.as_markup()
 
@@ -55,7 +58,7 @@ def category_kb(category_id: str, user_favorites: list[str]) -> InlineKeyboardMa
                 callback_data=f"tool:open:{tool['id']}",
             )
         )
-    builder.row(_webapp_button(f"✨ Открыть «{cat['title']}» в Mini App", tab=category_id))
+    builder.row(_webapp_button(f"📱 Открыть «{cat['title']}» в приложении", tab=category_id))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="nav:home"))
     return builder.as_markup()
 
@@ -74,11 +77,11 @@ def tool_back_kb(
     fav_text = "★ В избранном" if is_fav else "☆ В избранное"
     builder.row(
         InlineKeyboardButton(text=fav_text, callback_data=f"fav:toggle:{tool_id}"),
-        InlineKeyboardButton(text="🔄 Ещё раз", callback_data=f"tool:open:{tool_id}"),
+        InlineKeyboardButton(text="🔄 Обновить", callback_data=f"tool:open:{tool_id}"),
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ К разделу", callback_data=f"nav:cat:{cat_id}"),
-        InlineKeyboardButton(text="🏠 Домой", callback_data="nav:home"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
     )
     return builder.as_markup()
 
@@ -94,17 +97,17 @@ def pass_forge_kb(length: int = 20, mode: str = "chars", is_fav: bool = False) -
     ]
     mode_row = [
         InlineKeyboardButton(
-            text="✅ Символы" if mode == "chars" else "🔤 Символы",
+            text="✅ Символы" if mode == "chars" else "Символы",
             callback_data=f"sec:pass:{length}:chars",
         ),
         InlineKeyboardButton(
-            text="✅ Пассфраза" if mode == "passphrase" else "🗣 Пассфраза",
+            text="✅ Пассфраза" if mode == "passphrase" else "Пассфраза",
             callback_data=f"sec:pass:{length}:passphrase",
         ),
     ]
     regen_row = [
         InlineKeyboardButton(
-            text="🎲 Сгенерировать новый набор",
+            text="🔄 Сгенерировать заново",
             callback_data=f"sec:pass:{length}:{mode}",
         )
     ]
@@ -114,12 +117,12 @@ def pass_forge_kb(length: int = 20, mode: str = "chars", is_fav: bool = False) -
 def qr_theme_kb(current_theme: str = "cyber", current_shape: str = "rounded") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     themes = [
-        ("cyber", "🌌 Неон"),
-        ("telegram", "💎 Telegram"),
-        ("emerald", "🌿 Изумруд"),
-        ("sunset", "🌅 Закат"),
-        ("royal", "🔮 Индиго"),
-        ("classic", "⬛ Ч/Б"),
+        ("cyber", "Синий"),
+        ("telegram", "Голубой"),
+        ("emerald", "Зелёный"),
+        ("sunset", "Оранжевый"),
+        ("royal", "Фиолетовый"),
+        ("classic", "Чёрно-белый"),
     ]
     btns = [
         InlineKeyboardButton(
@@ -131,7 +134,7 @@ def qr_theme_kb(current_theme: str = "cyber", current_shape: str = "rounded") ->
     for i in range(0, len(btns), 3):
         builder.row(*btns[i : i + 3])
 
-    shapes = [("rounded", "Скруглённый"), ("dots", "Точки"), ("gapped", "Пиксели")]
+    shapes = [("rounded", "Скруглённый"), ("dots", "Точки"), ("gapped", "Квадраты")]
     builder.row(
         *[
             InlineKeyboardButton(
@@ -143,34 +146,27 @@ def qr_theme_kb(current_theme: str = "cyber", current_shape: str = "rounded") ->
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:qr"),
-        InlineKeyboardButton(text="🏠 Домой", callback_data="nav:home"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
     )
     return builder.as_markup()
-
-
-def webapp_button(text: str = "🚀 Открыть NEXUS Mini App", tab: str = "") -> InlineKeyboardButton:
-    return _webapp_button(text=text, tab=tab)
 
 
 def photo_context_kb(file_key: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="📷 Распознать QR-код с фото", callback_data=f"imgact:qr_decode:{file_key}"),
+        InlineKeyboardButton(text="🔍 Сканировать QR-код", callback_data=f"imgact:qr_decode:{file_key}"),
     )
     builder.row(
-        InlineKeyboardButton(text="🧹 Очистить EXIF + Палитра", callback_data=f"imgact:exif:{file_key}"),
+        InlineKeyboardButton(text="🧹 Очистить EXIF", callback_data=f"imgact:exif:{file_key}"),
+        InlineKeyboardButton(text="🖼 Стикер 512px", callback_data=f"imgact:sticker:{file_key}"),
     )
     builder.row(
-        InlineKeyboardButton(text="🕵️ Спрятать тайну (Stego)", callback_data=f"imgact:stego_hide:{file_key}"),
-        InlineKeyboardButton(text="🔓 Найти тайну (Stego)", callback_data=f"imgact:stego_read:{file_key}"),
+        InlineKeyboardButton(text="🔒 Записать текст в PNG", callback_data=f"imgact:stego_hide:{file_key}"),
+        InlineKeyboardButton(text="🔓 Прочитать текст из PNG", callback_data=f"imgact:stego_read:{file_key}"),
     )
     builder.row(
-        InlineKeyboardButton(text="🎭 В ТГ Стикер 512px", callback_data=f"imgact:sticker:{file_key}"),
-        InlineKeyboardButton(text="🌆 Киберпанк", callback_data=f"imgact:cyberpunk:{file_key}"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="🕹 Пиксель-арт", callback_data=f"imgact:pixelate:{file_key}"),
-        InlineKeyboardButton(text="📄 Конвертировать в PDF", callback_data=f"imgact:topdf:{file_key}"),
+        InlineKeyboardButton(text="🎨 Контрастный фильтр", callback_data=f"imgact:cyberpunk:{file_key}"),
+        InlineKeyboardButton(text="📄 Сохранить в PDF", callback_data=f"imgact:topdf:{file_key}"),
     )
     builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:home"))
     return builder.as_markup()
@@ -179,10 +175,10 @@ def photo_context_kb(file_key: str) -> InlineKeyboardMarkup:
 def pdf_context_kb(file_key: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="🔎 Извлечь текст и Инфо", callback_data=f"pdfact:inspect:{file_key}"),
+        InlineKeyboardButton(text="🔎 Извлечь текст", callback_data=f"pdfact:inspect:{file_key}"),
     )
     builder.row(
-        InlineKeyboardButton(text="🔒 Защитить AES-256 паролем", callback_data=f"pdfact:encrypt:{file_key}"),
+        InlineKeyboardButton(text="🔐 Установить пароль", callback_data=f"pdfact:encrypt:{file_key}"),
         InlineKeyboardButton(text="🔄 Повернуть 90°", callback_data=f"pdfact:rotate:{file_key}"),
     )
     builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:home"))
@@ -193,17 +189,17 @@ def todos_kb(todos: list[dict[str, Any]]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for item in todos[:12]:
         mark = "✅" if item["done"] else "⬜"
-        prio = "🔥 " if item.get("priority") == "high" and not item["done"] else ""
+        prio = "❗ " if item.get("priority") == "high" and not item["done"] else ""
         label = f"{mark} {prio}{item['text'][:38]}"
         builder.row(
             InlineKeyboardButton(text=label, callback_data=f"ws:todo_toggle:{item['id']}")
         )
     builder.row(
-        InlineKeyboardButton(text="➕ Новая задача", callback_data="ws:todo_add"),
-        InlineKeyboardButton(text="🧹 Удалить выполненные", callback_data="ws:todo_clear"),
+        InlineKeyboardButton(text="➕ Добавить задачу", callback_data="ws:todo_add"),
+        InlineKeyboardButton(text="🗑 Очистить выполненные", callback_data="ws:todo_clear"),
     )
     builder.row(
-        InlineKeyboardButton(text="⬅️ Органайзер", callback_data="nav:cat:workspace"),
-        InlineKeyboardButton(text="🏠 Домой", callback_data="nav:home"),
+        InlineKeyboardButton(text="⬅️ Привычки и задачи", callback_data="nav:cat:workspace"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
     )
     return builder.as_markup()

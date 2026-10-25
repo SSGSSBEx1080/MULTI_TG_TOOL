@@ -23,13 +23,13 @@ class ToolState(StatesGroup):
     jwt_waiting_input = State()
     totp_waiting_secret = State()
 
-    # Dev Swiss Knife
+    # Dev Tools
     json_waiting_input = State()
     regex_waiting_input = State()
     codec_waiting_input = State()
     cron_waiting_input = State()
 
-    # Smart Calc & Network
+    # Calc & Network
     calc_waiting_expr = State()
     unit_waiting_input = State()
     finance_waiting_input = State()
@@ -41,11 +41,12 @@ class ToolState(StatesGroup):
     diff_waiting_texts = State()
     random_waiting_input = State()
 
-    # Personal Workspace
+    # Personal Workspace & Habits
     note_waiting_content = State()
     todo_waiting_text = State()
+    habit_waiting_title = State()
 
-    # NEXUS v2 Interactive Wizards
+    # Interactive Wizards
     smart_units_waiting = State()
     rhyme_waiting_word = State()
     url_transform_waiting = State()
@@ -53,3 +54,8 @@ class ToolState(StatesGroup):
     wiki_search_waiting = State()
     anon_chat_waiting = State()
     altushka_chat_waiting = State()
+
+    # Astrology & Physics
+    birth_date_waiting = State()
+    compat_waiting_dates = State()
+    physics_waiting_params = State()

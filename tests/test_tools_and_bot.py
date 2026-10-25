@@ -226,40 +226,75 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # 1. Health & Catalog (12 categories in v2!)
+        # 1. Health & Catalog (14 factual categories)
         r = await client.get("/api/health")
         assert r.status_code == 200
-        cat = await client.get("/api/tools/catalog")
-        assert len(cat.json()["categories"]) == 12
+        cat_res = await client.get("/api/tools/catalog")
+        categories = cat_res.json()["categories"]
+        assert len(categories) == 14
 
-        # 2. Simulator bootstrap (/start)
+        # 2. Verify NO fake/demo users exist in Leaderboard initially
+        top_initial = await client.get("/api/v2/social/leaderboard?sort_by=xp")
+        assert top_initial.status_code == 200
+        assert top_initial.json()["users"] == []
+
+        # Register 2 real Telegram users and verify only real users appear in Top
+        await db.ensure_user(123456789, "ivan_tg", "Иван", is_real=True)
+        await db.record_tool_use(123456789, "daily_horoscope", "horoscope", "bot", "aries", xp_gain=25)
+        await db.ensure_user(987654321, "maria_tg", "Мария", is_real=True)
+        await db.record_tool_use(987654321, "phys_power", "physics", "miniapp", "eta", xp_gain=15)
+
+        top_real = await client.get("/api/v2/social/leaderboard?sort_by=xp")
+        leaders = top_real.json()["users"]
+        assert len(leaders) == 2
+        assert leaders[0]["user_id"] == 123456789
+        assert leaders[0]["first_name"] == "Иван"
+
+        # 3. Simulator bootstrap (/start)
         sim_init = await client.get("/api/sim/state")
         assert sim_init.status_code == 200
         msgs = sim_init.json()["messages"]
         bot_welcome = msgs[-1]
         assert "MULTI_TG_TOOL" in bot_welcome["text"]
+        msg_id = bot_welcome["message_id"]
 
-        # 3. Tap Inline Callback Button (Single-Message HUD Edit in-place!)
-        cb_res = await client.post(
-            "/api/sim/callback",
-            json={"message_id": bot_welcome["message_id"], "callback_data": "nav:cat:security"},
-        )
-        assert cb_res.status_code == 200
-        assert "Кибербезопасность" in cb_res.json()["messages"][-1]["text"]
+        # 4. EXHAUSTIVE CHECK: Every single category button AND every single tool:open:* button MUST respond!
+        for cat_obj in categories:
+            c_res = await client.post(
+                "/api/sim/callback",
+                json={"message_id": msg_id, "callback_data": f"nav:cat:{cat_obj['id']}"},
+            )
+            assert c_res.status_code == 200
+            last_msg = c_res.json()["messages"][-1]
+            msg_id = last_msg["message_id"]
+            assert cat_obj["title"] in last_msg["text"]
 
-        # 4. Send /bored and "6 дюймов" in Simulator
-        bored_res = await client.post("/api/sim/send-text", json={"text": "/bored"})
-        assert bored_res.status_code == 200
-        assert "скучно" in bored_res.json()["messages"][-1]["text"]
+            for tool_obj in cat_obj["tools"]:
+                before_snapshot = (len(c_res.json()["messages"]), last_msg["text"])
+                t_res = await client.post(
+                    "/api/sim/callback",
+                    json={"message_id": msg_id, "callback_data": f"tool:open:{tool_obj['id']}"},
+                )
+                assert t_res.status_code == 200
+                t_msgs = t_res.json()["messages"]
+                new_last = t_msgs[-1]
+                msg_id = new_last["message_id"]
+                after_snapshot = (len(t_msgs), new_last["text"])
+                assert after_snapshot != before_snapshot, f"Button tool:open:{tool_obj['id']} produced ZERO reaction!"
 
-        unit_msg = await client.post("/api/sim/send-text", json={"text": "6 дюймов"})
-        assert unit_msg.status_code == 200
-        assert "15.24" in unit_msg.json()["messages"][-1]["text"]
-
-        # 5. Send Smart Omni-Input wrong layout text
-        omni_res = await client.post("/api/sim/send-text", json={"text": "Ghbdtn vbh!"})
-        assert omni_res.status_code == 200
-        assert "Привет мир!" in omni_res.json()["messages"][-1]["text"]
+        # 5. Test new Bot commands: /horoscope, /compat, /physics, /habits, /bored, "6 дюймов"
+        for cmd_text, expected_substr in [
+            ("/horoscope лев", "Лев"),
+            ("/compat 15.05.2002 21.09.2003", "Совместимость"),
+            ("/physics", "Формула"),
+            ("/habits", "Трекер привычек"),
+            ("/bored", "скучно"),
+            ("6 дюймов", "15.24"),
+            ("Ghbdtn vbh!", "Привет мир!"),
+        ]:
+            cmd_r = await client.post("/api/sim/send-text", json={"text": cmd_text})
+            assert cmd_r.status_code == 200
+            assert expected_substr.lower() in cmd_r.json()["messages"][-1]["text"].lower()
 
         # 6. Upload Stego PNG into Simulator & verify decode
         stego_png, _ = stego_encode_png("Тайна Агента 007")
@@ -281,7 +316,64 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         )
         assert "Тайна Агента 007" in read_res.json()["messages"][-1]["text"]
 
-        # 7. Test v2 Short & Long URL redirects + Profile Views tracking + Arcade Score + Author
+        # 7. Test New API Endpoints: Astrology, Compatibility, Physics Solver, Habit Tracker & Attachment Download
+        horo_api = await client.get("/api/v2/astrology/horoscope?sign=scorpio&period=week")
+        assert horo_api.status_code == 200
+        assert horo_api.json()["sign"]["name"] == "Скорпион"
+
+        birth_api = await client.post("/api/v2/astrology/birth", json={"date": "15.05.2002"})
+        assert birth_api.status_code == 200
+        assert birth_api.json()["sign"]["name"] == "Телец"
+        assert birth_api.json()["life_path_number"] >= 1
+
+        compat_api = await client.post(
+            "/api/v2/astrology/compatibility",
+            json={"first": "2002-05-15", "second": "2003-09-21", "name1": "Алексей", "name2": "Алина"},
+        )
+        assert compat_api.status_code == 200
+        assert 40 <= compat_api.json()["overall_pct"] <= 99
+
+        phys_api = await client.post(
+            "/api/v2/physics/solve",
+            json={"calc_id": "work_power_efficiency", "target_var": "t", "params": {"A": 360000, "P": 2000, "eta": 90}},
+        )
+        assert phys_api.status_code == 200
+        assert phys_api.json()["numeric_si"] == 200.0
+
+        # Habit Tracker CRUD
+        hab_create = await client.post(
+            "/api/workspace/habits",
+            headers={"X-Guest-Id": "900000123456"},
+            json={"title": "Чтение 30 минут", "icon": "📚", "target_per_week": 7},
+        )
+        assert hab_create.status_code == 200
+        hid = hab_create.json()["habits"][0]["id"]
+
+        hab_toggle = await client.post(
+            f"/api/workspace/habits/{hid}/toggle",
+            headers={"X-Guest-Id": "900000123456"},
+            json={},
+        )
+        assert hab_toggle.status_code == 200
+        assert hab_toggle.json()["completed"] is True
+        assert hab_toggle.json()["habits"][0]["streak"] == 1
+
+        hab_del = await client.delete(
+            f"/api/workspace/habits/{hid}",
+            headers={"X-Guest-Id": "900000123456"},
+        )
+        assert hab_del.status_code == 200
+        assert hab_del.json()["habits"] == []
+
+        # QR + Attachment download header check (critical for Telegram WebView)
+        qr_gen = await client.post("/api/tools/qr", json={"mode": "text", "data": "https://t.me/multi_tg_bot"})
+        assert qr_gen.status_code == 200
+        dl_url = qr_gen.json()["download_url"]
+        att_res = await client.get(f"/api/v2/files/download?url={dl_url}&name=qr.png")
+        assert att_res.status_code == 200
+        assert "attachment" in att_res.headers.get("content-disposition", "")
+
+        # 8. Short & Long URL redirects + Profile Views + Author 4 links
         lnk = await client.post("/api/v2/links/create", json={"url": "https://www.youtube.com/@qls8571?utm_source=test"})
         assert lnk.status_code == 200
         short_path = lnk.json()["short_path"]
@@ -289,16 +381,8 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         assert redir.status_code == 307
         assert redir.headers["location"] == "https://www.youtube.com/@qls8571"
 
-        top = await client.get("/api/v2/social/leaderboard?sort_by=xp")
-        assert len(top.json()["users"]) >= 4
-        target_uid = top.json()["users"][0]["user_id"]
-        views_before = top.json()["users"][0]["profile_views"]
-        prof_open = await client.get(f"/api/v2/social/profile/{target_uid}?viewer_id=999999")
-        assert prof_open.json()["profile_views"] == views_before + 1
-
-        game_sc = await client.post("/api/v2/games/score", json={"game_id": "arcade_wolf", "score": 450})
-        assert game_sc.status_code == 200
-        assert game_sc.json()["xp_earned"] >= 5
+        prof_open = await client.get("/api/v2/social/profile/123456789?viewer_id=987654321")
+        assert prof_open.json()["profile_views"] == 1
 
         auth = await client.get("/api/v2/author")
         assert "MULTI_TG_TOOL" in auth.json()["title"]
