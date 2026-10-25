@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -48,7 +49,7 @@ async def cb_decode_qr_from_photo(call: CallbackQuery) -> None:
     key = call.data.split(":")[2]
     try:
         raw, _ = await load_media_bytes(call.bot, key)
-        res = decode_qr_from_bytes(raw)
+        res = await asyncio.to_thread(decode_qr_from_bytes, raw)
         await db.record_tool_use(call.from_user.id, "qr_decoder", "qr", "bot", "QR Photo Scan", xp_gain=10)
         if not res["found"]:
             await render_hud(

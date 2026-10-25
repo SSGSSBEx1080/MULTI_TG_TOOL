@@ -8,9 +8,6 @@ import zlib
 from typing import Any
 
 from PIL import ExifTags, Image, ImageDraw, ImageFilter, ImageFont, ImageOps
-from pygments import lex
-from pygments.lexers import get_lexer_by_name, guess_lexer
-from pygments.token import Comment, Keyword, Literal, Name, Number, Operator, Punctuation, String
 
 from backend.config import FONT_BOLD, FONT_MONO, FONT_REGULAR
 from backend.tools.security_lab import decrypt_nx1, encrypt_nx1
@@ -335,28 +332,31 @@ def transform_image(
     }
 
 
-def _token_color(tok_type: Any, palette: dict[str, Any]) -> tuple[int, int, int]:
-    if tok_type in Comment:
-        return palette["comment"]
-    if tok_type in Keyword:
-        return palette["keyword"]
-    if tok_type in String:
-        return palette["string"]
-    if tok_type in Number or tok_type in Literal:
-        return palette["number"]
-    if tok_type in Name.Function or tok_type in Name.Class or tok_type in Name.Builtin:
-        return palette["func"]
-    if tok_type in Operator or tok_type in Punctuation:
-        return palette["op"]
-    return palette["text"]
-
-
 def render_code_card(
     code: str,
     language: str = "python",
     title: str = "nexus_snippet.py",
     theme: str = "tokyo",
 ) -> bytes:
+    from pygments import lex
+    from pygments.lexers import get_lexer_by_name, guess_lexer
+    from pygments.token import Comment, Keyword, Literal, Name, Number, Operator, Punctuation, String
+
+    def _tok_color(tok_type: Any, palette: dict[str, Any]) -> tuple[int, int, int]:
+        if tok_type in Comment:
+            return palette["comment"]
+        if tok_type in Keyword:
+            return palette["keyword"]
+        if tok_type in String:
+            return palette["string"]
+        if tok_type in Number or tok_type in Literal:
+            return palette["number"]
+        if tok_type in Name.Function or tok_type in Name.Class or tok_type in Name.Builtin:
+            return palette["func"]
+        if tok_type in Operator or tok_type in Punctuation:
+            return palette["op"]
+        return palette["text"]
+
     clean_code = (code or "").strip("\n")
     if not clean_code.strip():
         raise ValueError("Код для генерации карточки пуст")
@@ -453,7 +453,7 @@ def render_code_card(
     cur_line = 0
     cur_col = 0
     for tok_type, tok_val in lex(clipped_code, lexer):
-        color = _token_color(tok_type, pal)
+        color = _tok_color(tok_type, pal)
         parts = tok_val.split("\n")
         for p_idx, part in enumerate(parts):
             if p_idx > 0:

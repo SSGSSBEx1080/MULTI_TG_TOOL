@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from pathlib import Path
 from typing import Any
@@ -367,7 +368,7 @@ async def api_roll_stand(req: RollStandReq, request: Request) -> dict[str, Any]:
 
 @router.get("/api/v2/knowledge/formulas")
 async def api_formulas(subject: str = "all", q: str = "") -> dict[str, Any]:
-    items = search_formulas(subject=subject, q=q)
+    items = search_formulas(subject=subject, query=q)
     return {"count": len(items), "items": items}
 
 
@@ -408,7 +409,7 @@ async def api_qr_decode(
     uid = await resolve_api_user(request, user_id)
     try:
         raw = await file.read()
-        res = decode_qr_from_bytes(raw)
+        res = await asyncio.to_thread(decode_qr_from_bytes, raw)
         await db.record_tool_use(uid, "qr_decoder", "visual", "miniapp", "QR Scan", xp_gain=10)
         return res
     except Exception as e:

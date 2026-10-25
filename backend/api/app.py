@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -12,6 +13,14 @@ from backend.api import routes_admin, routes_simulator, routes_tools, routes_v2,
 from backend.bot.factory import bot_manager
 from backend.config import BOT_TOKEN, DATA_DIR, STATIC_UI_DIR
 from backend.database import db
+
+
+class ImmutableStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
 
 @asynccontextmanager
@@ -24,15 +33,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
     await bot_manager.stop_live_polling()
     await bot_manager.sim_bot.session.close()
+    await db.close()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="NEXUS • Telegram Multi-Tool Ecosystem",
-        version="2.0.0",
+        title="MULTI_TG_TOOL • Ecosystem",
+        version="3.1.0",
         lifespan=lifespan,
     )
 
+    app.add_middleware(GZipMiddleware, minimum_size=800)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -49,25 +60,28 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok", "service": "NEXUS Multi-Tool"}
+        return {"status": "ok", "service": "MULTI_TG_TOOL"}
 
     app.mount("/media", StaticFiles(directory=str(DATA_DIR)), name="media")
 
     assets_dir = STATIC_UI_DIR / "assets"
     if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+        app.mount("/assets", ImmutableStaticFiles(directory=str(assets_dir)), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        candidate = (STATIC_UI_DIR / full_path).resolve()
-        if full_path and candidate.is_file() and str(candidate).startswith(str(STATIC_UI_DIR.resolve())):
-            return FileResponse(candidate)
+        static_root = STATIC_UI_DIR.resolve()
+        if full_path:
+            candidate = (STATIC_UI_DIR / full_path).resolve()
+            if candidate.is_file() and str(candidate).startswith(str(static_root)):
+                cache_hdr = "no-cache" if candidate.name == "index.html" else "public, max-age=86400"
+                return FileResponse(candidate, headers={"Cache-Control": cache_hdr})
         index_html = STATIC_UI_DIR / "index.html"
         if index_html.is_file():
-            return FileResponse(index_html)
+            return FileResponse(index_html, headers={"Cache-Control": "no-cache"})
         return JSONResponse(
             {
-                "service": "NEXUS Backend Ready",
+                "service": "MULTI_TG_TOOL Backend Ready",
                 "docs": "/docs",
                 "hint": "Build frontend into backend/static_ui",
             }

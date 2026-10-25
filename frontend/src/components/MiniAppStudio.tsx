@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Search, Star, X } from 'lucide-react';
 import {
   HabitItem,
@@ -10,15 +10,22 @@ import {
   copyText,
   getTelegramWebApp,
 } from '../lib/api';
-import { VisualMediaHub } from './tools/VisualMediaHub';
-import { CyberDevHub } from './tools/CyberDevHub';
-import { CalcTextWorkspaceHub } from './tools/CalcTextWorkspaceHub';
-import { PartyFunHub } from './tools/PartyFunHub';
-import { KnowledgeMegaHub } from './tools/KnowledgeMegaHub';
-import { ArcadeGamesHub } from './tools/ArcadeGamesHub';
-import { SocialDatingHub } from './tools/SocialDatingHub';
-import { HoroscopeHub } from './tools/HoroscopeHub';
-import { PhysicsHub } from './tools/PhysicsHub';
+
+const VisualMediaHub = lazy(() => import('./tools/VisualMediaHub').then((m) => ({ default: m.VisualMediaHub })));
+const CyberDevHub = lazy(() => import('./tools/CyberDevHub').then((m) => ({ default: m.CyberDevHub })));
+const CalcTextWorkspaceHub = lazy(() =>
+  import('./tools/CalcTextWorkspaceHub').then((m) => ({ default: m.CalcTextWorkspaceHub }))
+);
+const PartyFunHub = lazy(() => import('./tools/PartyFunHub').then((m) => ({ default: m.PartyFunHub })));
+const KnowledgeMegaHub = lazy(() =>
+  import('./tools/KnowledgeMegaHub').then((m) => ({ default: m.KnowledgeMegaHub }))
+);
+const ArcadeGamesHub = lazy(() => import('./tools/ArcadeGamesHub').then((m) => ({ default: m.ArcadeGamesHub })));
+const SocialDatingHub = lazy(() =>
+  import('./tools/SocialDatingHub').then((m) => ({ default: m.SocialDatingHub }))
+);
+const HoroscopeHub = lazy(() => import('./tools/HoroscopeHub').then((m) => ({ default: m.HoroscopeHub })));
+const PhysicsHub = lazy(() => import('./tools/PhysicsHub').then((m) => ({ default: m.PhysicsHub })));
 
 interface Props {
   categories: ToolCategory[];
@@ -128,7 +135,7 @@ export const MiniAppStudio: React.FC<Props> = ({
     }
   };
 
-  const renderActiveHub = () => {
+  const renderActiveHubInner = () => {
     if (activeCategory === 'horoscope') {
       return <HoroscopeHub activeTool={activeTool} onToast={onToast} />;
     }
@@ -212,6 +219,18 @@ export const MiniAppStudio: React.FC<Props> = ({
       />
     );
   };
+
+  const renderActiveHub = () => (
+    <Suspense
+      fallback={
+        <div className="p-8 rounded-2xl bg-slate-900/60 border border-white/10 text-center text-sm text-slate-400">
+          Загрузка раздела...
+        </div>
+      }
+    >
+      {renderActiveHubInner()}
+    </Suspense>
+  );
 
   // Resolve favorite tool items for quick strip
   const favoriteItems = favorites

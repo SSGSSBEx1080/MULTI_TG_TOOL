@@ -4,8 +4,6 @@ import io
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-import cv2
-import numpy as np
 from PIL import Image, ImageOps
 
 VOWELS = set("аеёиоуыэюя")
@@ -215,24 +213,34 @@ def decode_qr_from_bytes(image_bytes: bytes) -> dict[str, Any]:
     if not image_bytes:
         raise ValueError("Файл изображения пуст.")
 
+    import cv2
+    import numpy as np
+
+    cv2.setNumThreads(1)
+
     pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    orig_w, orig_h = pil_img.size
+    if max(orig_w, orig_h) > 1600:
+        pil_img.thumbnail((1600, 1600), Image.Resampling.BILINEAR)
+
     rgb_np = np.array(pil_img)
     bgr_np = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2BGR)
     gray_np = cv2.cvtColor(bgr_np, cv2.COLOR_BGR2GRAY)
 
     detector = cv2.QRCodeDetector()
-    candidates: list[tuple[str, np.ndarray]] = [
-        ("original", bgr_np),
-        ("grayscale_autocontrast", np.array(ImageOps.autocontrast(pil_img.convert("L")))),
-        ("inverted", cv2.bitwise_not(gray_np)),
-        ("upscaled_2x", cv2.resize(gray_np, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)),
-        ("otsu_threshold", cv2.threshold(gray_np, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]),
-    ]
+
+    def _iter_candidates():
+        yield "original", bgr_np
+        yield "grayscale_autocontrast", np.array(ImageOps.autocontrast(pil_img.convert("L")))
+        yield "inverted", cv2.bitwise_not(gray_np)
+        yield "otsu_threshold", cv2.threshold(gray_np, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        if max(gray_np.shape) <= 900:
+            yield "upscaled_2x", cv2.resize(gray_np, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
 
     decoded_items: list[str] = []
     used_method = "original"
 
-    for method_name, mat in candidates:
+    for method_name, mat in _iter_candidates():
         try:
             ok, texts, _, _ = detector.detectAndDecodeMulti(mat)
             if ok and texts:
@@ -258,7 +266,7 @@ def decode_qr_from_bytes(image_bytes: bytes) -> dict[str, Any]:
             "found": False,
             "count": 0,
             "results": [],
-            "image_size": f"{pil_img.width}×{pil_img.height}",
+            "image_size": f"{orig_w}×{orig_h}",
             "message": "QR-код на изображении не обнаружен. Проверьте чёткость и контрастность картинки.",
         }
 
@@ -275,7 +283,7 @@ def decode_qr_from_bytes(image_bytes: bytes) -> dict[str, Any]:
         "results": decoded_items,
         "content_type": kind,
         "method": used_method,
-        "image_size": f"{pil_img.width}×{pil_img.height}",
+        "image_size": f"{orig_w}×{orig_h}",
     }
 
 

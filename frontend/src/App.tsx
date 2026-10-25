@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import {
   Columns2,
   LayoutGrid,
@@ -17,10 +17,15 @@ import {
   getTelegramWebApp,
   isInsideTelegram,
 } from './lib/api';
-import { TelegramSimulator } from './components/TelegramSimulator';
 import { MiniAppStudio } from './components/MiniAppStudio';
-import { AdminControlHub } from './components/AdminControlHub';
 import { CommandPalette } from './components/CommandPalette';
+
+const TelegramSimulator = lazy(() =>
+  import('./components/TelegramSimulator').then((m) => ({ default: m.TelegramSimulator }))
+);
+const AdminControlHub = lazy(() =>
+  import('./components/AdminControlHub').then((m) => ({ default: m.AdminControlHub }))
+);
 
 type ViewMode = 'miniapp' | 'split' | 'bot' | 'admin';
 
@@ -223,6 +228,13 @@ export const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1">
+        <Suspense
+          fallback={
+            <div className="max-w-xl mx-auto mt-10 p-8 rounded-2xl bg-slate-900/60 border border-white/10 text-center text-sm text-slate-400">
+              Загрузка...
+            </div>
+          }
+        >
         {viewMode === 'split' && (
           <div className="max-w-[1680px] mx-auto px-4 py-4 grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
             <div className="xl:col-span-4 xl:sticky xl:top-16 h-[calc(100vh-5.5rem)] min-h-[600px]">
@@ -291,6 +303,7 @@ export const App: React.FC = () => {
             <AdminControlHub onToast={showToast} />
           </div>
         )}
+        </Suspense>
       </main>
 
       {/* Command Palette */}

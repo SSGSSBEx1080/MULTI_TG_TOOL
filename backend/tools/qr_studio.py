@@ -14,13 +14,8 @@ from qrcode.image.styles.moduledrawers import (
     SquareModuleDrawer,
     VerticalBarsDrawer,
 )
-from qrcode.image.styles.colormasks import (
-    HorizontalGradiantColorMask,
-    RadialGradiantColorMask,
-    SolidFillColorMask,
-    VerticalGradiantColorMask,
-)
-from PIL import Image, ImageDraw, ImageFont
+from qrcode.image.styles.colormasks import SolidFillColorMask
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import barcode
 from barcode.writer import ImageWriter
 
@@ -118,14 +113,6 @@ def generate_styled_qr(
 
     drawer_cls = QR_SHAPES.get(shape, RoundedModuleDrawer)
     mode = "solid" if fg_hex else preset["mode"]
-    if mode == "radial":
-        color_mask = RadialGradiantColorMask(back_color=bg, center_color=c1, edge_color=c2)
-    elif mode == "vertical":
-        color_mask = VerticalGradiantColorMask(back_color=bg, top_color=c1, bottom_color=c2)
-    elif mode == "horizontal":
-        color_mask = HorizontalGradiantColorMask(back_color=bg, left_color=c1, right_color=c2)
-    else:
-        color_mask = SolidFillColorMask(back_color=bg, front_color=c1)
 
     qr = qrcode.QRCode(
         version=None,
@@ -136,13 +123,29 @@ def generate_styled_qr(
     qr.add_data(payload)
     qr.make(fit=True)
 
-    qr_img = qr.make_image(
+    # Render clean anti-aliased grayscale module mask in C/Pillow (avoids slow per-pixel Python QRColorMask loops)
+    raw_mask_img = qr.make_image(
         image_factory=StyledPilImage,
         module_drawer=drawer_cls(),
-        color_mask=color_mask,
-    ).convert("RGBA")
+        color_mask=SolidFillColorMask(back_color=(255, 255, 255), front_color=(0, 0, 0)),
+    ).convert("L")
+    module_alpha = ImageOps.invert(raw_mask_img)
+    w, h = module_alpha.size
 
-    w, h = qr_img.size
+    if mode == "radial":
+        grad_mask = Image.radial_gradient("L").resize((w, h), Image.Resampling.BILINEAR)
+        fg_layer = Image.composite(Image.new("RGB", (w, h), c2), Image.new("RGB", (w, h), c1), grad_mask)
+    elif mode == "vertical":
+        grad_mask = Image.linear_gradient("L").resize((w, h), Image.Resampling.BILINEAR)
+        fg_layer = Image.composite(Image.new("RGB", (w, h), c2), Image.new("RGB", (w, h), c1), grad_mask)
+    elif mode == "horizontal":
+        grad_mask = Image.linear_gradient("L").transpose(Image.Transpose.ROTATE_270).resize((w, h), Image.Resampling.BILINEAR)
+        fg_layer = Image.composite(Image.new("RGB", (w, h), c2), Image.new("RGB", (w, h), c1), grad_mask)
+    else:
+        fg_layer = Image.new("RGB", (w, h), c1)
+
+    bg_layer = Image.new("RGB", (w, h), bg)
+    qr_img = Image.composite(fg_layer, bg_layer, module_alpha).convert("RGBA")
 
     # Optional center badge pill (safe with ERROR_CORRECT_H up to ~18% area)
     clean_badge = badge_text.strip()[:8]
@@ -194,7 +197,7 @@ def generate_styled_qr(
         draw_c.text(((card_w - tw) / 2, h + pad + 10), cap_clean, font=cap_font, fill=cap_color)
 
     buf = io.BytesIO()
-    card.convert("RGB").save(buf, format="PNG", optimize=True)
+    card.convert("RGB").save(buf, format="PNG", compress_level=6)
     return buf.getvalue()
 
 
