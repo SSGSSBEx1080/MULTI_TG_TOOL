@@ -188,28 +188,18 @@ async def cb_show_liguria(call: CallbackQuery) -> None:
 async def _render_pencil_bot(call: CallbackQuery, height_cm: int = 182, shoe_eu: int = 43) -> None:
     res = calculate_pencil_index(height_cm=height_cm, shoe_size_eu=shoe_eu, linux_user=False, gym_pushups=35)
     b = InlineKeyboardBuilder()
-    for h_val, s_val, lbl in [
-        (172, 41, "172 см / 41"),
-        (180, 43, "180 см / 43"),
-        (188, 45, "188 см / 45"),
-        (196, 46, "196 см / 46"),
-    ]:
-        mark = "🔘 " if (h_val == height_cm and s_val == shoe_eu) else ""
-        b.button(text=f"{mark}{lbl}", callback_data=f"v2:pen:{h_val}:{s_val}")
-    b.adjust(2)
-    b.row(webapp_button("🎛 Все 10 параметров в приложении", tab="party"))
+    b.row(webapp_button("📊 Открыть клинические данные", tab="party"))
     b.row(
         InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:party"),
         InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
     )
     await render_hud(
         call,
-        f"<b>📏 Биометрический калькулятор длины члена</b>\n"
-        f"<blockquote>Параметры: рост {height_cm} см, обувь {shoe_eu} EU, 35 отжиманий</blockquote>\n\n"
-        f"• Длина пениса: <b>{res['estimated_cm']} см ({res['estimated_inches']}\")</b>\n"
-        f"• Категория: <b>{esc(res['rank_title'])}</b>\n"
-        f"• Процентиль: выше, чем у <b>{res['percentile']}%</b> выборки\n\n"
-        f"Выберите пресет ниже или откройте все 10 параметров в приложении:",
+        f"<b>📏 Клиническая статистика длины и обхвата пениса</b>\n\n"
+        f"• Средняя длина в эрекции: <b>{res['population_mean_cm']} см</b> (SD {res['population_sd_cm']} см)\n"
+        f"• Средний обхват в эрекции: <b>{res['girth_est_cm']} см</b> (SD {res['girth_sd_cm']} см)\n"
+        f"• Средняя длина в покое: <b>{res['flaccid_cm']} см</b> (SD {res['flaccid_sd_cm']} см)\n\n"
+        f"Это описательные средние опубликованной клинической выборки, не индивидуальный прогноз. Рост, обувь и игровые рейтинги результат не меняют. Источник: Veale et al., BJU Int. 2015. Откройте справочную карточку в приложении.",
         reply_markup=b.as_markup(),
     )
 

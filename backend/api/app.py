@@ -9,7 +9,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api import routes_admin, routes_simulator, routes_tools, routes_v2, routes_v6, routes_workspace
+from backend.api import routes_admin, routes_life, routes_simulator, routes_tools, routes_v2, routes_v6, routes_workspace
 from backend.bot.factory import bot_manager
 from backend.config import BOT_TOKEN, GENERATED_DIR, STATIC_UI_DIR, UPLOADS_DIR
 from backend.database import db
@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_admin.router)
     app.include_router(routes_v2.router)
     app.include_router(routes_v6.router)
+    app.include_router(routes_life.router)
 
     @app.exception_handler(ValueError)
     async def handle_unhandled_value_error(_request: Request, exc: ValueError) -> JSONResponse:

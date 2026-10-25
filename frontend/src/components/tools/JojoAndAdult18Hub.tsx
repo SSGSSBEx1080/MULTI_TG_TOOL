@@ -599,308 +599,41 @@ export const BreastSizeCalcStudio: React.FC<{
   onSync: () => void;
   onToast: (msg: string) => void;
 }> = ({ onSync, onToast }) => {
-  const [age, setAge] = useState(22);
-  const [heightCm, setHeightCm] = useState(166);
-  const [underbustCm, setUnderbustCm] = useState(74);
-  const [hipCm, setHipCm] = useState(95);
-  const [hairCm, setHairCm] = useState(42);
-  const [matchaWeek, setMatchaWeek] = useState(4);
-  const [pins, setPins] = useState(650);
-  const [jars, setJars] = useState(9);
-  const [showerC, setShowerC] = useState(41);
-  const [gamesH, setGamesH] = useState(280);
-  const [res, setRes] = useState<any>(null);
-  const [selectedRefId, setSelectedRefId] = useState<string>('peach');
-
-  const { wrapRef, visible } = useCanvasVisibility();
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const rotRef = useRef({ rx: 0.25, ry: -0.35, down: false, lx: 0, ly: 0 });
-
-  const runCalc = async () => {
+  const [under, setUnder] = useState(76);
+  const [bust, setBust] = useState(90);
+  const [result, setResult] = useState<any>(null);
+  const calculate = async () => {
     try {
       const r = await apiPost('/api/v6/party/breast-calc', {
-        age,
-        height_cm: heightCm,
-        underbust_cm: underbustCm,
-        hip_cm: hipCm,
-        hair_length_cm: hairCm,
-        matcha_latte_per_week: matchaWeek,
-        pinterest_pins: pins,
-        skincare_jars: jars,
-        shower_temp_c: showerC,
-        sims_genshin_hours: gamesH,
+        underbust_cm: under,
+        standing_bust_cm: bust,
       });
-      setRes(r);
-      if (r.closest_object?.id) setSelectedRefId(r.closest_object.id);
+      setResult(r);
       onSync();
     } catch (e: any) {
-      onToast(e.message || 'Ошибка расчёта');
+      onToast(e.message || 'Не удалось рассчитать размер');
     }
   };
-
-  useEffect(() => {
-    runCalc();
-  }, []);
-
-  // 3D Paired Hemisphere + Reference Fruit Scale Renderer
-  useEffect(() => {
-    const cvs = canvasRef.current;
-    if (!cvs || !visible || !res) return;
-    let raf = 0;
-    let tick = 0;
-
-    const render = () => {
-      const { ctx, W, H } = syncHiDPICanvas(cvs);
-      if (!ctx || W < 20) {
-        raf = requestAnimationFrame(render);
-        return;
-      }
-      tick += 0.015;
-      const st = rotRef.current;
-      if (!st.down) st.ry = Math.sin(tick * 0.6) * 0.38;
-
-      ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = '#050814';
-      ctx.fillRect(0, 0, W, H);
-
-      const volMl = Number(res.single_volume_ml || 280);
-      // Radius of hemisphere V = (2/3)*pi*R^3 -> R in cm
-      const radCm = Math.pow((3 * volMl) / (2 * Math.PI), 1 / 3);
-      const refObj =
-        (res.comparisons || []).find((c: any) => c.id === selectedRefId) || res.closest_object || { diameter_cm: 10, color: '#f472b6', name: 'Эталон' };
-      const refRadCm = (refObj.diameter_cm || 10) / 2;
-
-      const scale = 0.085;
-      const r3d = radCm * scale;
-      const refR3d = refRadCm * scale;
-      const fov = Math.min(W, H) * 0.95;
-      const camDist = 3.2;
-
-      const drawWireHemisphere = (cxOff: number, rad: number, strokeCol: string, fullSphere: boolean) => {
-        const cProj = project3D(rotateEuler({ x: cxOff, y: 0, z: rad * 0.35 }, st.rx, st.ry), W, H, fov, camDist);
-        if (cProj.visible) {
-          const glowR = Math.max(8, rad * cProj.scale);
-          const g = ctx.createRadialGradient(cProj.sx - glowR * 0.25, cProj.sy - glowR * 0.25, 2, cProj.sx, cProj.sy, glowR);
-          g.addColorStop(0, 'rgba(255,255,255,0.22)');
-          g.addColorStop(0.55, fullSphere ? 'rgba(250,204,21,0.12)' : 'rgba(244,114,182,0.16)');
-          g.addColorStop(1, 'rgba(2,6,23,0)');
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.arc(cProj.sx, cProj.sy, glowR, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        const maxTheta = fullSphere ? 180 : 90;
-        for (let lat = 0; lat <= maxTheta; lat += 18) {
-          ctx.beginPath();
-          let started = false;
-          const th = (lat * Math.PI) / 180;
-          for (let lon = 0; lon <= 360; lon += 12) {
-            const ph = (lon * Math.PI) / 180;
-            const local = {
-              x: cxOff + rad * Math.sin(th) * Math.cos(ph),
-              y: rad * Math.sin(th) * Math.sin(ph),
-              z: rad * Math.cos(th),
-            };
-            const wp = rotateEuler(local, st.rx, st.ry);
-            const pp = project3D(wp, W, H, fov, camDist);
-            if (!started) {
-              ctx.moveTo(pp.sx, pp.sy);
-              started = true;
-            } else {
-              ctx.lineTo(pp.sx, pp.sy);
-            }
-          }
-          ctx.strokeStyle = strokeCol;
-          ctx.lineWidth = 1.15;
-          ctx.stroke();
-        }
-        // Meridional ribs for full volumetric silhouette
-        for (let lon = 0; lon < 360; lon += 30) {
-          ctx.beginPath();
-          let started = false;
-          const ph = (lon * Math.PI) / 180;
-          for (let lat = 0; lat <= maxTheta; lat += 10) {
-            const th = (lat * Math.PI) / 180;
-            const local = {
-              x: cxOff + rad * Math.sin(th) * Math.cos(ph),
-              y: rad * Math.sin(th) * Math.sin(ph),
-              z: rad * Math.cos(th),
-            };
-            const wp = rotateEuler(local, st.rx, st.ry);
-            const pp = project3D(wp, W, H, fov, camDist);
-            if (!started) {
-              ctx.moveTo(pp.sx, pp.sy);
-              started = true;
-            } else {
-              ctx.lineTo(pp.sx, pp.sy);
-            }
-          }
-          ctx.strokeStyle = strokeCol;
-          ctx.lineWidth = 0.85;
-          ctx.stroke();
-        }
-      };
-
-      // Left & Right anatomical 3D contours
-      drawWireHemisphere(-r3d * 1.18, r3d, 'rgba(244,114,182,0.85)', false);
-      drawWireHemisphere(r3d * 1.18, r3d, 'rgba(244,114,182,0.85)', false);
-      // Reference fruit/object sphere on the right side for 1:1 comparison
-      drawWireHemisphere(r3d * 2.95 + refR3d, refR3d, refObj.color || '#facc15', true);
-
-      ctx.font = '700 11px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#f9a8d4';
-      ctx.fillText(
-        `Масштаб 1:1 • ${res.eu_size} (${volMl} мл × 2)  vs  ${refObj.name} (${refObj.volume_ml} мл)`,
-        12,
-        H - 12
-      );
-
-      raf = requestAnimationFrame(render);
-    };
-
-    raf = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(raf);
-  }, [visible, res, selectedRefId]);
-
-  const sliders = [
-    { label: 'Возраст (тонус связок Купера)', val: age, set: setAge, min: 18, max: 65, step: 1, unit: 'лет' },
-    { label: 'Рост (торакальная пропорция)', val: heightCm, set: setHeightCm, min: 145, max: 195, step: 1, unit: 'см' },
-    { label: 'Обхват под грудью (ОПГ)', val: underbustCm, set: setUnderbustCm, min: 63, max: 102, step: 1, unit: 'см' },
-    { label: 'Обхват бёдер (гиноидное депо)', val: hipCm, set: setHipCm, min: 80, max: 128, step: 1, unit: 'см' },
-    { label: 'Длина волос (индекс ER-β)', val: hairCm, set: setHairCm, min: 5, max: 100, step: 1, unit: 'см' },
-    { label: 'Чашек матчи / рафа на кокосовом в нед.', val: matchaWeek, set: setMatchaWeek, min: 0, max: 21, step: 1, unit: 'шт' },
-    { label: 'Сохранённых пинов на досках Pinterest', val: pins, set: setPins, min: 0, max: 8000, step: 100, unit: 'пинов' },
-    { label: 'Баночек ухода на полке в ванной', val: jars, set: setJars, min: 1, max: 45, step: 1, unit: 'шт' },
-    { label: 'Температура воды в душе', val: showerC, set: setShowerC, min: 34, max: 48, step: 1, unit: '°C' },
-    { label: 'Часы в Sims 4 / Genshin / Клубе Романтики', val: gamesH, set: setGamesH, min: 0, max: 5000, step: 50, unit: 'ч' },
-  ];
-
   return (
-    <div ref={wrapRef} className="rounded-2xl bg-slate-900/80 border border-pink-500/25 p-4 sm:p-5 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <Mini3DSceneBadge seed="breast_size_calc" color="#ec4899" size={40} />
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-white">
-              👙 Десятифакторный Маммометрический Калькулятор Размера Груди
-            </h3>
-            <p className="text-xs text-slate-400">
-              Расчёт пояса и чашки по стандарту EN 13402, объёма в миллилитрах и 3D-сравнение в масштабе 1:1
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={runCalc}
-          className="px-4 py-2 rounded-xl bg-pink-500 hover:bg-pink-400 text-slate-950 font-bold text-xs"
-        >
-          Пересчитать матрицу
-        </button>
+    <section className="space-y-4 rounded-2xl border border-pink-400/20 bg-slate-900/80 p-4 sm:p-5">
+      <div className="text-[10px] font-bold uppercase tracking-[.2em] text-pink-300">АНТРОПОМЕТРИЯ · ОНЛАЙН-ОРИЕНТИР</div>
+      <h2 className="text-xl font-black text-white">Подбор стартового размера бюстгальтера</h2>
+      <p className="text-sm leading-relaxed text-slate-400">Введите реальные измерения сантиметровой лентой. Возраст, рост, форма бёдер, волосы, питание, косметика и увлечения не дают научно надёжного прогноза размера груди.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs text-slate-400">Обхват под грудью, см
+          <input className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-white" type="number" min="50" max="140" step="0.5" value={under} onChange={e=>setUnder(Number(e.target.value))}/>
+          <span className="mt-1 block text-[10px] text-slate-500">Лента горизонтально, плотно, но без сдавливания, на спокойном выдохе.</span>
+        </label>
+        <label className="text-xs text-slate-400">Обхват груди стоя, см
+          <input className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-white" type="number" min="55" max="180" step="0.5" value={bust} onChange={e=>setBust(Number(e.target.value))}/>
+          <span className="mt-1 block text-[10px] text-slate-500">Лента по наиболее выступающим точкам, без сжатия ткани.</span>
+        </label>
       </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {sliders.map((s, idx) => (
-          <div key={idx} className="p-3 rounded-xl bg-slate-950/90 border border-white/10 space-y-1">
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-300">{s.label}</span>
-              <span className="font-mono font-bold text-pink-300">
-                {s.val} {s.unit}
-              </span>
-            </div>
-            <input
-              type="range"
-              min={s.min}
-              max={s.max}
-              step={s.step}
-              value={s.val}
-              onChange={(e) => s.set(Number(e.target.value))}
-              onMouseUp={runCalc}
-              onTouchEnd={runCalc}
-              className="w-full accent-pink-400"
-            />
-          </div>
-        ))}
-      </div>
-
-      {res && (
-        <div className="space-y-4 pt-2 border-t border-white/10">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <div className="p-3 rounded-xl bg-slate-950 border border-pink-400/40 text-center">
-              <div className="text-[11px] text-slate-400">Размер EU / RU</div>
-              <div className="text-2xl font-black font-mono text-pink-300">{res.eu_size}</div>
-              <div className="text-[11px] text-slate-400">US/UK: {res.us_uk_size}</div>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-950 border border-white/10 text-center">
-              <div className="text-[11px] text-slate-400">Обхват груди (ОГ)</div>
-              <div className="text-xl font-bold font-mono text-white">{res.bust_cm} см</div>
-              <div className="text-[11px] text-emerald-300">Δ = +{res.delta_cm} см к ОПГ</div>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-950 border border-white/10 text-center">
-              <div className="text-[11px] text-slate-400">Объём (1 / пара)</div>
-              <div className="text-xl font-bold font-mono text-amber-300">
-                {res.single_volume_ml} / {res.pair_volume_ml} мл
-              </div>
-              <div className="text-[11px] text-slate-400">Перцентиль: P{res.percentile}</div>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-950 border border-white/10 text-center">
-              <div className="text-[11px] text-slate-400">Масса пары и нагрузка</div>
-              <div className="text-xl font-bold font-mono text-sky-300">{res.pair_weight_g} г</div>
-              <div className="text-[11px] text-slate-400">{res.spine_load_newtons} Н на Th4–Th7</div>
-            </div>
-          </div>
-
-          {/* 3D Scale Viewport */}
-          <div className="space-y-2">
-            <canvas
-              ref={canvasRef}
-              style={{ height: 220 }}
-              onPointerDown={(e) => {
-                rotRef.current.down = true;
-                rotRef.current.lx = e.clientX;
-                rotRef.current.ly = e.clientY;
-              }}
-              onPointerMove={(e) => {
-                if (!rotRef.current.down) return;
-                rotRef.current.ry += (e.clientX - rotRef.current.lx) * 0.01;
-                rotRef.current.rx += (e.clientY - rotRef.current.ly) * 0.01;
-                rotRef.current.lx = e.clientX;
-                rotRef.current.ly = e.clientY;
-              }}
-              onPointerUp={() => {
-                rotRef.current.down = false;
-              }}
-              className="w-full rounded-xl bg-[#050814] border border-pink-500/25 cursor-grab touch-none block"
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {(res.comparisons || []).map((c: any) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setSelectedRefId(c.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] border transition ${
-                    selectedRefId === c.id
-                      ? 'bg-pink-500/25 border-pink-400 text-pink-100 font-semibold'
-                      : 'bg-slate-950 border-white/10 text-slate-300'
-                  }`}
-                >
-                  {c.name} ({c.volume_ml} мл)
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            {(res.factors || []).map((f: any, i: number) => (
-              <div key={i} className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5 flex justify-between gap-2">
-                <span className="text-slate-300">{f.label}</span>
-                <span className="font-mono text-pink-300 shrink-0">{f.impact}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-[11px] text-slate-400">{res.methodology}</p>
-        </div>
-      )}
-    </div>
+      <button type="button" onClick={calculate} className="rounded-xl bg-pink-400 px-4 py-2.5 text-sm font-bold text-slate-950">Рассчитать ориентир</button>
+      {result?.eu_size&&<div className="rounded-xl border border-pink-300/20 bg-slate-950 p-4"><div className="text-xs text-slate-400">Приблизительная отправная точка (EU)</div><div className="mt-1 text-4xl font-black text-pink-200">{result.eu_size}</div><p className="mt-2 text-xs text-slate-400">Разница введённых обхватов: {result.cup_difference_cm} см. Возможные сестринские размеры: {(result.sister_sizes||[]).join(' · ') || 'уточните примеркой'}.</p></div>}
+      {result?.note&&<div className="rounded-xl border border-amber-300/20 bg-amber-300/[.06] p-3 text-xs text-amber-100/80">{result.note}</div>}
+      <div className="rounded-xl border border-amber-300/20 bg-amber-300/[.06] p-3 text-xs leading-relaxed text-amber-100/80">Размеры и чашки различаются между брендами и странами, а форма и посадка важны не меньше буквенного обозначения. Это не медицинская оценка тела и не расчёт объёма железы. Примерка нескольких близких размеров или консультация специалиста по белью точнее онлайн-таблицы. Боль, уплотнение, выделения или внезапные изменения требуют медицинской оценки.</div>
+      <div className="text-[10px] text-slate-500">Ориентир основан только на фактических измерениях и приближённой таблице размера. Никакого 3D-«объёма» из двух обхватов не выводится.</div>
+    </section>
   );
 };
