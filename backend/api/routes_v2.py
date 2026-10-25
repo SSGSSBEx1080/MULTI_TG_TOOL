@@ -135,7 +135,10 @@ async def api_astrology_compat(req: CompatibilityReq, request: Request) -> dict[
     uid = await resolve_api_user(request, req.user_id)
     if not req.first.strip() or not req.second.strip():
         raise HTTPException(status_code=400, detail="Укажите обе даты рождения или оба знака зодиака")
-    res = calculate_compatibility(req.first, req.second, req.name1, req.name2)
+    try:
+        res = calculate_compatibility(req.first, req.second, req.name1, req.name2)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     await db.record_tool_use(
         uid,
         "compat_calc",
@@ -1015,6 +1018,187 @@ async def api_croco_words(level: str = "all", count: int = 6, letter: str = "") 
 @router.get("/api/v2/timbrica/lie-questions")
 async def api_lie_questions(category: str = "all") -> dict[str, Any]:
     return get_lie_detector_pack(category=category)
+
+
+# ==============================================================================
+# 10. Mega Expansion v5 Endpoints (Health, Auto/Travel, Finance Pro, Periodic, Design, Dev)
+# ==============================================================================
+from backend.tools.mega_expansion_v5 import (  # noqa: E402
+    build_color_harmony,
+    calculate_1rm_and_plates,
+    calculate_bmi_and_macros,
+    calculate_fuel_trip,
+    calculate_loan_and_deposit,
+    calculate_running_pace,
+    calculate_sleep_cycles,
+    compare_tires,
+    compute_world_timezones,
+    inspect_http_and_chmod,
+    query_periodic_table,
+    search_plate_codes,
+    split_group_expenses,
+)
+
+
+class BmiMacrosReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    sex: str = "m"
+    age: int = 25
+    height_cm: float = 178.0
+    weight_kg: float = 75.0
+    activity: str = "moderate"
+    goal: str = "maintain"
+
+
+@router.post("/api/v2/v5/bmi-macros")
+async def api_v5_bmi_macros(req: BmiMacrosReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = calculate_bmi_and_macros(req.sex, req.age, req.height_cm, req.weight_kg, req.activity, req.goal)
+    await db.record_tool_use(uid, "bmi_macros", "health", "miniapp", f"BMI={res['bmi']}", xp_gain=6)
+    return res
+
+
+class SleepCyclesReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    mode: str = "wakeup"
+    time_hhmm: str = "07:30"
+    fall_asleep_min: int = 14
+
+
+@router.post("/api/v2/v5/sleep-cycles")
+async def api_v5_sleep(req: SleepCyclesReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = calculate_sleep_cycles(req.mode, req.time_hhmm, req.fall_asleep_min)
+    await db.record_tool_use(uid, "sleep_cycles", "health", "miniapp", req.time_hhmm, xp_gain=5)
+    return res
+
+
+class Workout1RmReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    weight_kg: float = 80.0
+    reps: int = 5
+    bar_kg: float = 20.0
+
+
+@router.post("/api/v2/v5/workout-1rm")
+async def api_v5_1rm(req: Workout1RmReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = calculate_1rm_and_plates(req.weight_kg, req.reps, req.bar_kg)
+    await db.record_tool_use(uid, "workout_1rm", "health", "miniapp", f"1RM={res['one_rep_max_kg']}", xp_gain=6)
+    return res
+
+
+class RunningPaceReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    distance_km: float = 5.0
+    time_minutes: float = 25.0
+    age: int = 26
+    resting_hr: int = 60
+
+
+@router.post("/api/v2/v5/running-pace")
+async def api_v5_running(req: RunningPaceReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = calculate_running_pace(req.distance_km, req.time_minutes, req.age, req.resting_hr)
+    await db.record_tool_use(uid, "running_pace", "health", "miniapp", res["pace_formatted"], xp_gain=6)
+    return res
+
+
+class FuelTripReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    distance_km: float = 450.0
+    consumption_l_100: float = 8.2
+    fuel_price: float = 61.5
+    passengers: int = 2
+    tolls_rub: float = 0.0
+    round_trip: bool = False
+
+
+@router.post("/api/v2/v5/fuel-trip")
+async def api_v5_fuel(req: FuelTripReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = calculate_fuel_trip(req.distance_km, req.consumption_l_100, req.fuel_price, req.passengers, req.tolls_rub, req.round_trip)
+    await db.record_tool_use(uid, "fuel_trip", "auto_travel", "miniapp", f"{res['total_cost']} RUB", xp_gain=6)
+    return res
+
+
+class TireCompareReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    old_spec: str = "205/55 R16"
+    new_spec: str = "215/60 R16"
+
+
+@router.post("/api/v2/v5/tires-compare")
+async def api_v5_tires(req: TireCompareReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = compare_tires(req.old_spec, req.new_spec)
+    await db.record_tool_use(uid, "tire_calc", "auto_travel", "miniapp", f"{req.old_spec}->{req.new_spec}", xp_gain=6)
+    return res
+
+
+@router.get("/api/v2/v5/plate-codes")
+async def api_v5_plates(q: str = "") -> dict[str, Any]:
+    return search_plate_codes(q)
+
+
+@router.get("/api/v2/v5/world-time")
+async def api_v5_world_time(msk_hour: float | None = None) -> dict[str, Any]:
+    return compute_world_timezones(msk_hour)
+
+
+class FinanceProReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    mode: str = "loan"
+    principal: float = 3_000_000.0
+    annual_rate_pct: float = 16.5
+    months: int = 60
+    monthly_topup: float = 0.0
+
+
+@router.post("/api/v2/v5/finance-pro")
+async def api_v5_finance_pro(req: FinanceProReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = calculate_loan_and_deposit(req.mode, req.principal, req.annual_rate_pct, req.months, req.monthly_topup)
+    await db.record_tool_use(uid, "finance_calc", "calc", "miniapp", req.mode, xp_gain=6)
+    return res
+
+
+class BillSplitReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    entries: list[dict[str, Any]]
+    tip_pct: float = 0.0
+
+
+@router.post("/api/v2/v5/bill-split")
+async def api_v5_bill_split(req: BillSplitReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = split_group_expenses(req.entries, req.tip_pct)
+    await db.record_tool_use(uid, "bill_splitter", "calc", "miniapp", f"{res['participants']}p", xp_gain=6)
+    return res
+
+
+@router.get("/api/v2/v5/periodic-table")
+async def api_v5_periodic(q: str = "", formula: str = "") -> dict[str, Any]:
+    return query_periodic_table(q, formula)
+
+
+class ColorHarmonyReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    hex_color: str = "#38bdf8"
+
+
+@router.post("/api/v2/v5/color-harmony")
+async def api_v5_color_harmony(req: ColorHarmonyReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = build_color_harmony(req.hex_color)
+    await db.record_tool_use(uid, "color_palette", "creator_design", "miniapp", res["hex"], xp_gain=5)
+    return res
+
+
+@router.get("/api/v2/v5/http-chmod")
+async def api_v5_http_chmod(octal: str = "755", q: str = "") -> dict[str, Any]:
+    return inspect_http_and_chmod(octal, q)
+
 
 
 

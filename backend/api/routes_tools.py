@@ -38,7 +38,13 @@ from backend.tools.pdf_forge import (
 )
 from backend.tools.qr_studio import (
     QR_THEMES,
+    build_crypto_payload,
+    build_email_payload,
+    build_geo_payload,
+    build_qr_bundle,
+    build_telegram_payload,
     build_vcard_payload,
+    build_whatsapp_payload,
     build_wifi_payload,
     generate_barcode_png,
     generate_styled_qr,
@@ -127,10 +133,13 @@ async def api_omni(req: OmniReq, request: Request) -> dict[str, Any]:
 
 # --- 1. QR & Barcodes ---
 class QrReq(BaseModel):
-    mode: str = "text"  # text | wifi | vcard
+    mode: str = "text"  # text | wifi | vcard | telegram | whatsapp | email | geo | crypto
     data: str = ""
     theme: str = "cyber"
     shape: str = "rounded"
+    finder_style: str = "rounded"
+    error_level: str = "H"
+    framed: bool = True
     badge_text: str = ""
     caption: str = ""
     fg_hex: str = ""
@@ -138,11 +147,29 @@ class QrReq(BaseModel):
     wifi_ssid: str = ""
     wifi_password: str = ""
     wifi_security: str = "WPA"
+    wifi_hidden: bool = False
     vcard_name: str = ""
     vcard_phone: str = ""
     vcard_email: str = ""
     vcard_org: str = ""
+    vcard_title: str = ""
+    vcard_url: str = ""
     vcard_telegram: str = ""
+    tg_target: str = ""
+    tg_start: str = ""
+    tg_text: str = ""
+    wa_phone: str = ""
+    wa_text: str = ""
+    email_to: str = ""
+    email_subject: str = ""
+    email_body: str = ""
+    geo_lat: str = "55.7558"
+    geo_lon: str = "37.6173"
+    geo_label: str = ""
+    crypto_net: str = "ton"
+    crypto_addr: str = ""
+    crypto_amount: str = ""
+    crypto_comment: str = ""
     user_id: int = DEFAULT_DEMO_USER_ID
 
 
@@ -151,35 +178,59 @@ async def api_qr(req: QrReq, request: Request) -> dict[str, Any]:
     uid = await resolve_api_user(request, req.user_id)
     try:
         if req.mode == "wifi":
-            payload = build_wifi_payload(req.wifi_ssid or "HOME_5G", req.wifi_password, req.wifi_security)
+            payload = build_wifi_payload(req.wifi_ssid or "HOME_5G", req.wifi_password, req.wifi_security, req.wifi_hidden)
         elif req.mode == "vcard":
             payload = build_vcard_payload(
                 req.vcard_name or "Контакт",
                 phone=req.vcard_phone,
                 email=req.vcard_email,
                 org=req.vcard_org,
+                title=req.vcard_title,
+                url=req.vcard_url,
                 telegram=req.vcard_telegram,
             )
+        elif req.mode == "telegram":
+            payload = build_telegram_payload(req.tg_target or req.data or "multi_tg_bot", req.tg_start, req.tg_text)
+        elif req.mode == "whatsapp":
+            payload = build_whatsapp_payload(req.wa_phone or req.data, req.wa_text)
+        elif req.mode == "email":
+            payload = build_email_payload(req.email_to or req.data, req.email_subject, req.email_body)
+        elif req.mode == "geo":
+            payload = build_geo_payload(req.geo_lat, req.geo_lon, req.geo_label)
+        elif req.mode == "crypto":
+            payload = build_crypto_payload(req.crypto_net, req.crypto_addr or req.data, req.crypto_amount, req.crypto_comment)
         else:
             payload = req.data or "https://t.me/multi_tg_bot"
 
-        png = await asyncio.to_thread(
-            generate_styled_qr,
+        bundle = await asyncio.to_thread(
+            build_qr_bundle,
             payload,
             theme=req.theme,
             shape=req.shape,
+            finder_style=req.finder_style,
             badge_text=req.badge_text,
             caption=req.caption,
             fg_hex=req.fg_hex,
             bg_hex=req.bg_hex,
+            error_level=req.error_level,
+            framed=req.framed,
         )
+        png = bundle["png_bytes"]
+        svg_bytes = bundle["svg_text"].encode("utf-8")
         url = await asyncio.to_thread(_persist_generated_sync, png, "png", "qr")
+        svg_url = await asyncio.to_thread(_persist_generated_sync, svg_bytes, "svg", "qr_vec")
         await db.record_tool_use(uid, "qr_studio", "qr", "miniapp", req.mode)
         return {
             "payload": payload,
             "inspection": inspect_qr_payload(payload),
+            "version": bundle["version"],
+            "modules": bundle["modules"],
+            "error_correction": bundle["error_correction"],
+            "contrast": bundle["contrast"],
             "image_data_url": _b64_data_uri(png, "image/png"),
+            "svg_data_url": _b64_data_uri(svg_bytes, "image/svg+xml"),
             "download_url": url,
+            "svg_download_url": svg_url,
         }
     except HTTPException:
         raise
@@ -276,15 +327,19 @@ async def api_stego_decode(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _build_demo_sample_png() -> bytes:
+    return render_code_card("print('MULTI_TG_TOOL Demo Image')", "python", "sample.py", "tokyo")
+
+
 @router.post("/image/exif")
 async def api_image_exif(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
     uid = await resolve_api_user(request, user_id)
     try:
-        raw = await _read_upload_safe(file)
+        raw = await _read_upload_safe(file) if file is not None else await asyncio.to_thread(_build_demo_sample_png)
         clean_bytes, info = await asyncio.to_thread(inspect_and_clean_image, raw)
         ext = info["output_format"].lower()
         mime = "image/png" if ext == "png" else "image/jpeg"
@@ -304,7 +359,7 @@ async def api_image_exif(
 @router.post("/image/transform")
 async def api_image_transform(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
     action: str = Form("sticker"),
     target_format: str = Form("WEBP"),
     quality: int = Form(85),
@@ -312,7 +367,7 @@ async def api_image_transform(
 ) -> dict[str, Any]:
     uid = await resolve_api_user(request, user_id)
     try:
-        raw = await _read_upload_safe(file)
+        raw = await _read_upload_safe(file) if file is not None else await asyncio.to_thread(_build_demo_sample_png)
         out_bytes, meta = await asyncio.to_thread(
             transform_image, raw, action=action, target_format=target_format, quality=quality
         )
@@ -381,12 +436,16 @@ async def api_pdf_from_images(
 @router.post("/pdf/inspect")
 async def api_pdf_inspect(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
     user_id: int = Form(DEFAULT_DEMO_USER_ID),
 ) -> dict[str, Any]:
     uid = await resolve_api_user(request, user_id)
     try:
-        raw = await _read_upload_safe(file)
+        raw = (
+            await _read_upload_safe(file)
+            if file is not None
+            else await asyncio.to_thread(render_text_to_pdf, "MULTI_TG_TOOL Demo", "Демонстрационный PDF-документ.")
+        )
         info = await asyncio.to_thread(inspect_pdf, raw)
         await db.record_tool_use(uid, "pdf_inspect", "pdf", "miniapp", f"{info['page_count']}p")
         return info
@@ -399,7 +458,7 @@ async def api_pdf_inspect(
 @router.post("/pdf/transform")
 async def api_pdf_transform(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
     pages_spec: str = Form(""),
     rotate_deg: int = Form(0),
     password: str = Form(""),
@@ -407,7 +466,11 @@ async def api_pdf_transform(
 ) -> dict[str, Any]:
     uid = await resolve_api_user(request, user_id)
     try:
-        raw = await _read_upload_safe(file)
+        raw = (
+            await _read_upload_safe(file)
+            if file is not None
+            else await asyncio.to_thread(render_text_to_pdf, "MULTI_TG_TOOL Demo", "Демонстрационный PDF-документ.")
+        )
         out_bytes, meta = await asyncio.to_thread(
             transform_pdf, raw, pages_spec=pages_spec, rotate_deg=rotate_deg, password=password
         )

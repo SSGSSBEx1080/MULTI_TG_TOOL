@@ -209,80 +209,169 @@ def generate_russian_rhymes(word: str) -> dict[str, Any]:
 # ==============================================================================
 # 2. Декодер QR-кодов по Изображению (OpenCV + многоступенчатый препроцессинг)
 # ==============================================================================
+def _repair_qr_utf8(raw_str: str) -> str:
+    if not raw_str:
+        return ""
+    # OpenCV QRCodeDetector occasionally decodes UTF-8 byte streams without ECI header as ISO-8859-1
+    if any("\u00c0" <= ch <= "\u00ff" for ch in raw_str):
+        try:
+            repaired = raw_str.encode("latin-1").decode("utf-8")
+            if repaired:
+                return repaired
+        except Exception:
+            pass
+    return raw_str
+
+
 def decode_qr_from_bytes(image_bytes: bytes) -> dict[str, Any]:
     if not image_bytes:
         raise ValueError("Файл изображения пуст.")
 
+    import time as _time
     import cv2
     import numpy as np
+    from backend.tools.qr_studio import inspect_qr_payload
 
+    t0 = _time.perf_counter()
     cv2.setNumThreads(1)
 
-    pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    orig_w, orig_h = pil_img.size
-    if max(orig_w, orig_h) > 1600:
-        pil_img.thumbnail((1600, 1600), Image.Resampling.BILINEAR)
+    pil_raw = Image.open(io.BytesIO(image_bytes))
+    orig_w, orig_h = pil_raw.size
+    # Composite alpha transparency onto crisp white background so transparent PNG QRs never vanish on black!
+    if pil_raw.mode in ("RGBA", "LA") or (pil_raw.mode == "P" and "transparency" in pil_raw.info):
+        rgba = pil_raw.convert("RGBA")
+        white_bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+        pil_img = Image.alpha_composite(white_bg, rgba).convert("RGB")
+    else:
+        pil_img = pil_raw.convert("RGB")
+
+    max_dim = max(pil_img.size)
+    if max_dim > 1500:
+        pil_img.thumbnail((1500, 1500), Image.Resampling.LANCZOS)
+    elif max_dim < 320:
+        scale = max(2, 420 // max(max_dim, 1))
+        pil_img = pil_img.resize((pil_img.width * scale, pil_img.height * scale), Image.Resampling.BICUBIC)
 
     rgb_np = np.array(pil_img)
-    bgr_np = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2BGR)
-    gray_np = cv2.cvtColor(bgr_np, cv2.COLOR_BGR2GRAY)
+    gray_np = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2GRAY)
+    # Add generous white quiet-zone border for screenshots cropped right against finder patterns
+    pad_gray = cv2.copyMakeBorder(gray_np, 32, 32, 32, 32, cv2.BORDER_CONSTANT, value=255)
+    inv_pad = cv2.copyMakeBorder(cv2.bitwise_not(gray_np), 32, 32, 32, 32, cv2.BORDER_CONSTANT, value=255)
 
     detector = cv2.QRCodeDetector()
 
+    def _try_mat(mat: Any, multi: bool = False) -> list[str]:
+        found: list[str] = []
+        try:
+            single, _, _ = detector.detectAndDecode(mat)
+            if single and single.strip():
+                found.append(_repair_qr_utf8(single.strip()))
+        except Exception:
+            pass
+        if multi:
+            try:
+                ok, texts, _, _ = detector.detectAndDecodeMulti(mat)
+                if ok and texts:
+                    for t in texts:
+                        if t and t.strip():
+                            clean_t = _repair_qr_utf8(t.strip())
+                            if clean_t not in found:
+                                found.append(clean_t)
+            except Exception:
+                pass
+        return found
+
     def _iter_candidates():
-        yield "original", bgr_np
-        yield "grayscale_autocontrast", np.array(ImageOps.autocontrast(pil_img.convert("L")))
-        yield "inverted", cv2.bitwise_not(gray_np)
-        yield "otsu_threshold", cv2.threshold(gray_np, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        if max(gray_np.shape) <= 900:
-            yield "upscaled_2x", cv2.resize(gray_np, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+        yield "fast_quiet_zone", pad_gray, False
+        yield "original_gray", gray_np, False
+        yield "inverted_dark_mode", inv_pad, False
+
+        otsu = cv2.threshold(pad_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        yield "otsu_binary", otsu, False
+
+        # Morphological erode on white-bg QR thickens dark dotted/diamond modules so OpenCV locks instantly
+        k3 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        yield "morph_dots_3x3", cv2.erode(otsu, k3, iterations=1), False
+
+        clahe = cv2.createCLAHE(clipLimit=2.8, tileGridSize=(8, 8)).apply(pad_gray)
+        yield "clahe_hdr", clahe, False
+
+        adapt = cv2.adaptiveThreshold(
+            clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 7
+        )
+        yield "adaptive_gaussian", adapt, False
+        yield "adaptive_inverted", cv2.adaptiveThreshold(
+            cv2.bitwise_not(clahe), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 7
+        ), False
+
+        blur = cv2.GaussianBlur(pad_gray, (0, 0), 2.0)
+        sharp = cv2.addWeighted(pad_gray, 1.8, blur, -0.8, 0)
+        yield "unsharp_focus", sharp, False
+
+        h, w = pad_gray.shape[:2]
+        if max(h, w) > 650:
+            small = cv2.resize(pad_gray, None, fx=0.6, fy=0.6, interpolation=cv2.INTER_AREA)
+            yield "downscale_multi", small, True
+        if max(h, w) < 950:
+            yield "upscale_1.8x", cv2.resize(pad_gray, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_CUBIC), False
+
+        yield "rotate_90", cv2.rotate(pad_gray, cv2.ROTATE_90_CLOCKWISE), False
+        yield "rotate_180", cv2.rotate(pad_gray, cv2.ROTATE_180), False
+        yield "rotate_270", cv2.rotate(pad_gray, cv2.ROTATE_90_COUNTERCLOCKWISE), False
+        yield "mirror_flip", cv2.flip(pad_gray, 1), False
 
     decoded_items: list[str] = []
-    used_method = "original"
+    used_method = "fast_quiet_zone"
 
-    for method_name, mat in _iter_candidates():
+    for method_name, mat, use_multi in _iter_candidates():
+        hits = _try_mat(mat, multi=use_multi)
+        if hits:
+            decoded_items = hits
+            used_method = method_name
+            break
+
+    # Fallback: 1D EAN/UPC barcode detector if image contains a retail barcode instead of QR
+    barcode_kind: str | None = None
+    if not decoded_items and hasattr(cv2, "barcode") and hasattr(cv2.barcode, "BarcodeDetector"):
         try:
-            ok, texts, _, _ = detector.detectAndDecodeMulti(mat)
-            if ok and texts:
-                valid = [t.strip() for t in texts if t and t.strip()]
-                if valid:
-                    decoded_items = valid
-                    used_method = method_name
-                    break
+            bd = cv2.barcode.BarcodeDetector()
+            res_bc = bd.detectAndDecode(rgb_np)
+            if isinstance(res_bc, tuple) and len(res_bc) >= 3:
+                decoded_info = res_bc[1] if isinstance(res_bc[0], bool) else res_bc[0]
+                decoded_types = res_bc[2] if isinstance(res_bc[0], bool) else res_bc[1]
+                if decoded_info:
+                    valid_bc = [str(x).strip() for x in decoded_info if x and str(x).strip()]
+                    if valid_bc:
+                        decoded_items = valid_bc
+                        barcode_kind = str(decoded_types[0]) if decoded_types else "EAN/UPC"
+                        used_method = f"barcode_{barcode_kind}"
         except Exception:
             pass
 
-        try:
-            single_text, _, _ = detector.detectAndDecode(mat)
-            if single_text and single_text.strip():
-                decoded_items = [single_text.strip()]
-                used_method = method_name
-                break
-        except Exception:
-            pass
+    elapsed_ms = round((_time.perf_counter() - t0) * 1000, 1)
 
     if not decoded_items:
         return {
             "found": False,
             "count": 0,
             "results": [],
+            "elapsed_ms": elapsed_ms,
             "image_size": f"{orig_w}×{orig_h}",
-            "message": "QR-код на изображении не обнаружен. Проверьте чёткость и контрастность картинки.",
+            "message": "Код не обнаружен после 17 оптических проходов. Убедитесь, что все 3 угловых квадрата QR видны в кадре.",
         }
 
     primary = decoded_items[0]
-    kind = "Ссылка (URL)" if primary.startswith(("http://", "https://")) else (
-        "Wi-Fi профиль" if primary.startswith("WIFI:") else (
-            "Визитка vCard" if "BEGIN:VCARD" in primary else "Текст / Данные"
-        )
-    )
+    inspection = inspect_qr_payload(primary)
+    kind = f"Штрих-код ({barcode_kind})" if barcode_kind else inspection["type"]
     return {
         "found": True,
         "count": len(decoded_items),
         "primary": primary,
         "results": decoded_items,
         "content_type": kind,
+        "inspection": inspection,
         "method": used_method,
+        "elapsed_ms": elapsed_ms,
         "image_size": f"{orig_w}×{orig_h}",
     }
 

@@ -237,6 +237,8 @@ def smart_parse_and_convert(query: str) -> dict[str, Any]:
         hint = "❄️ Мороз (ниже точки замерзания воды)" if c < 0 else ("🔥 Комнатная / тёплая температура" if c < 45 else "♨️ Горячая среда / духовка")
         return {
             "category": "temperature",
+            "value": round(val, 4),
+            "from_label": f"°{src_code}" if src_code != "K" else "K",
             "recognized_input": src_name,
             "parsed_display": src_name,
             "category_title": "🌡 Температура",
@@ -244,6 +246,7 @@ def smart_parse_and_convert(query: str) -> dict[str, Any]:
             "top_popular": others,
             "secondary": [],
             "real_world_hint": hint,
+            "fun_comparison": hint,
         }
 
     # 3. General number + unit phrase parser
@@ -253,7 +256,12 @@ def smart_parse_and_convert(query: str) -> dict[str, Any]:
 
     num = float(m.group(1))
     unit_phrase = m.group(2).strip().rstrip(".")
-    # Strip optional trailing "в ..." if user only wrote source unit, or check target
+    # Strip optional trailing "в км / to kg / in cm" target clause while preserving "в час / в сек"
+    unit_phrase = re.sub(
+        r"\s+(?:в|во|to|in|на)\s+(?!час\b|сек\w*\b|мин\w*\b)(.+)$",
+        "",
+        unit_phrase,
+    ).strip()
     unit_clean = re.sub(r"\s+", " ", unit_phrase)
 
     matched_cat_key: str | None = None
@@ -313,6 +321,8 @@ def smart_parse_and_convert(query: str) -> dict[str, Any]:
     rec_str = f"{_fmt_num(num)} {src_label}"
     return {
         "category": matched_cat_key,
+        "value": round(num, 6),
+        "from_label": src_label,
         "recognized_input": rec_str,
         "parsed_display": rec_str,
         "category_title": cat["title"],
@@ -320,4 +330,5 @@ def smart_parse_and_convert(query: str) -> dict[str, Any]:
         "top_popular": conversions[:3],
         "secondary": conversions[3:],
         "real_world_hint": hint,
+        "fun_comparison": hint,
     }

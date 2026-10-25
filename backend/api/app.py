@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -57,6 +57,10 @@ def create_app() -> FastAPI:
     app.include_router(routes_simulator.router)
     app.include_router(routes_admin.router)
     app.include_router(routes_v2.router)
+
+    @app.exception_handler(ValueError)
+    async def handle_unhandled_value_error(_request: Request, exc: ValueError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

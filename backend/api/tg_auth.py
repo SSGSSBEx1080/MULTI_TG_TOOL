@@ -21,6 +21,9 @@ _MAX_CACHE_ITEMS = 256
 def _parse_and_verify_init_data(init_data: str, bot_token: str) -> dict[str, Any] | None:
     if not init_data:
         return None
+    # Support outer encodeURIComponent() wrapper sent by browser fetch() for ByteString safety
+    if "=" not in init_data and "%3D" in init_data.upper():
+        init_data = unquote(init_data)
 
     now = time.monotonic()
     cache_key = (init_data, bot_token)
@@ -114,4 +117,5 @@ async def resolve_api_user(request: Request, fallback_id: int = DEFAULT_DEMO_USE
             await _ensure_user_cached(gid, username="", first_name="Гость", is_real=False)
             return gid
 
+    await _ensure_user_cached(fallback_id, username="", first_name="Гость", is_real=False)
     return fallback_id

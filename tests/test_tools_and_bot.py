@@ -232,8 +232,8 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         assert r.status_code == 200
         cat_res = await client.get("/api/tools/catalog")
         categories = cat_res.json()["categories"]
-        assert len(categories) == 17
-        assert sum(len(c["tools"]) for c in categories) == 81
+        assert len(categories) == 20
+        assert sum(len(c["tools"]) for c in categories) == 103
 
         # 2. Verify NO fake/demo users exist in Leaderboard initially
         top_initial = await client.get("/api/v2/social/leaderboard?sort_by=xp")
@@ -975,6 +975,121 @@ async def test_timbrica_activities_api_search_and_bot(tmp_path, monkeypatch) -> 
                 assert gif_r.content[:6] in (b"GIF89a", b"GIF87a")
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
+    from urllib.parse import quote
+    from PIL import ImageOps
+    from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
+
+    assert len(TOOL_CATEGORIES) == 20
+    assert len(TOOLS_BY_ID) >= 103
+
+    await db.init()
+    await bot_manager.init_simulator()
+    app = create_app()
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Regression check: intuitive search never raises KeyError: 'form' and resolves instant formulas/regions
+            for q in ("хуйня", "россия", "закон", "ip", "ислам", "10 миль в км", "H2SO4", "регион 116"):
+                sr = await client.get(f"/api/v2/search/intuitive?q={quote(q)}")
+                assert sr.status_code == 200, f"Intuitive search failed on {q}: {sr.text}"
+                body = sr.json()
+                assert isinstance(body["articles"], list)
+
+            h2so4 = (await client.get("/api/v2/search/intuitive?q=H2SO4")).json()
+            assert "98.07" in h2so4["instant"]["output"]
+
+            reg116 = (await client.get(f"/api/v2/search/intuitive?q={quote('регион 116')}")).json()
+            assert "Татарстан" in reg116["instant"]["title"]
+
+            # 2. Mixed hex + decimal power in calculator + URI-encoded Cyrillic initData header
+            cyr_hdr = {"X-Telegram-Init-Data": quote("user=%7B%22id%22%3A123%2C%22first_name%22%3A%22Сеня%22%7D&hash=bad")}
+            calc_r = await client.post(
+                "/api/tools/calc/eval",
+                json={"expression": "sqrt(2048 * 2) + (0xFF & 0x3C) + 2^10"},
+                headers=cyr_hdr,
+            )
+            assert calc_r.status_code == 200
+            assert calc_r.json()["result"] == 1148
+
+            # 3. All 8 QR builder modes + SVG output + dense vCard & inverted QR round-trip decode
+            for mode in ("text", "wifi", "vcard", "telegram", "whatsapp", "email", "geo", "crypto"):
+                qr_r = await client.post(
+                    "/api/tools/qr",
+                    json={
+                        "mode": mode,
+                        "data": "https://t.me/multi_tg_bot",
+                        "vcard_name": "Арсений Разработчик",
+                        "vcard_phone": "+79991234567",
+                        "vcard_telegram": "@QLSCENR",
+                        "theme": "cyber",
+                        "shape": "dots",
+                        "badge_text": "TG",
+                    },
+                )
+                assert qr_r.status_code == 200, f"QR failed on mode={mode}: {qr_r.text}"
+                qj = qr_r.json()
+                assert qj["svg_data_url"].startswith("data:image/svg+xml;base64,")
+                assert qj["contrast"]["safe"] is True
+
+                # Round-trip decode via /api/v2/qr/decode
+                import base64
+
+                png_raw = base64.b64decode(qj["image_data_url"].split(",", 1)[1])
+                dec_r = await client.post("/api/v2/qr/decode", files={"file": ("qr.png", png_raw, "image/png")})
+                assert dec_r.status_code == 200
+                dj = dec_r.json()
+                assert dj["found"] is True
+                assert dj["primary"].strip() == qj["payload"].strip()
+
+            # Adversarial inverted QR image decode
+            inv_im = ImageOps.invert(Image.open(io.BytesIO(png_raw)).convert("RGB"))
+            inv_buf = io.BytesIO()
+            inv_im.save(inv_buf, format="PNG")
+            inv_dec = await client.post("/api/v2/qr/decode", files={"file": ("inv.png", inv_buf.getvalue(), "image/png")})
+            assert inv_dec.status_code == 200 and inv_dec.json()["found"] is True
+
+            # 4. All v5 domain endpoints (Health, Auto/Travel, Finance, Periodic, Design, Dev)
+            assert (await client.post("/api/v2/v5/bmi-macros", json={"sex": "m", "age": 25, "height_cm": 180, "weight_kg": 76})).status_code == 200
+            assert (await client.post("/api/v2/v5/sleep-cycles", json={"mode": "wakeup", "time_hhmm": "07:30"})).status_code == 200
+            assert (await client.post("/api/v2/v5/workout-1rm", json={"weight_kg": 100, "reps": 5})).status_code == 200
+            assert (await client.post("/api/v2/v5/running-pace", json={"distance_km": 10, "time_minutes": 48})).status_code == 200
+            assert (await client.post("/api/v2/v5/fuel-trip", json={"distance_km": 500, "consumption_l_100": 8.0, "fuel_price": 62})).status_code == 200
+            assert (await client.post("/api/v2/v5/tires-compare", json={"old_spec": "205/55 R16", "new_spec": "215/60 R16"})).status_code == 200
+            assert (await client.get("/api/v2/v5/plate-codes?q=777")).json()["count"] >= 1
+            assert len((await client.get("/api/v2/v5/world-time?msk_hour=14")).json()["cities"]) >= 10
+            assert (await client.post("/api/v2/v5/finance-pro", json={"mode": "loan", "principal": 2000000, "annual_rate_pct": 16, "months": 36})).status_code == 200
+            assert (await client.post("/api/v2/v5/bill-split", json={"entries": [{"name": "A", "paid": 2000}, {"name": "B", "paid": 0}]})).json()["transfers"][0]["amount"] == 1000.0
+            assert (await client.get("/api/v2/v5/periodic-table?formula=C6H12O6")).json()["molar"]["molar_mass_g_mol"] == pytest.approx(180.156, rel=1e-2)
+            assert (await client.post("/api/v2/v5/color-harmony", json={"hex_color": "#0ea5e9"})).status_code == 200
+            assert (await client.get("/api/v2/v5/http-chmod?octal=750&q=404")).json()["chmod_symbolic"] == "-rwxr-x---"
+
+            # Optional demo fallback when file upload is omitted
+            assert (await client.post("/api/tools/image/exif")).status_code == 200
+            assert (await client.post("/api/tools/pdf/inspect")).status_code == 200
+
+            # 5. Verify EVERY registered category & tool opens cleanly in the Telegram Bot Simulator!
+            start_r = await client.post("/api/sim/send-text", json={"text": "/start"})
+            assert start_r.status_code == 200
+            mid = start_r.json()["messages"][-1]["message_id"]
+
+            for cat in TOOL_CATEGORIES:
+                cat_r = await client.post("/api/sim/callback", json={"message_id": mid, "callback_data": f"nav:cat:{cat['id']}"})
+                assert cat_r.status_code == 200, f"Category nav failed: {cat['id']}"
+                mid = cat_r.json()["messages"][-1]["message_id"]
+
+            for tid in TOOLS_BY_ID:
+                t_r = await client.post("/api/sim/callback", json={"message_id": mid, "callback_data": f"tool:open:{tid}"})
+                assert t_r.status_code == 200, f"Bot callback tool:open:{tid} failed: {t_r.text}"
+                msgs = t_r.json()["messages"]
+                assert len(msgs) >= 1 and msgs[-1]["text"], f"Empty bot response on tool:open:{tid}"
+                mid = msgs[-1]["message_id"]
+    finally:
+        await db.close()
+
 
 
 

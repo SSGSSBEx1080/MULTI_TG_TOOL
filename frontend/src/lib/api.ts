@@ -157,7 +157,8 @@ function buildAuthHeaders(extra?: Record<string, string>): Record<string, string
   const headers: Record<string, string> = { ...(extra || {}) };
   const tg = getTelegramWebApp();
   if (tg?.initData) {
-    headers['X-Telegram-Init-Data'] = tg.initData;
+    // Always ASCII-encode initData so non-Latin-1 code points in user names never crash browser fetch()
+    headers['X-Telegram-Init-Data'] = encodeURIComponent(tg.initData);
   } else {
     headers['X-Guest-Id'] = getOrCreateGuestId();
   }

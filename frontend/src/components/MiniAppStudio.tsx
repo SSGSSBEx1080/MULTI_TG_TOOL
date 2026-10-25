@@ -39,6 +39,31 @@ const AudioDeviceLabHub = lazy(() =>
   import('./tools/AudioDeviceLabHub').then((m) => ({ default: m.AudioDeviceLabHub }))
 );
 const BrainReflexHub = lazy(() => import('./tools/BrainReflexHub').then((m) => ({ default: m.BrainReflexHub })));
+const HealthWellnessHub = lazy(() =>
+  import('./tools/HealthWellnessHub').then((m) => ({ default: m.HealthWellnessHub }))
+);
+const AutoTravelHub = lazy(() => import('./tools/AutoTravelHub').then((m) => ({ default: m.AutoTravelHub })));
+const CreatorDesignHub = lazy(() =>
+  import('./tools/CreatorDesignHub').then((m) => ({ default: m.CreatorDesignHub }))
+);
+const PeriodicTableStudio = lazy(() =>
+  import('./tools/SubToolsExpansionV5').then((m) => ({ default: m.PeriodicTableStudio }))
+);
+const BillSplitterStudio = lazy(() =>
+  import('./tools/SubToolsExpansionV5').then((m) => ({ default: m.BillSplitterStudio }))
+);
+const HttpChmodStudio = lazy(() =>
+  import('./tools/SubToolsExpansionV5').then((m) => ({ default: m.HttpChmodStudio }))
+);
+const MarkdownTableStudio = lazy(() =>
+  import('./tools/SubToolsExpansionV5').then((m) => ({ default: m.MarkdownTableStudio }))
+);
+const TournamentBracketStudio = lazy(() =>
+  import('./tools/SubToolsExpansionV5').then((m) => ({ default: m.TournamentBracketStudio }))
+);
+const MinesweeperProStudio = lazy(() =>
+  import('./tools/SubToolsExpansionV5').then((m) => ({ default: m.MinesweeperProStudio }))
+);
 
 interface Props {
   isNativeTma?: boolean;
@@ -143,34 +168,49 @@ export const MiniAppStudio: React.FC<Props> = ({
     if (!q) return;
     setQuickBusy(true);
     try {
-      try {
-        const u = await apiPost('/api/v2/units/smart', { query: q });
-        const topConv = (u.conversions || [])
-          .slice(0, 3)
-          .map((c: any) => `${c.formatted} ${c.unit}`)
-          .join(' • ');
-        setQuickRes({
-          kind: 'Конвертер величин',
-          title: `${u.value} ${u.from_label}`,
-          output: topConv + (u.fun_comparison ? ` (${u.fun_comparison})` : ''),
-        });
-        onRefreshWorkspace();
-        return;
-      } catch {
-        // fallback to intuitive + omni
+      if (/^[+-]?\d/.test(q)) {
+        try {
+          const u = await apiPost('/api/v2/units/smart', { query: q });
+          const topConv = (u.conversions || [])
+            .slice(0, 3)
+            .map((c: any) => `${c.formatted} ${c.unit}`)
+            .join(' • ');
+          const disp = u.parsed_display || u.recognized_input || `${u.value ?? ''} ${u.from_label ?? ''}`.trim() || q;
+          const hint = u.real_world_hint || u.fun_comparison || '';
+          setQuickRes({
+            kind: 'Конвертер величин',
+            title: disp,
+            output: topConv + (hint ? ` (${hint})` : ''),
+          });
+          onRefreshWorkspace();
+          return;
+        } catch {
+          // Not a unit phrase (e.g. math expression or IP/subnet) — continue cleanly
+        }
       }
 
       try {
         const r = await apiPost('/api/tools/omni', { text: q });
-        setQuickRes({ kind: r.kind, title: r.title, output: r.output });
-        onRefreshWorkspace();
-        return;
+        if (r && r.kind && r.kind !== 'text' && r.kind !== 'empty' && r.output) {
+          setQuickRes({ kind: r.kind, title: r.title, output: r.output });
+          onRefreshWorkspace();
+          return;
+        }
       } catch {
         // fallback to intuitive encyclopedia search
       }
 
       const ir = await apiGet(`/api/v2/search/intuitive?q=${encodeURIComponent(q)}`);
       setIntuitiveRes(ir);
+      if (ir?.instant?.output) {
+        setQuickRes(ir.instant);
+      } else if (ir?.articles?.length) {
+        setQuickRes({
+          kind: ir.articles[0].kind || 'Энциклопедия',
+          title: ir.articles[0].title,
+          output: ir.articles[0].snippet || '',
+        });
+      }
     } catch (err: any) {
       onToast(err.message || 'Запрос обработан');
     } finally {
@@ -352,6 +392,60 @@ export const MiniAppStudio: React.FC<Props> = ({
     }
     if (activeCategory === 'brain_reflex') {
       return <BrainReflexHub activeTool={activeTool} onSync={onRefreshWorkspace} onToast={onToast} />;
+    }
+    if (activeCategory === 'health') {
+      return (
+        <HealthWellnessHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('health', t)}
+          favorites={favorites}
+          onToggleFav={onToggleFav}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'auto_travel') {
+      return (
+        <AutoTravelHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('auto_travel', t)}
+          favorites={favorites}
+          onToggleFav={onToggleFav}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'creator_design') {
+      return (
+        <CreatorDesignHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('creator_design', t)}
+          favorites={favorites}
+          onToggleFav={onToggleFav}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeTool === 'periodic_table') {
+      return <PeriodicTableStudio onToast={onToast} />;
+    }
+    if (activeTool === 'bill_splitter') {
+      return <BillSplitterStudio onSync={onRefreshWorkspace} onToast={onToast} />;
+    }
+    if (activeTool === 'http_chmod_lab') {
+      return <HttpChmodStudio onToast={onToast} />;
+    }
+    if (activeTool === 'markdown_table_fmt') {
+      return <MarkdownTableStudio onToast={onToast} />;
+    }
+    if (activeTool === 'tournament_bracket') {
+      return <TournamentBracketStudio />;
+    }
+    if (activeTool === 'minesweeper_pro') {
+      return <MinesweeperProStudio onToast={onToast} />;
     }
     if (activeCategory === 'qr' || activeCategory === 'image' || activeCategory === 'pdf') {
       return (

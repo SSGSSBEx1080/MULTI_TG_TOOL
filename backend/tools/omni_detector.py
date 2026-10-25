@@ -46,7 +46,54 @@ def _looks_like_wrong_layout(text: str) -> str | None:
     return None
 
 
+def _summarize_omni_output(payload: dict[str, Any]) -> dict[str, Any]:
+    kind = payload.get("kind", "")
+    res = payload.get("result") or {}
+    out = ""
+    if kind == "math":
+        bases = res.get("bases") or {}
+        extra = f" ({bases['hex']})" if bases.get("hex") else ""
+        out = f"= {res.get('formatted', res.get('result', ''))}{extra}"
+    elif kind == "smart_unit":
+        convs = res.get("conversions") or []
+        out = " • ".join(f"{c['formatted']} {c['unit']}" for c in convs[:3])
+    elif kind == "subnet":
+        out = f"Сеть {res.get('network_address', '')} • Хостов: {res.get('usable_hosts', '')} ({res.get('first_host', '')} — {res.get('last_host', '')})"
+    elif kind == "layout_fix":
+        out = f"→ {res.get('fixed', '')}"
+    elif kind == "rhyme":
+        all_rh = (res.get("exact") or []) + (res.get("assonance") or [])
+        out = ", ".join(all_rh[:8])
+    elif kind == "population":
+        places = res.get("places") or []
+        if places:
+            out = f"{places[0]['name']}: {places[0]['formatted_pop']} чел."
+        else:
+            out = f"Земля: {res.get('live_earth_population', '')}"
+    elif kind == "cron":
+        out = str(res.get("human_ru") or res.get("description") or "")
+    elif kind == "hash":
+        out = ", ".join(res.get("algorithms") or [])
+    elif kind == "jwt":
+        hdr = res.get("header") or {}
+        out = f"alg={hdr.get('alg', '?')} • valid_json={res.get('valid_structure', True)}"
+    elif kind == "json":
+        out = f"Элементов верхнего уровня: {res.get('items', 1)}"
+    elif kind == "url_payload":
+        out = str(res.get("summary") or res.get("raw") or "")
+    elif kind == "nx1_cipher":
+        out = str(payload.get("hint") or "AES-256-GCM контейнер")
+    elif kind == "text":
+        out = f"Символов: {res.get('chars', 0)} • Слов: {res.get('words', 0)}"
+    payload["output"] = out
+    return payload
+
+
 def smart_omni_detect(text: str) -> dict[str, Any]:
+    return _summarize_omni_output(_smart_omni_detect_inner(text))
+
+
+def _smart_omni_detect_inner(text: str) -> dict[str, Any]:
     raw = (text or "").strip()
     if not raw:
         return {"kind": "empty", "title": "Пустой ввод", "result": {}}
