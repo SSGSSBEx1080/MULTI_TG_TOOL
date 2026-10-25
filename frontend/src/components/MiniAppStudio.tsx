@@ -8,7 +8,6 @@ import {
   UserProfile,
   apiPost,
   copyText,
-  getTelegramWebApp,
 } from '../lib/api';
 
 const VisualMediaHub = lazy(() => import('./tools/VisualMediaHub').then((m) => ({ default: m.VisualMediaHub })));
@@ -28,6 +27,7 @@ const HoroscopeHub = lazy(() => import('./tools/HoroscopeHub').then((m) => ({ de
 const PhysicsHub = lazy(() => import('./tools/PhysicsHub').then((m) => ({ default: m.PhysicsHub })));
 
 interface Props {
+  isNativeTma?: boolean;
   categories: ToolCategory[];
   activeCategory: string;
   activeTool: string;
@@ -47,6 +47,7 @@ interface Props {
 }
 
 export const MiniAppStudio: React.FC<Props> = ({
+  isNativeTma = false,
   categories,
   activeCategory,
   activeTool,
@@ -76,31 +77,6 @@ export const MiniAppStudio: React.FC<Props> = ({
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
     topAnchorRef.current?.scrollIntoView({ block: 'start' });
   }, [activeCategory, mobileDrillOpen]);
-
-  // Wire native Telegram BackButton on mobile drill-down
-  useEffect(() => {
-    const tg = getTelegramWebApp();
-    const bb = tg?.BackButton;
-    if (!bb) return;
-
-    const handleBack = () => {
-      onBackToCategories();
-    };
-
-    if (mobileDrillOpen && window.innerWidth < 1024) {
-      bb.show();
-      bb.onClick(handleBack);
-    } else {
-      bb.hide();
-    }
-    return () => {
-      try {
-        bb.offClick(handleBack);
-      } catch {
-        // ignore
-      }
-    };
-  }, [mobileDrillOpen, onBackToCategories]);
 
   const runQuickBar = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -137,10 +113,24 @@ export const MiniAppStudio: React.FC<Props> = ({
 
   const renderActiveHubInner = () => {
     if (activeCategory === 'horoscope') {
-      return <HoroscopeHub activeTool={activeTool} onToast={onToast} />;
+      return (
+        <HoroscopeHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('horoscope', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
     }
     if (activeCategory === 'physics') {
-      return <PhysicsHub activeTool={activeTool} onToast={onToast} />;
+      return (
+        <PhysicsHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('physics', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
     }
     if (activeCategory === 'qr' || activeCategory === 'image' || activeCategory === 'pdf') {
       return (
@@ -244,13 +234,13 @@ export const MiniAppStudio: React.FC<Props> = ({
     .filter(Boolean) as { id: string; title: string; emoji: string; catId: string }[];
 
   return (
-    <div ref={topAnchorRef} className="w-full max-w-[1440px] mx-auto px-3 sm:px-5 pt-3 pb-20 lg:pb-8">
+    <div ref={topAnchorRef} className="w-full max-w-[1440px] mx-auto px-3 sm:px-5 pt-3 pb-24 lg:pb-8 min-w-0">
       {/* =====================================================================
           DESKTOP LAYOUT (>= 1024px): Sidebar + Immediate Workspace (No Scroll)
           ===================================================================== */}
       <div className="hidden lg:grid lg:grid-cols-12 lg:gap-5 items-start">
         {/* Left Sidebar */}
-        <aside className="col-span-3 sticky top-16 rounded-2xl bg-slate-900/85 border border-white/10 p-3 space-y-3 max-h-[calc(100vh-5rem)] overflow-y-auto">
+        <aside className={`col-span-3 sticky ${isNativeTma ? 'top-3 max-h-[calc(100vh-1.5rem)]' : 'top-16 max-h-[calc(100vh-5rem)]'} rounded-2xl bg-slate-900/85 border border-white/10 p-3 space-y-3 overflow-y-auto`}>
           {profile && (
             <div className="px-2.5 py-2 rounded-xl bg-slate-950/80 border border-white/5 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -519,22 +509,26 @@ export const MiniAppStudio: React.FC<Props> = ({
           </>
         ) : (
           /* LEVEL 2: IMMEDIATE TOOL VIEW AT TOP OF SCREEN */
-          <div className="space-y-3">
+          <div className="space-y-3 min-w-0">
             {/* Sticky Back Header + Horizontal Tool Switcher */}
-            <div className="sticky top-0 z-20 -mx-3 px-3 py-2.5 bg-[#080c16]/95 backdrop-blur-md border-b border-white/10 space-y-2">
-              <div className="flex items-center justify-between gap-2">
+            <div
+              className={`sticky ${isNativeTma ? 'top-0' : 'top-12'} z-20 -mx-3 px-3 py-2.5 bg-[#080c16]/95 backdrop-blur-md border-b border-white/10 space-y-2`}
+            >
+              <div className="flex items-center justify-between gap-2 min-w-0">
                 <button
+                  type="button"
                   onClick={onBackToCategories}
                   className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white flex items-center gap-1.5 shrink-0"
                 >
                   <ArrowLeft className="w-4 h-4" /> Разделы
                 </button>
                 {currentCat && (
-                  <div className="text-xs sm:text-sm font-bold text-white truncate">
+                  <div className="text-xs sm:text-sm font-bold text-white truncate min-w-0">
                     {currentCat.emoji} {currentCat.title}
                   </div>
                 )}
                 <button
+                  type="button"
                   onClick={() => onToggleFav(activeTool)}
                   className={`p-2 rounded-xl border transition shrink-0 ${
                     favorites.includes(activeTool)
@@ -554,6 +548,7 @@ export const MiniAppStudio: React.FC<Props> = ({
                     return (
                       <button
                         key={t.id}
+                        type="button"
                         onClick={() => onSelectTool(currentCat.id, t.id)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap border transition shrink-0 ${
                           isAct
@@ -570,12 +565,12 @@ export const MiniAppStudio: React.FC<Props> = ({
             </div>
 
             {/* Active Tool Immediately Visible */}
-            <div>{renderActiveHub()}</div>
+            <div className="min-w-0">{renderActiveHub()}</div>
           </div>
         )}
 
         {/* Mobile Bottom Navigation Bar */}
-        <nav className="fixed bottom-0 inset-x-0 z-30 bg-[#0a101f]/95 backdrop-blur-lg border-t border-white/10 px-2 py-1.5 grid grid-cols-5 gap-1">
+        <nav className="fixed bottom-0 inset-x-0 z-30 bg-[#0a101f]/95 backdrop-blur-lg border-t border-white/10 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] grid grid-cols-5 gap-1">
           <button
             onClick={onBackToCategories}
             className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${

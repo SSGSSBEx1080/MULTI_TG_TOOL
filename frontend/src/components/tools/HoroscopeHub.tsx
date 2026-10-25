@@ -4,6 +4,8 @@ import { apiGet, apiPost, copyText } from '../../lib/api';
 
 interface Props {
   activeTool: string;
+  onSelectTool?: (t: string) => void;
+  onSync?: () => void;
   onToast: (msg: string) => void;
 }
 
@@ -20,7 +22,7 @@ interface ZodiacSign {
   best_matches: string[];
 }
 
-export const HoroscopeHub: React.FC<Props> = ({ activeTool, onToast }) => {
+export const HoroscopeHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
   const [subTab, setSubTab] = useState<'horoscope' | 'birth' | 'compat'>('horoscope');
   const [signs, setSigns] = useState<ZodiacSign[]>([]);
 
@@ -84,6 +86,7 @@ export const HoroscopeHub: React.FC<Props> = ({ activeTool, onToast }) => {
     try {
       const r = await apiPost('/api/v2/astrology/birth', { date: query });
       setBirthRes(r);
+      onSync?.();
     } catch (e: any) {
       onToast(e.message || 'Неверный формат даты');
     } finally {
@@ -107,6 +110,7 @@ export const HoroscopeHub: React.FC<Props> = ({ activeTool, onToast }) => {
         name2,
       });
       setCompatRes(r);
+      onSync?.();
     } catch (e: any) {
       onToast(e.message || 'Ошибка расчёта совместимости');
     } finally {
@@ -115,18 +119,22 @@ export const HoroscopeHub: React.FC<Props> = ({ activeTool, onToast }) => {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Sub-navigation */}
-      <div className="grid grid-cols-3 gap-1.5 bg-slate-900/80 p-1 rounded-xl border border-white/10">
+    <div className="space-y-4 min-w-0">
+      {/* Sub-navigation (Desktop only — mobile already has sticky sub-tool strip) */}
+      <div className="hidden lg:grid grid-cols-3 gap-1.5 bg-slate-900/80 p-1 rounded-xl border border-white/10">
         {[
-          { id: 'horoscope', label: '🔮 Гороскоп' },
-          { id: 'birth', label: '♈ По дате' },
-          { id: 'compat', label: '💞 Совместимость' },
+          { id: 'horoscope', tool: 'daily_horoscope', label: '🔮 Гороскоп' },
+          { id: 'birth', tool: 'zodiac_info', label: '♈ По дате' },
+          { id: 'compat', tool: 'compat_calc', label: '💞 Совместимость' },
         ].map((t) => (
           <button
             key={t.id}
-            onClick={() => setSubTab(t.id as any)}
-            className={`py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition ${
+            type="button"
+            onClick={() => {
+              setSubTab(t.id as any);
+              onSelectTool?.(t.tool);
+            }}
+            className={`py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition truncate ${
               subTab === t.id
                 ? 'bg-purple-600 text-white shadow'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
@@ -271,7 +279,7 @@ export const HoroscopeHub: React.FC<Props> = ({ activeTool, onToast }) => {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2.5">
+          <div className="flex flex-col sm:flex-row gap-2.5 min-w-0">
             <input
               type="date"
               value={birthInput.includes('-') ? birthInput : ''}
@@ -279,16 +287,18 @@ export const HoroscopeHub: React.FC<Props> = ({ activeTool, onToast }) => {
                 setBirthInput(e.target.value);
                 if (e.target.value) runBirthAnalysis(e.target.value);
               }}
-              className="px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-sm text-white focus:outline-none focus:border-purple-400"
+              className="w-full sm:w-auto min-w-0 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-sm text-white focus:outline-none focus:border-purple-400"
             />
             <input
               type="text"
               value={birthInput}
               onChange={(e) => setBirthInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && runBirthAnalysis()}
               placeholder="Например: 15.05.2002"
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-sm text-white focus:outline-none focus:border-purple-400"
+              className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-sm text-white focus:outline-none focus:border-purple-400"
             />
             <button
+              type="button"
               onClick={() => runBirthAnalysis()}
               disabled={loadingBirth}
               className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold transition disabled:opacity-50"
@@ -312,9 +322,11 @@ export const HoroscopeHub: React.FC<Props> = ({ activeTool, onToast }) => {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => {
                     setSelectedSign(birthRes.sign.id);
                     setSubTab('horoscope');
+                    onSelectTool?.('daily_horoscope');
                   }}
                   className="px-3 py-1.5 rounded-lg bg-purple-600/25 border border-purple-400/40 text-purple-200 text-xs font-medium hover:bg-purple-600/40 transition"
                 >

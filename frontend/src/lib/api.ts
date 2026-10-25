@@ -94,6 +94,7 @@ export interface SimMessage {
 interface TgWebApp {
   initData?: string;
   initDataUnsafe?: {
+    start_param?: string;
     user?: {
       id: number;
       first_name?: string;

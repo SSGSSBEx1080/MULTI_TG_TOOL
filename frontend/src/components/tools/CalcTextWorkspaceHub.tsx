@@ -155,9 +155,25 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   // HUB 6: SMART CALC, UNITS, FINANCE & SUBNET
   // =========================================================================
   if (activeCategory === 'calc') {
+    const finLabels: Record<string, string> = {
+      final_balance: 'Итоговая сумма',
+      total_invested: 'Внесено средств',
+      interest_earned: 'Начислено процентов',
+      effective_yield_pct: 'Доходность (%)',
+      monthly_payment: 'Ежемесячный платёж',
+      total_payout: 'Общая выплата',
+      total_interest: 'Переплата по кредиту',
+      overpayment_pct: 'Переплата (%)',
+      subtotal: 'Сумма чека',
+      tip_amount: 'Чаевые',
+      total_with_tip: 'Итого с чаевыми',
+      per_person: 'С каждого человека',
+      people_count: 'Человек',
+    };
+
     return (
-      <div className="space-y-5">
-        <div className="flex flex-wrap gap-2">
+      <div className="space-y-5 min-w-0">
+        <div className="hidden lg:flex flex-wrap gap-2">
           {[
             { id: 'smart_units', tool: 'smart_units', label: '🔮 Авто-Конвертер («6 дюймов»)' },
             { id: 'math', tool: 'smart_calc', label: '📐 Научный & Bitwise' },
@@ -407,8 +423,8 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
         )}
 
         {calcTab === 'finance' && (
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
-            <div className="flex gap-2">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5 space-y-4">
+            <div className="flex flex-wrap gap-2">
               {[
                 { id: 'compound', label: '💎 Сложный процент (Вклад)' },
                 { id: 'loan', label: '🏦 Кредит (Аннуитет)' },
@@ -528,9 +544,11 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
                 {Object.entries(finRes)
                   .filter(([k]) => k !== 'mode')
                   .map(([k, v]) => (
-                    <div key={k}>
-                      <div className="text-slate-400">{k}</div>
-                      <div className="font-mono text-base font-bold text-emerald-300">{String(v)}</div>
+                    <div key={k} className="min-w-0">
+                      <div className="text-slate-400 truncate">{finLabels[k] || k}</div>
+                      <div className="font-mono text-sm sm:text-base font-bold text-emerald-300 break-words">
+                        {typeof v === 'number' ? v.toLocaleString('ru-RU') : String(v)}
+                      </div>
                     </div>
                   ))}
               </div>
@@ -570,7 +588,7 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
                 <div><span className="text-slate-400">Маска:</span> <div className="font-mono text-sky-300">{subRes.netmask}</div></div>
                 <div><span className="text-slate-400">Доступно хостов:</span> <div className="font-mono text-emerald-300 font-bold">{subRes.usable_hosts}</div></div>
                 <div className="col-span-2"><span className="text-slate-400">Диапазон:</span> <div className="font-mono text-white">{subRes.first_host} — {subRes.last_host}</div></div>
-                <div className="col-span-full"><span className="text-slate-400">Бинарная маска:</span> <div className="font-mono text-indigo-300">{subRes.binary_netmask}</div></div>
+                <div className="col-span-full"><span className="text-slate-400">Бинарная маска:</span> <div className="font-mono text-indigo-300 break-all">{subRes.binary_netmask}</div></div>
               </div>
             )}
           </div>
@@ -584,8 +602,8 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   // =========================================================================
   if (activeCategory === 'text') {
     return (
-      <div className="space-y-5">
-        <div className="flex flex-wrap gap-2">
+      <div className="space-y-5 min-w-0">
+        <div className="hidden lg:flex flex-wrap gap-2">
           {[
             { id: 'rhyme', tool: 'rhyme_gen', label: '🎤 Генератор Рифм' },
             { id: 'layout', tool: 'layout_fixer', label: '⌨️ Раскладка Ghbdtn→Привет' },
@@ -863,8 +881,8 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
         )}
 
         {txtTab === 'random' && (
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
-            <div className="flex gap-2">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5 space-y-4">
+            <div className="flex flex-wrap gap-2">
               {[
                 { id: 'dice', label: '🎲 Бросок кубиков (NdM+K)' },
                 { id: 'teams', label: '👥 Разделить на команды' },
@@ -1047,8 +1065,14 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
     return `${names[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}`;
   };
 
+  const noteTagLabels: Record<string, string> = {
+    general: 'Общее',
+    work: 'Работа',
+    ideas: 'Идеи',
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       {/* Sub-tabs */}
       <div className="grid grid-cols-3 gap-1.5 bg-slate-900/80 p-1 rounded-xl border border-white/10">
         {[
@@ -1058,11 +1082,12 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
         ].map((t) => (
           <button
             key={t.id}
+            type="button"
             onClick={() => {
               setWsTab(t.id as any);
               onSelectTool(t.tool);
             }}
-            className={`py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition ${
+            className={`py-2 px-1.5 rounded-lg text-[11px] sm:text-sm font-medium transition truncate ${
               wsTab === t.id
                 ? 'bg-emerald-600 text-white shadow'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -1164,18 +1189,19 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
                   </div>
 
                   {/* 7-day interactive grid */}
-                  <div className="grid grid-cols-7 gap-1.5">
+                  <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
                     {h.last_7_days.map((cell) => (
                       <button
                         key={cell.date}
+                        type="button"
                         onClick={() => toggleHabitDay(h.id, cell.date)}
-                        className={`py-1.5 px-1 rounded-lg border text-center transition ${
+                        className={`py-1.5 px-0.5 sm:px-1 rounded-lg border text-center transition min-w-0 ${
                           cell.completed
                             ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200 font-semibold'
                             : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/20'
                         }`}
                       >
-                        <div className="text-[10px] leading-tight">{formatShortDay(cell.date)}</div>
+                        <div className="text-[9px] sm:text-[10px] leading-tight truncate">{formatShortDay(cell.date)}</div>
                         <div className="text-xs mt-0.5">{cell.completed ? '✓' : '·'}</div>
                       </button>
                     ))}
@@ -1338,15 +1364,24 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
               notes.map((n) => (
                 <div key={n.id} className="p-3.5 rounded-xl bg-slate-950 border border-white/10 space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="font-semibold text-sm text-white flex items-center gap-1.5">
-                      {n.pinned === 1 && <span className="text-amber-400">📌</span>}
-                      {n.title}
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300">
-                        {n.tag}
+                    <div className="font-semibold text-sm text-white flex items-center gap-1.5 min-w-0">
+                      {n.pinned === 1 && <span className="text-amber-400 shrink-0">📌</span>}
+                      <span className="truncate">{n.title}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300 shrink-0">
+                        {noteTagLabels[n.tag] || n.tag}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
+                        type="button"
+                        onClick={() => copyText(`${n.title}\n${n.content}`, onToast)}
+                        className="px-2 py-1 rounded text-[11px] text-slate-400 hover:text-white hover:bg-white/5"
+                        title="Скопировать"
+                      >
+                        Коп.
+                      </button>
+                      <button
+                        type="button"
                         onClick={() =>
                           apiPost(`/api/workspace/notes/${n.id}/pin`, {})
                             .then(onRefreshWorkspace)
@@ -1358,6 +1393,7 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
                         <Pin className="w-4 h-4" />
                       </button>
                       <button
+                        type="button"
                         onClick={() =>
                           apiDelete(`/api/workspace/notes/${n.id}`)
                             .then(onRefreshWorkspace)
@@ -1370,7 +1406,7 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
                       </button>
                     </div>
                   </div>
-                  <p className="text-xs sm:text-sm text-slate-300 whitespace-pre-wrap">{n.content}</p>
+                  <p className="text-xs sm:text-sm text-slate-300 whitespace-pre-wrap break-words">{n.content}</p>
                 </div>
               ))
             )}

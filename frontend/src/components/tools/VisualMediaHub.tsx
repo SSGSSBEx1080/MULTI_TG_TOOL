@@ -89,6 +89,7 @@ export const VisualMediaHub: React.FC<Props> = ({
   onToast,
 }) => {
   // --- QR & Barcode State ---
+  const [qrSubTab, setQrSubTab] = useState<'designer' | 'barcode' | 'scanner' | 'links'>('designer');
   const [qrMode, setQrMode] = useState<'text' | 'wifi' | 'vcard'>('text');
   const [qrData, setQrData] = useState('https://t.me/multi_tg_bot');
   const [qrTheme, setQrTheme] = useState('cyber');
@@ -194,9 +195,22 @@ export const VisualMediaHub: React.FC<Props> = ({
   };
 
   useEffect(() => {
-    if (activeTool === 'wifi_qr') setQrMode('wifi');
-    else if (activeTool === 'vcard_qr') setQrMode('vcard');
-    else if (activeTool === 'qr_studio') setQrMode('text');
+    if (activeTool === 'barcode_gen') {
+      setQrSubTab('barcode');
+    } else if (activeTool === 'qr_scanner') {
+      setQrSubTab('scanner');
+    } else if (activeTool === 'url_transformer') {
+      setQrSubTab('links');
+    } else if (activeTool === 'wifi_qr') {
+      setQrSubTab('designer');
+      setQrMode('wifi');
+    } else if (activeTool === 'vcard_qr') {
+      setQrSubTab('designer');
+      setQrMode('vcard');
+    } else if (activeTool === 'qr_studio') {
+      setQrSubTab('designer');
+      setQrMode('text');
+    }
 
     if (activeTool === 'stego_lab') setImgSubTab('stego');
     else if (activeTool === 'code_card') setImgSubTab('code');
@@ -443,45 +457,55 @@ export const VisualMediaHub: React.FC<Props> = ({
   // HUB 1: QR & BARCODES
   // =========================================================================
   if (activeCategory === 'qr') {
-    const isFav = favorites.includes('qr_studio');
+    const isFav = favorites.includes(activeTool || 'qr_studio');
     return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          {/* Controls */}
-          <div className="lg:col-span-7 rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <QrCode className="w-5 h-5 text-sky-400" />
-                <h3 className="font-semibold text-white">Дизайнер Градиентных QR-кодов</h3>
-              </div>
-              <button
-                onClick={() => onToggleFav('qr_studio')}
-                className={`text-xs px-2.5 py-1 rounded-lg border transition ${
-                  isFav ? 'bg-amber-500/20 text-amber-300 border-amber-400/40' : 'bg-white/5 text-slate-400 border-white/10'
-                }`}
-              >
-                {isFav ? '★ В избранном' : '☆ В избранное'}
-              </button>
-            </div>
-
-            {/* Mode Switch */}
-            <div className="grid grid-cols-3 gap-2 p-1 rounded-xl bg-slate-950/70 border border-white/10">
-              {[
-                { id: 'text', label: '🔗 Ссылка / Текст' },
-                { id: 'wifi', label: '📶 Wi-Fi сеть' },
-                { id: 'vcard', label: '🪪 Визитка vCard' },
-              ].map((t) => (
+      <div className="space-y-5 min-w-0">
+        {qrSubTab === 'designer' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Controls */}
+            <div className="lg:col-span-7 rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5 space-y-4 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <QrCode className="w-5 h-5 text-sky-400 shrink-0" />
+                  <h3 className="font-semibold text-sm sm:text-base text-white truncate">
+                    Дизайнер Градиентных QR-кодов
+                  </h3>
+                </div>
                 <button
-                  key={t.id}
-                  onClick={() => setQrMode(t.id as any)}
-                  className={`py-2 rounded-lg text-xs font-medium transition ${
-                    qrMode === t.id ? 'bg-sky-500 text-slate-950 font-semibold' : 'text-slate-300 hover:bg-white/5'
+                  type="button"
+                  onClick={() => onToggleFav(activeTool || 'qr_studio')}
+                  className={`text-xs px-2.5 py-1 rounded-lg border transition shrink-0 ${
+                    isFav
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                      : 'bg-white/5 text-slate-400 border-white/10'
                   }`}
                 >
-                  {t.label}
+                  {isFav ? '★ В избранном' : '☆ В избранное'}
                 </button>
-              ))}
-            </div>
+              </div>
+
+              {/* Mode Switch */}
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2 p-1 rounded-xl bg-slate-950/70 border border-white/10">
+                {[
+                  { id: 'text', tool: 'qr_studio', label: '🔗 Ссылка / Текст' },
+                  { id: 'wifi', tool: 'wifi_qr', label: '📶 Wi-Fi сеть' },
+                  { id: 'vcard', tool: 'vcard_qr', label: '🪪 Визитка vCard' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setQrMode(t.id as any);
+                      onSelectTool(t.tool);
+                    }}
+                    className={`py-2 px-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition truncate ${
+                      qrMode === t.id ? 'bg-sky-500 text-slate-950 font-semibold' : 'text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
 
             {qrMode === 'text' && (
               <div>
@@ -583,7 +607,7 @@ export const VisualMediaHub: React.FC<Props> = ({
                   value={qrBadge}
                   onChange={(e) => setQrBadge(e.target.value)}
                   maxLength={6}
-                  placeholder="NX"
+                  placeholder="MT"
                   className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
                 />
               </div>
@@ -636,9 +660,11 @@ export const VisualMediaHub: React.FC<Props> = ({
             )}
           </div>
         </div>
+        )}
 
         {/* Barcode Generator Card */}
-        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5">
+        {qrSubTab === 'barcode' && (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5">
           <h4 className="text-sm font-semibold text-white mb-3">🏷️ Генератор Товарных и Складских Штрихкодов (Code128 / EAN-13)</h4>
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
             <div className="md:col-span-5">
@@ -646,6 +672,7 @@ export const VisualMediaHub: React.FC<Props> = ({
               <input
                 value={bcVal}
                 onChange={(e) => setBcVal(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && generateBarcode()}
                 className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
               />
             </div>
@@ -662,8 +689,10 @@ export const VisualMediaHub: React.FC<Props> = ({
             </div>
             <div className="md:col-span-4">
               <button
+                type="button"
                 onClick={generateBarcode}
-                className="w-full py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40 text-sm font-medium transition"
+                disabled={busy}
+                className="w-full py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-sm font-semibold transition"
               >
                 Создать штрихкод PNG
               </button>
@@ -671,8 +700,8 @@ export const VisualMediaHub: React.FC<Props> = ({
           </div>
           {bcResult && (
             <div className="mt-4 space-y-3 p-3 rounded-xl bg-slate-950 border border-white/10">
-              <div className="p-2 rounded-lg bg-white inline-block">
-                <img src={bcResult.image_data_url} alt="Barcode" className="max-h-28 object-contain" />
+              <div className="p-2 rounded-lg bg-white inline-block max-w-full overflow-hidden">
+                <img src={bcResult.image_data_url} alt="Barcode" className="max-h-28 w-auto max-w-full object-contain" />
               </div>
               <FileActionRow
                 downloadUrl={bcResult.download_url}
@@ -684,12 +713,12 @@ export const VisualMediaHub: React.FC<Props> = ({
             </div>
           )}
         </div>
+        )}
 
-        {/* v2: QR Image Scanner + URL Shortener / Lengthener */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* QR Reader */}
-          <div className="rounded-2xl border border-sky-400/25 bg-slate-900/75 p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
+        {/* v2: QR Image Scanner */}
+        {qrSubTab === 'scanner' && (
+          <div className="rounded-2xl border border-sky-400/25 bg-slate-900/75 p-4 sm:p-5 space-y-3.5 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-sm font-semibold text-white flex items-center gap-2">
                 📷 Сканер и Расшифровка QR по Картинке
               </h4>
@@ -698,9 +727,9 @@ export const VisualMediaHub: React.FC<Props> = ({
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Загрузите скриншот или фото QR-кода (даже инвертированного или цветного), либо проверьте сгенерированный выше QR в 1 клик.
+              Загрузите скриншот или фото QR-кода (даже инвертированного или цветного), либо проверьте сгенерированный QR в 1 клик.
             </p>
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 min-w-0">
               <input
                 type="file"
                 accept="image/*"
@@ -709,12 +738,13 @@ export const VisualMediaHub: React.FC<Props> = ({
                   setQrScanFile(f);
                   if (f) runQrDecode(f);
                 }}
-                className="flex-1 text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-sky-500/20 file:text-sky-200 hover:file:bg-sky-500/30"
+                className="flex-1 min-w-0 max-w-full overflow-hidden text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-sky-500/20 file:text-sky-200 hover:file:bg-sky-500/30"
               />
               <button
+                type="button"
                 onClick={() => runQrDecode(null)}
                 disabled={busy}
-                className="px-3.5 py-2 rounded-xl bg-sky-500 text-slate-950 font-semibold text-xs shrink-0 hover:bg-sky-400 transition"
+                className="px-4 py-2.5 rounded-xl bg-sky-500 text-slate-950 font-semibold text-xs shrink-0 hover:bg-sky-400 transition"
               >
                 🔍 Считать QR
               </button>
@@ -730,8 +760,9 @@ export const VisualMediaHub: React.FC<Props> = ({
                     <div className="p-2.5 rounded-lg bg-slate-900 font-mono text-white break-all">
                       {qrScanResult.primary}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
+                        type="button"
                         onClick={() => copyText(qrScanResult.primary, onToast)}
                         className="px-3 py-1.5 rounded-lg bg-sky-500/20 text-sky-200 border border-sky-400/30"
                       >
@@ -754,44 +785,48 @@ export const VisualMediaHub: React.FC<Props> = ({
               </div>
             )}
           </div>
+        )}
 
-          {/* URL Shortener, Lengthener & Tracker Cleaner */}
-          <div className="rounded-2xl border border-purple-400/25 bg-slate-900/75 p-5 space-y-3.5">
-            <div className="flex items-center justify-between">
+        {/* URL Shortener, Lengthener & Tracker Cleaner */}
+        {qrSubTab === 'links' && (
+          <div className="rounded-2xl border border-purple-400/25 bg-slate-900/75 p-4 sm:p-5 space-y-3.5 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-sm font-semibold text-white">🔗 Укоротитель, Удлинитель & Анти-UTM Ссылок</h4>
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-400/30">
                 /s/ + /long/
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Срезает следящие метки (utm_*, fbclid, yclid), создаёт рабочую короткую ссылку И абсурдно длинную ссылку для розыгрыша друзей!
+              Срезает следящие метки (utm_*, fbclid, yclid), создаёт рабочую короткую ссылку и сверхдлинную ссылку-редирект.
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 value={linkInput}
                 onChange={(e) => setLinkInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runUrlTransform()}
                 placeholder="https://example.com/..."
-                className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+                className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-white/10 px-3 py-2.5 text-xs sm:text-sm text-white"
               />
               <button
+                type="button"
                 onClick={runUrlTransform}
                 disabled={busy}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-slate-950 font-semibold text-xs shrink-0"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-slate-950 font-semibold text-xs shrink-0"
               >
                 ⚡ Преобразовать
               </button>
             </div>
             {linkBundle && (
-              <div className="space-y-2 text-xs p-3.5 rounded-xl bg-slate-950/90 border border-white/10">
+              <div className="space-y-2 text-xs p-3.5 rounded-xl bg-slate-950/90 border border-white/10 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-emerald-300 font-medium">🧹 Без UTM ({linkBundle.cleaned_info.removed_trackers.length} удалено):</span>
-                  <button onClick={() => copyText(linkBundle.cleaned_info.cleaned_url, onToast)} className="text-sky-300 hover:underline">Копировать</button>
+                  <button type="button" onClick={() => copyText(linkBundle.cleaned_info.cleaned_url, onToast)} className="text-sky-300 hover:underline shrink-0">Копировать</button>
                 </div>
-                <div className="font-mono text-slate-200 truncate">{linkBundle.cleaned_info.cleaned_url}</div>
+                <div className="font-mono text-slate-200 break-all">{linkBundle.cleaned_info.cleaned_url}</div>
 
                 <div className="pt-1 flex items-center justify-between gap-2">
                   <span className="text-sky-300 font-medium">Короткая ссылка:</span>
-                  <button onClick={() => copyText(linkBundle.short_url, onToast)} className="text-sky-300 hover:underline">Копировать</button>
+                  <button type="button" onClick={() => copyText(linkBundle.short_url, onToast)} className="text-sky-300 hover:underline shrink-0">Копировать</button>
                 </div>
                 <button
                   type="button"
@@ -803,7 +838,7 @@ export const VisualMediaHub: React.FC<Props> = ({
 
                 <div className="pt-1 flex items-center justify-between gap-2">
                   <span className="text-pink-300 font-medium">Длинная ссылка:</span>
-                  <button onClick={() => copyText(linkBundle.long_url, onToast)} className="text-pink-300 hover:underline">Копировать</button>
+                  <button type="button" onClick={() => copyText(linkBundle.long_url, onToast)} className="text-pink-300 hover:underline shrink-0">Копировать</button>
                 </div>
                 <button
                   type="button"
@@ -815,7 +850,7 @@ export const VisualMediaHub: React.FC<Props> = ({
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -825,8 +860,8 @@ export const VisualMediaHub: React.FC<Props> = ({
   // =========================================================================
   if (activeCategory === 'image') {
     return (
-      <div className="space-y-5">
-        <div className="flex flex-wrap gap-2">
+      <div className="space-y-5 min-w-0">
+        <div className="hidden lg:flex flex-wrap gap-2">
           {[
             { id: 'stego', tool: 'stego_lab', label: '🕵️ Крипто-Стеганография LSB' },
             { id: 'code', tool: 'code_card', label: '📸 Carbon Скриншот Кода' },
@@ -1187,10 +1222,14 @@ export const VisualMediaHub: React.FC<Props> = ({
   // HUB 3: PDF FORGE
   // =========================================================================
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-5 min-w-0">
+      <div className="hidden lg:flex flex-wrap gap-2">
         <button
-          onClick={() => setPdfSubTab('create')}
+          type="button"
+          onClick={() => {
+            setPdfSubTab('create');
+            onSelectTool('text_to_pdf');
+          }}
           className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
             pdfSubTab === 'create'
               ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
@@ -1200,7 +1239,11 @@ export const VisualMediaHub: React.FC<Props> = ({
           📑 Текст в PDF
         </button>
         <button
-          onClick={() => setPdfSubTab('photos')}
+          type="button"
+          onClick={() => {
+            setPdfSubTab('photos');
+            onSelectTool('img_to_pdf');
+          }}
           className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
             pdfSubTab === 'photos'
               ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
@@ -1210,7 +1253,11 @@ export const VisualMediaHub: React.FC<Props> = ({
           🗂️ Фото в PDF
         </button>
         <button
-          onClick={() => setPdfSubTab('inspect')}
+          type="button"
+          onClick={() => {
+            setPdfSubTab('inspect');
+            onSelectTool('pdf_inspect');
+          }}
           className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
             pdfSubTab === 'inspect'
               ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
