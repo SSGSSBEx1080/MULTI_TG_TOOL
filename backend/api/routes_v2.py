@@ -26,11 +26,23 @@ from backend.tools.knowledge_hub import (
     CONCEPTS_WIKI_DB,
     JOJO_STANDS_DB,
     PROG_LANGS_DB,
-    RELIGIONS_DB,
+    get_earth_webcams,
+    get_enriched_religions,
+    intuitive_omni_search,
     query_population,
     roll_random_stand,
     search_constitutions,
     search_formulas,
+)
+from backend.tools.spy_and_guess_engine import (
+    create_spy_lobby,
+    finish_spy_round_by_host,
+    get_spy_lobby_view,
+    get_spy_locations_list,
+    join_spy_lobby,
+    spy_guess_location,
+    start_spy_round,
+    vote_spy_player,
 )
 from backend.tools.party_and_fun import (
     FOREIGN_TONGUE_TWISTERS,
@@ -245,32 +257,35 @@ async def api_party_alcohol(req: AlcoholCalcReq, request: Request) -> dict[str, 
 
 class PencilCalcReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
-    height_cm: float = 180.0
-    shoe_size_eu: float = 43.0
-    nose_type: str = "medium"
-    hand_span_cm: float = 21.0
-    voice_timbre: str = "baritone"
-    dota_mmr: int = 3000
-    linux_user: bool = False
-    coffee_cups: int = 2
-    gym_pushups: int = 35
-    zodiac_vibe: str = "fire"
+    age: int = 21
+    height_cm: float = 178.0
+    shoe_size_eu: float = 42.0
+    arm_girth_cm: float = 31.5
+    wrist_cm: float = 17.2
+    index_finger_cm: float = 7.3
+    clash_royale_trophies: int = 4600
+    dota_mmr: int = 2400
+    sleep_hours: float = 7.0
+    room_temp_c: float = 21.0
+    hand_span_cm: float | None = None
 
 
 @router.post("/api/v2/party/pencil")
 async def api_party_pencil(req: PencilCalcReq, request: Request) -> dict[str, Any]:
     uid = await resolve_api_user(request, req.user_id)
+    extra = {"hand_span_cm": req.hand_span_cm} if req.hand_span_cm is not None else {}
     res = calculate_pencil_index(
+        age=req.age,
         height_cm=req.height_cm,
         shoe_size_eu=req.shoe_size_eu,
-        nose_type=req.nose_type,
-        hand_span_cm=req.hand_span_cm,
-        voice_timbre=req.voice_timbre,
+        arm_girth_cm=req.arm_girth_cm,
+        wrist_cm=req.wrist_cm,
+        index_finger_cm=req.index_finger_cm,
+        clash_royale_trophies=req.clash_royale_trophies,
         dota_mmr=req.dota_mmr,
-        linux_user=req.linux_user,
-        coffee_cups=req.coffee_cups,
-        gym_pushups=req.gym_pushups,
-        zodiac_vibe=req.zodiac_vibe,
+        sleep_hours=req.sleep_hours,
+        room_temp_c=req.room_temp_c,
+        **extra,
     )
     await db.record_tool_use(uid, "pencil_calc", "party", "miniapp", f"{res['estimated_cm']} см", xp_gain=8)
     return res
@@ -330,16 +345,19 @@ async def api_constitutions(q: str = "") -> dict[str, Any]:
 
 @router.get("/api/v2/knowledge/religions")
 async def api_religions(q: str = "") -> dict[str, Any]:
-    ql = (q or "").strip().lower()
-    items = [
-        r for r in RELIGIONS_DB
-        if not ql
-        or ql in r["name"].lower()
-        or ql in r["scripture"].lower()
-        or ql in r["core_beliefs"].lower()
-        or ql in r["branches"].lower()
-    ]
+    items = get_enriched_religions(q)
     return {"count": len(items), "items": items}
+
+
+@router.get("/api/v2/knowledge/webcams")
+async def api_earth_webcams(q: str = "") -> dict[str, Any]:
+    cams = get_earth_webcams(q)
+    return {"count": len(cams), "items": cams}
+
+
+@router.get("/api/v2/search/intuitive")
+async def api_intuitive_search(q: str = "") -> dict[str, Any]:
+    return intuitive_omni_search(q)
 
 
 @router.get("/api/v2/knowledge/wiki")
@@ -854,4 +872,102 @@ async def api_zmsave_import(req: ZmSaveImportReq, request: Request) -> dict[str,
         "summary": compute_zitraks_summary(valid_list),
         "zmsave_code": export_zmsave_code(valid_list, nick=nick),
     }
+
+
+# ==============================================================================
+# 8. Онлайн-лобби для игры «🕵️ Шпион»
+# ==============================================================================
+@router.get("/api/v2/spy/locations")
+async def api_spy_locations(pack: str = "all") -> dict[str, Any]:
+    locs = get_spy_locations_list(pack)
+    return {"count": len(locs), "locations": locs}
+
+
+class SpyCreateReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    host_name: str = "Ведущий"
+    pack: str = "all"
+    spy_count: int = 1
+    round_minutes: int = 6
+
+
+@router.post("/api/v2/spy/create")
+async def api_spy_create(req: SpyCreateReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    view = create_spy_lobby(
+        host_user_id=uid,
+        host_name=req.host_name,
+        pack=req.pack,
+        spy_count=req.spy_count,
+        round_minutes=req.round_minutes,
+    )
+    await db.record_tool_use(uid, "spy_lobby", "arcade", "miniapp", f"room:{view['code']}", xp_gain=8)
+    return view
+
+
+class SpyJoinReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    code: str
+    player_name: str
+    player_token: str = ""
+
+
+@router.post("/api/v2/spy/join")
+async def api_spy_join(req: SpyJoinReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    try:
+        view = join_spy_lobby(req.code, uid, req.player_name, req.player_token)
+        await db.record_tool_use(uid, "spy_lobby", "arcade", "miniapp", f"join:{view['code']}", xp_gain=6)
+        return view
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/api/v2/spy/state")
+async def api_spy_state(code: str, token: str = "") -> dict[str, Any]:
+    try:
+        return get_spy_lobby_view(code, token)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class SpyActionReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    code: str
+    player_token: str
+    target_slot_id: str = ""
+    guessed_location: str = ""
+
+
+@router.post("/api/v2/spy/start")
+async def api_spy_start(req: SpyActionReq) -> dict[str, Any]:
+    try:
+        return start_spy_round(req.code, req.player_token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/v2/spy/vote")
+async def api_spy_vote(req: SpyActionReq) -> dict[str, Any]:
+    try:
+        return vote_spy_player(req.code, req.player_token, req.target_slot_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/v2/spy/guess")
+async def api_spy_guess(req: SpyActionReq) -> dict[str, Any]:
+    try:
+        return spy_guess_location(req.code, req.player_token, req.guessed_location)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/v2/spy/finish")
+async def api_spy_finish(req: SpyActionReq) -> dict[str, Any]:
+    try:
+        return finish_spy_round_by_host(req.code, req.player_token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 

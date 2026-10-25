@@ -174,31 +174,6 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
 
     return (
       <div className="space-y-5 min-w-0">
-        <div className="hidden lg:flex flex-wrap gap-2">
-          {[
-            { id: 'smart_units', tool: 'smart_units', label: '🔮 Авто-Конвертер («6 дюймов»)' },
-            { id: 'math', tool: 'smart_calc', label: '📐 Научный & Bitwise' },
-            { id: 'units', tool: 'unit_conv', label: '⚖️ Таблица Величин' },
-            { id: 'finance', tool: 'finance_calc', label: '💎 Вклады, Кредиты, Чек' },
-            { id: 'subnet', tool: 'subnet_calc', label: '🌐 IP / CIDR Подсети' },
-          ].map((t) => (
-            <button
-              key={t.id}
-              onClick={() => {
-                setCalcTab(t.id as any);
-                onSelectTool(t.tool);
-              }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition ${
-                calcTab === t.id
-                  ? 'bg-indigo-500/25 border-indigo-400/50 text-indigo-200'
-                  : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/5'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
         {calcTab === 'smart_units' && (
           <div className="rounded-2xl border border-indigo-400/30 bg-slate-900/75 p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -605,31 +580,6 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   if (activeCategory === 'text') {
     return (
       <div className="space-y-5 min-w-0">
-        <div className="hidden lg:flex flex-wrap gap-2">
-          {[
-            { id: 'rhyme', tool: 'rhyme_gen', label: '🎤 Генератор Рифм' },
-            { id: 'layout', tool: 'layout_fixer', label: '⌨️ Раскладка Ghbdtn→Привет' },
-            { id: 'fonts', tool: 'font_styler', label: '✨ Стильные Шрифты & Case' },
-            { id: 'diff', tool: 'text_diff', label: '📊 Аналитика & Diff' },
-            { id: 'random', tool: 'randomizer', label: '🎲 Кубики & Команды' },
-          ].map((t) => (
-            <button
-              key={t.id}
-              onClick={() => {
-                setTxtTab(t.id as any);
-                onSelectTool(t.tool);
-              }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition ${
-                txtTab === t.id
-                  ? 'bg-pink-500/20 border-pink-400/50 text-pink-200'
-                  : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/5'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
         {txtTab === 'rhyme' && (
           <div className="rounded-2xl border border-pink-400/30 bg-slate-900/75 p-5 space-y-4">
             <div>

@@ -1,11 +1,12 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Box, Search, Star, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Box, Flame, Globe, Search, Star, X } from 'lucide-react';
 import {
   HabitItem,
   NoteItem,
   TodoItem,
   ToolCategory,
   UserProfile,
+  apiGet,
   apiPost,
   copyText,
 } from '../lib/api';
@@ -13,6 +14,9 @@ import { Tilt3DCard } from './three/Tilt3DCard';
 
 const CorePolyhedron3D = lazy(() =>
   import('./three/Interactive3DScenes').then((m) => ({ default: m.CorePolyhedron3D }))
+);
+const Mini3DSceneBadge = lazy(() =>
+  import('./three/Interactive3DScenes').then((m) => ({ default: m.Mini3DSceneBadge }))
 );
 
 const VisualMediaHub = lazy(() => import('./tools/VisualMediaHub').then((m) => ({ default: m.VisualMediaHub })));
@@ -35,6 +39,7 @@ const UniversesHub = lazy(() => import('./tools/UniversesHub').then((m) => ({ de
 interface Props {
   isNativeTma?: boolean;
   categories: ToolCategory[];
+  categoryUsage?: Record<string, number>;
   activeCategory: string;
   activeTool: string;
   mobileDrillOpen: boolean;
@@ -52,9 +57,27 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
+interface IntuitiveSearchResult {
+  query: string;
+  tools: { id: string; title: string; emoji: string; category_id: string }[];
+  articles: {
+    id: string;
+    kind: string;
+    title: string;
+    subtitle: string;
+    ru_text: string;
+    orig_text: string;
+    orig_lang: string;
+    target_category: string;
+    target_tool: string;
+  }[];
+  instant?: { kind: string; title: string; output: string } | null;
+}
+
 export const MiniAppStudio: React.FC<Props> = ({
   isNativeTma = false,
   categories,
+  categoryUsage = {},
   activeCategory,
   activeTool,
   mobileDrillOpen,
@@ -73,17 +96,42 @@ export const MiniAppStudio: React.FC<Props> = ({
 }) => {
   const [quickInput, setQuickInput] = useState('');
   const [quickRes, setQuickRes] = useState<{ kind: string; title: string; output: string } | null>(null);
+  const [intuitiveRes, setIntuitiveRes] = useState<IntuitiveSearchResult | null>(null);
+  const [expandedArticleId, setExpandedArticleId] = useState<string | null>(null);
+  const [knowledgeSearchSeed, setKnowledgeSearchSeed] = useState<string>('');
   const [quickBusy, setQuickBusy] = useState(false);
   const [showMobile3D, setShowMobile3D] = useState(true);
   const topAnchorRef = useRef<HTMLDivElement>(null);
 
   const currentCat = categories.find((c) => c.id === activeCategory) || categories[0];
+  const currentToolObj = currentCat?.tools.find((t) => t.id === activeTool) || currentCat?.tools[0];
 
   // Scroll to top immediately when switching category or entering a section on mobile
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
     topAnchorRef.current?.scrollIntoView({ block: 'start' });
   }, [activeCategory, mobileDrillOpen]);
+
+  // Live debounced Intuitive Omni-Search (tools + bilingual encyclopedia + slang routing)
+  useEffect(() => {
+    const q = quickInput.trim();
+    if (!q) {
+      setIntuitiveRes(null);
+      setExpandedArticleId(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      apiGet(`/api/v2/search/intuitive?q=${encodeURIComponent(q)}`)
+        .then((res) => {
+          setIntuitiveRes(res);
+          if (res?.instant) {
+            setQuickRes(res.instant);
+          }
+        })
+        .catch(() => {});
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [quickInput]);
 
   const runQuickBar = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -105,17 +153,163 @@ export const MiniAppStudio: React.FC<Props> = ({
         onRefreshWorkspace();
         return;
       } catch {
-        // fallback to omni
+        // fallback to intuitive + omni
       }
 
-      const r = await apiPost('/api/tools/omni', { text: q });
-      setQuickRes({ kind: r.kind, title: r.title, output: r.output });
-      onRefreshWorkspace();
+      try {
+        const r = await apiPost('/api/tools/omni', { text: q });
+        setQuickRes({ kind: r.kind, title: r.title, output: r.output });
+        onRefreshWorkspace();
+        return;
+      } catch {
+        // fallback to intuitive encyclopedia search
+      }
+
+      const ir = await apiGet(`/api/v2/search/intuitive?q=${encodeURIComponent(q)}`);
+      setIntuitiveRes(ir);
     } catch (err: any) {
-      onToast(err.message || 'Запрос не распознан');
+      onToast(err.message || 'Запрос обработан');
     } finally {
       setQuickBusy(false);
     }
+  };
+
+  const openArticleInHub = (art: IntuitiveSearchResult['articles'][number]) => {
+    const seedKeyword = art.title.split('—')[0].replace(/[^\p{L}\p{N}\s-]/gu, '').trim();
+    setKnowledgeSearchSeed(seedKeyword);
+    onSelectTool(art.target_category || 'knowledge', art.target_tool || 'religions_hub');
+    setQuickInput('');
+    setIntuitiveRes(null);
+  };
+
+  const renderIntuitivePanel = () => {
+    if (!quickInput.trim() && !quickRes) return null;
+    const hasTools = (intuitiveRes?.tools?.length || 0) > 0;
+    const hasArticles = (intuitiveRes?.articles?.length || 0) > 0;
+    if (!quickRes && !hasTools && !hasArticles) return null;
+
+    return (
+      <div className="p-3.5 rounded-2xl bg-slate-950/95 border border-indigo-500/35 shadow-2xl space-y-3 animate-view-in">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[11px] font-mono uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+            <Globe className="w-3.5 h-3.5" /> Интуитивный поиск и вычисления
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setQuickInput('');
+              setQuickRes(null);
+              setIntuitiveRes(null);
+              setExpandedArticleId(null);
+            }}
+            className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Instant calculation / unit conversion */}
+        {quickRes && (
+          <div className="p-3 rounded-xl bg-indigo-500/12 border border-indigo-400/35 flex items-center justify-between gap-2 text-xs sm:text-sm">
+            <div className="min-w-0">
+              <span className="text-indigo-300 font-semibold">{quickRes.title}: </span>
+              <span className="font-mono text-white break-all">{quickRes.output}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => copyText(quickRes.output, onToast)}
+              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-xs text-white shrink-0"
+            >
+              Копировать
+            </button>
+          </div>
+        )}
+
+        {/* Matching tools */}
+        {hasTools && (
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-mono uppercase text-slate-400">Инструменты по запросу</div>
+            <div className="flex flex-wrap gap-1.5">
+              {intuitiveRes!.tools.map((t) => (
+                <button
+                  key={`${t.category_id}:${t.id}`}
+                  type="button"
+                  onClick={() => {
+                    onSelectTool(t.category_id, t.id);
+                    setQuickInput('');
+                    setIntuitiveRes(null);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-indigo-500/20 border border-white/15 hover:border-indigo-400/50 text-xs text-white transition flex items-center gap-1.5"
+                >
+                  <span>{t.emoji}</span>
+                  <span>{t.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Encyclopedia / Constitutions / World Religions (RU + Original) */}
+        {hasArticles && (
+          <div className="space-y-2">
+            <div className="text-[10px] font-mono uppercase text-emerald-300 flex items-center gap-1">
+              <BookOpen className="w-3 h-3" /> Энциклопедия, статьи и первоисточники (RU + Оригинал)
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {intuitiveRes!.articles.map((art) => {
+                const isExp = expandedArticleId === art.id;
+                return (
+                  <div
+                    key={art.id}
+                    className="p-3 rounded-xl bg-slate-900/90 border border-white/10 hover:border-emerald-400/40 transition space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white leading-snug">{art.title}</div>
+                        <div className="text-[10px] text-emerald-300/90 mt-0.5">{art.subtitle}</div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-200 text-[10px] font-mono shrink-0">
+                        {art.orig_lang || 'RU'}
+                      </span>
+                    </div>
+
+                    <p className={`text-[11px] text-slate-300 leading-relaxed ${isExp ? '' : 'line-clamp-3'}`}>
+                      {art.ru_text}
+                    </p>
+
+                    {isExp && art.orig_text && (
+                      <div className="p-2.5 rounded-lg bg-slate-950/90 border border-amber-400/25 space-y-1">
+                        <div className="text-[10px] font-mono text-amber-300">Оригинал ({art.orig_lang}):</div>
+                        <p className="text-[11px] text-amber-100/95 leading-relaxed whitespace-pre-line">
+                          {art.orig_text}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedArticleId(isExp ? null : art.id)}
+                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] text-slate-200 transition"
+                      >
+                        {isExp ? 'Свернуть текст' : 'Читать RU + Оригинал'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openArticleInHub(art)}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-[11px] text-emerald-200 font-semibold transition"
+                      >
+                        Открыть раздел →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderActiveHubInner = () => {
@@ -190,6 +384,7 @@ export const MiniAppStudio: React.FC<Props> = ({
           onSelectTool={(t) => onSelectTool('knowledge', t)}
           onSync={onRefreshWorkspace}
           onToast={onToast}
+          searchSeed={knowledgeSearchSeed}
         />
       );
     }
@@ -253,15 +448,23 @@ export const MiniAppStudio: React.FC<Props> = ({
   return (
     <div ref={topAnchorRef} className="w-full max-w-[1440px] mx-auto px-3 sm:px-5 pt-3 pb-24 lg:pb-8 min-w-0">
       {/* =====================================================================
-          DESKTOP LAYOUT (>= 1024px): Sidebar + Immediate Workspace (No Scroll)
+          DESKTOP LAYOUT (>= 1024px): Adaptive Sidebar + Immediate Workspace
           ===================================================================== */}
       <div className="hidden lg:grid lg:grid-cols-12 lg:gap-5 items-start">
         {/* Left Sidebar */}
-        <aside className={`col-span-3 sticky ${isNativeTma ? 'top-3 max-h-[calc(100vh-1.5rem)]' : 'top-16 max-h-[calc(100vh-5rem)]'} rounded-2xl glass-surface border border-white/10 p-3 space-y-3 overflow-y-auto`}>
+        <aside
+          className={`col-span-3 sticky ${
+            isNativeTma ? 'top-3 max-h-[calc(100vh-1.5rem)]' : 'top-16 max-h-[calc(100vh-5rem)]'
+          } rounded-2xl glass-surface border border-white/10 p-3 space-y-3 overflow-y-auto`}
+        >
           {profile && (
             <div className="px-2.5 py-2 rounded-xl bg-slate-950/80 border border-white/10 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
-                <img src="/avatar.png" alt="Logo" className="w-8 h-8 rounded-lg object-cover shrink-0 border border-white/15" />
+                <img
+                  src="/avatar.png"
+                  alt="Logo"
+                  className="w-8 h-8 rounded-lg object-cover shrink-0 border border-white/15"
+                />
                 <div className="min-w-0">
                   <div className="text-xs font-display font-bold text-white truncate">{profile.first_name}</div>
                   <div className="text-[11px] font-mono text-slate-400 truncate">
@@ -272,7 +475,7 @@ export const MiniAppStudio: React.FC<Props> = ({
               <button
                 onClick={onOpenPalette}
                 className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition"
-                title="Поиск по всем инструментам (Ctrl+K)"
+                title="Палитра всех инструментов (Ctrl+K)"
               >
                 <Search className="w-4 h-4" />
               </button>
@@ -280,7 +483,9 @@ export const MiniAppStudio: React.FC<Props> = ({
           )}
 
           {categories.length > 0 && (
-            <Suspense fallback={<div className="h-[235px] rounded-2xl bg-slate-950/60 border border-white/5 animate-pulse" />}>
+            <Suspense
+              fallback={<div className="h-[235px] rounded-2xl bg-slate-950/60 border border-white/5 animate-pulse" />}
+            >
               <CorePolyhedron3D
                 categories={categories}
                 activeCategory={activeCategory}
@@ -290,11 +495,16 @@ export const MiniAppStudio: React.FC<Props> = ({
           )}
 
           <div className="space-y-1">
-            <div className="px-2 text-[11px] font-tech uppercase tracking-wider text-slate-400">
-              Разделы ({categories.length})
+            <div className="px-2 flex items-center justify-between text-[11px] font-tech uppercase tracking-wider text-slate-400">
+              <span>Разделы ({categories.length})</span>
+              <span className="text-[10px] font-mono text-indigo-300/80" title="Часто используемые разделы автоматически поднимаются выше">
+                авто-топ ↑
+              </span>
             </div>
-            {categories.map((cat) => {
+            {categories.map((cat, idx) => {
               const active = cat.id === activeCategory;
+              const usageCount = categoryUsage[cat.id] || 0;
+              const isHot = usageCount >= 2 && idx < 3;
               return (
                 <button
                   key={cat.id}
@@ -306,9 +516,9 @@ export const MiniAppStudio: React.FC<Props> = ({
                         }
                       : undefined
                   }
-                  className={`w-full px-3 py-2.5 rounded-xl text-left transition flex items-center gap-2.5 ${
+                  className={`w-full px-3 py-2.5 rounded-xl text-left transition-all duration-300 flex items-center gap-2.5 ${
                     active
-                      ? 'bg-slate-800/95 border border-white/15 text-white font-semibold'
+                      ? 'bg-slate-800/95 border border-white/15 text-white font-semibold translate-x-0.5'
                       : 'text-slate-300 hover:bg-white/5 hover:text-white border border-transparent'
                   }`}
                 >
@@ -316,6 +526,7 @@ export const MiniAppStudio: React.FC<Props> = ({
                   <div className="min-w-0 flex-1">
                     <div className="text-xs leading-snug truncate">{cat.title}</div>
                   </div>
+                  {isHot && <Flame className="w-3 h-3 text-amber-400 shrink-0" />}
                   <span className={`text-[10px] font-mono ${active ? 'text-sky-300' : 'text-slate-500'}`}>
                     {cat.tools.length}
                   </span>
@@ -327,16 +538,16 @@ export const MiniAppStudio: React.FC<Props> = ({
 
         {/* Right Main Content */}
         <section className="col-span-9 space-y-4 min-w-0">
-          {/* Quick Bar */}
+          {/* Universal Intuitive Search + Calculator Top Bar */}
           <form
             onSubmit={runQuickBar}
-            className="rounded-2xl glass-surface border border-white/10 p-2.5 flex items-center gap-2"
+            className="rounded-2xl glass-surface border border-white/10 p-2.5 flex items-center gap-2 focus-within:border-indigo-400/50 transition"
           >
-            <Search className="w-4 h-4 text-slate-400 ml-2 shrink-0" />
+            <Search className="w-4 h-4 text-indigo-400 ml-2 shrink-0" />
             <input
               value={quickInput}
               onChange={(e) => setQuickInput(e.target.value)}
-              placeholder="Быстрый расчёт или конвертация: 75 кг в фунты, (1450 * 1.2) / 3, Ghbdtn..."
+              placeholder="Умный поиск всего: статьи, конституции, религии, утилиты, 75 кг в фунты, (1450*1.2)/3..."
               className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
             />
             {quickInput && (
@@ -345,6 +556,7 @@ export const MiniAppStudio: React.FC<Props> = ({
                 onClick={() => {
                   setQuickInput('');
                   setQuickRes(null);
+                  setIntuitiveRes(null);
                 }}
                 className="p-1 text-slate-400 hover:text-white"
               >
@@ -356,49 +568,46 @@ export const MiniAppStudio: React.FC<Props> = ({
               disabled={quickBusy}
               className="px-4 py-1.5 rounded-xl glow-btn text-white text-xs font-semibold shrink-0"
             >
-              {quickBusy ? '...' : 'Выполнить'}
+              {quickBusy ? '...' : 'Найти'}
             </button>
           </form>
 
-          {quickRes && (
-            <div className="p-3.5 rounded-xl bg-slate-900 border border-indigo-500/30 flex items-center justify-between gap-3 text-sm">
-              <div className="min-w-0">
-                <span className="text-xs text-indigo-300 font-medium">{quickRes.title}: </span>
-                <span className="font-mono text-white break-all">{quickRes.output}</span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => copyText(quickRes.output, onToast)}
-                  className="px-2.5 py-1 rounded-lg bg-white/10 text-xs text-white"
-                >
-                  Копировать
-                </button>
-                <button onClick={() => setQuickRes(null)} className="text-slate-400 hover:text-white">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
+          {renderIntuitivePanel()}
 
-          {/* Active Category Header + Sub-tools */}
+          {/* Active Category Header + Mini 3D Hologram for Active Sub-tool */}
           {currentCat && (
             <div
               className="rounded-2xl glass-surface border border-white/10 p-4 space-y-3"
               style={{ boxShadow: `inset 0 2px 0 ${currentCat.color || '#6366f1'}` }}
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{currentCat.emoji}</span>
-                  <div>
-                    <h2 className="text-base sm:text-lg font-display font-bold text-white leading-tight">
-                      {currentCat.title}
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">{currentCat.short}</p>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Suspense fallback={<div className="w-12 h-12 rounded-xl bg-slate-950/80 border border-white/10 shrink-0" />}>
+                    <Mini3DSceneBadge
+                      seed={`${currentCat.id}:${activeTool}`}
+                      color={currentCat.color || '#6366f1'}
+                      size={50}
+                    />
+                  </Suspense>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base sm:text-lg font-display font-bold text-white leading-tight truncate">
+                        {currentCat.emoji} {currentCat.title}
+                      </h2>
+                      {currentToolObj && (
+                        <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-[11px] font-mono text-sky-300">
+                          {currentToolObj.emoji} {currentToolObj.title}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5 truncate">
+                      {currentToolObj?.desc || currentCat.short}
+                    </p>
                   </div>
                 </div>
                 <button
                   onClick={() => onToggleFav(activeTool)}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition ${
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition shrink-0 ${
                     favorites.includes(activeTool)
                       ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
                       : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
@@ -431,7 +640,7 @@ export const MiniAppStudio: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Active Tool Workspace */}
+          {/* Active Tool Workspace with Choreographed 3D Stage Transition */}
           <div key={`${activeCategory}:${activeTool}`} className="animate-view-in">
             {renderActiveHub()}
           </div>
@@ -443,13 +652,17 @@ export const MiniAppStudio: React.FC<Props> = ({
           ===================================================================== */}
       <div className="lg:hidden space-y-3">
         {!mobileDrillOpen ? (
-          /* LEVEL 1: CLEAN CATEGORY DIRECTORY */
+          /* LEVEL 1: CLEAN ADAPTIVE CATEGORY DIRECTORY */
           <>
-            {/* Compact Mobile Top Bar */}
+            {/* Compact Mobile Top Bar + Universal Intuitive Search */}
             <div className="rounded-2xl glass-surface border border-white/10 p-3 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <img src="/avatar.png" alt="Logo" className="w-9 h-9 rounded-xl object-cover border border-white/15 shrink-0" />
+                  <img
+                    src="/avatar.png"
+                    alt="Logo"
+                    className="w-9 h-9 rounded-xl object-cover border border-white/15 shrink-0"
+                  />
                   <div className="min-w-0">
                     <div className="text-sm font-display font-bold text-white truncate">MULTI_TG_TOOL</div>
                     {profile && (
@@ -476,19 +689,32 @@ export const MiniAppStudio: React.FC<Props> = ({
                     onClick={onOpenPalette}
                     className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 flex items-center gap-1.5"
                   >
-                    <Search className="w-3.5 h-3.5 text-indigo-400" /> Поиск
+                    <Search className="w-3.5 h-3.5 text-indigo-400" /> Меню
                   </button>
                 </div>
               </div>
 
-              {/* Instant Converter / Calc Bar */}
+              {/* Universal Intuitive Search / Calc Bar */}
               <form onSubmit={runQuickBar} className="flex gap-1.5">
                 <input
                   value={quickInput}
                   onChange={(e) => setQuickInput(e.target.value)}
-                  placeholder="Пример, величина (75 кг в фунты) или текст..."
+                  placeholder="Поиск всего: статьи, утилиты, конституции, 75 кг в фунты..."
                   className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-400"
                 />
+                {quickInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickInput('');
+                      setQuickRes(null);
+                      setIntuitiveRes(null);
+                    }}
+                    className="px-2 rounded-xl bg-slate-900 border border-white/10 text-slate-400"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button
                   type="submit"
                   disabled={quickBusy}
@@ -497,27 +723,9 @@ export const MiniAppStudio: React.FC<Props> = ({
                   {quickBusy ? '...' : 'ОК'}
                 </button>
               </form>
-
-              {quickRes && (
-                <div className="p-2.5 rounded-xl bg-slate-950 border border-indigo-500/30 flex items-center justify-between gap-2 text-xs">
-                  <div className="min-w-0">
-                    <span className="text-indigo-300 font-medium">{quickRes.title}: </span>
-                    <span className="text-white font-mono break-all">{quickRes.output}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => copyText(quickRes.output, onToast)}
-                      className="px-2 py-1 rounded bg-white/10 text-white"
-                    >
-                      Коп.
-                    </button>
-                    <button onClick={() => setQuickRes(null)} className="p-1 text-slate-400">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
+
+            {renderIntuitivePanel()}
 
             {/* Favorites Quick Strip (if any) */}
             {favoriteItems.length > 0 && (
@@ -540,7 +748,9 @@ export const MiniAppStudio: React.FC<Props> = ({
 
             {/* Interactive 3D / 4D Orbital Navigator */}
             {showMobile3D && categories.length > 0 && (
-              <Suspense fallback={<div className="h-[215px] rounded-2xl bg-slate-950/60 border border-white/5 animate-pulse" />}>
+              <Suspense
+                fallback={<div className="h-[215px] rounded-2xl bg-slate-950/60 border border-white/5 animate-pulse" />}
+              >
                 <CorePolyhedron3D
                   categories={categories}
                   activeCategory={activeCategory}
@@ -550,47 +760,56 @@ export const MiniAppStudio: React.FC<Props> = ({
               </Suspense>
             )}
 
-            {/* 2-Column Category Grid with 3D Specular Tilt */}
-            <div className="grid grid-cols-2 gap-2.5">
-              {categories.map((cat) => (
-                <Tilt3DCard
-                  key={cat.id}
-                  accentColor={cat.color || '#6366f1'}
-                  maxTilt={9}
-                  onClick={() => onSelectCategory(cat.id)}
-                  className="p-3.5 rounded-2xl glass-surface hover:bg-slate-800/90 active:scale-[0.99] border border-white/10 text-left transition flex flex-col justify-between min-h-[108px] cursor-pointer"
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-2xl">{cat.emoji}</span>
-                    <span
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
-                      style={{
-                        borderColor: `${cat.color || '#6366f1'}55`,
-                        backgroundColor: `${cat.color || '#6366f1'}20`,
-                        color: '#e2e8f0',
-                      }}
-                    >
-                      {cat.tools.length}
-                    </span>
-                  </div>
-                  <div className="mt-2">
-                    <div className="text-xs sm:text-sm font-display font-bold text-white leading-snug">
-                      {cat.title}
+            {/* 2-Column Category Grid with 3D Specular Tilt & Staggered Entrance */}
+            <div className="grid grid-cols-2 gap-2.5 stagger-3d">
+              {categories.map((cat, idx) => {
+                const usageCount = categoryUsage[cat.id] || 0;
+                const isHot = usageCount >= 2 && idx < 2;
+                return (
+                  <Tilt3DCard
+                    key={cat.id}
+                    accentColor={cat.color || '#6366f1'}
+                    maxTilt={9}
+                    onClick={() => onSelectCategory(cat.id)}
+                    className="p-3.5 rounded-2xl glass-surface hover:bg-slate-800/90 active:scale-[0.99] border border-white/10 text-left transition flex flex-col justify-between min-h-[108px] cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-2xl">{cat.emoji}</span>
+                      <div className="flex items-center gap-1">
+                        {isHot && <Flame className="w-3 h-3 text-amber-400" />}
+                        <span
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
+                          style={{
+                            borderColor: `${cat.color || '#6366f1'}55`,
+                            backgroundColor: `${cat.color || '#6366f1'}20`,
+                            color: '#e2e8f0',
+                          }}
+                        >
+                          {cat.tools.length}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400 line-clamp-2 mt-0.5 leading-tight">
-                      {cat.short}
+                    <div className="mt-2">
+                      <div className="text-xs sm:text-sm font-display font-bold text-white leading-snug">
+                        {cat.title}
+                      </div>
+                      <div className="text-[11px] text-slate-400 line-clamp-2 mt-0.5 leading-tight">
+                        {cat.short}
+                      </div>
                     </div>
-                  </div>
-                </Tilt3DCard>
-              ))}
+                  </Tilt3DCard>
+                );
+              })}
             </div>
           </>
         ) : (
           /* LEVEL 2: IMMEDIATE TOOL VIEW AT TOP OF SCREEN */
           <div className="space-y-3 min-w-0 animate-view-in">
-            {/* Sticky Back Header + Horizontal Tool Switcher */}
+            {/* Sticky Back Header + Mini 3D Badge + Horizontal Tool Switcher */}
             <div
-              className={`sticky ${isNativeTma ? 'top-0' : 'top-12'} z-20 -mx-3 px-3 py-2.5 bg-[#060913]/92 backdrop-blur-xl border-b border-white/10 space-y-2`}
+              className={`sticky ${
+                isNativeTma ? 'top-0' : 'top-12'
+              } z-20 -mx-3 px-3 py-2.5 bg-[#060913]/92 backdrop-blur-xl border-b border-white/10 space-y-2`}
             >
               <div className="flex items-center justify-between gap-2 min-w-0">
                 <button
@@ -601,8 +820,17 @@ export const MiniAppStudio: React.FC<Props> = ({
                   <ArrowLeft className="w-4 h-4" /> Разделы
                 </button>
                 {currentCat && (
-                  <div className="text-xs sm:text-sm font-display font-bold text-white truncate min-w-0">
-                    {currentCat.emoji} {currentCat.title}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Suspense fallback={<div className="w-8 h-8 rounded-lg bg-slate-900 shrink-0" />}>
+                      <Mini3DSceneBadge
+                        seed={`${currentCat.id}:${activeTool}`}
+                        color={currentCat.color || '#6366f1'}
+                        size={34}
+                      />
+                    </Suspense>
+                    <div className="text-xs sm:text-sm font-display font-bold text-white truncate min-w-0">
+                      {currentCat.emoji} {currentCat.title}
+                    </div>
                   </div>
                 )}
                 <button
@@ -661,6 +889,24 @@ export const MiniAppStudio: React.FC<Props> = ({
             <span className="mt-0.5">Разделы</span>
           </button>
           <button
+            onClick={() => onSelectCategory('arcade')}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              mobileDrillOpen && activeCategory === 'arcade' ? 'text-emerald-300 bg-emerald-500/15' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">♟️</span>
+            <span className="mt-0.5">Игры</span>
+          </button>
+          <button
+            onClick={() => onSelectCategory('knowledge')}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              mobileDrillOpen && activeCategory === 'knowledge' ? 'text-sky-300 bg-sky-500/15' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">🌍</span>
+            <span className="mt-0.5">Планета</span>
+          </button>
+          <button
             onClick={() => onSelectCategory('universes')}
             className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
               mobileDrillOpen && activeCategory === 'universes' ? 'text-rose-300 bg-rose-500/15' : 'text-slate-400'
@@ -668,24 +914,6 @@ export const MiniAppStudio: React.FC<Props> = ({
           >
             <span className="text-base leading-none">🎬</span>
             <span className="mt-0.5">Кино/Мод</span>
-          </button>
-          <button
-            onClick={() => onSelectCategory('horoscope')}
-            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
-              mobileDrillOpen && activeCategory === 'horoscope' ? 'text-purple-300 bg-purple-500/15' : 'text-slate-400'
-            }`}
-          >
-            <span className="text-base leading-none">🌟</span>
-            <span className="mt-0.5">Гороскоп</span>
-          </button>
-          <button
-            onClick={() => onSelectCategory('physics')}
-            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
-              mobileDrillOpen && activeCategory === 'physics' ? 'text-sky-300 bg-sky-500/15' : 'text-slate-400'
-            }`}
-          >
-            <span className="text-base leading-none">⚛️</span>
-            <span className="mt-0.5">Физика</span>
           </button>
           <button
             onClick={onOpenPalette}

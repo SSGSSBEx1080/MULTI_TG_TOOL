@@ -327,6 +327,7 @@ class Database:
                 f"UPDATE users SET is_real = 1 WHERE user_id > 10000 AND user_id NOT IN ({placeholders}) AND user_id < 900000000000",
                 FAKE_SEED_USER_IDS,
             )
+            await conn.execute("UPDATE users SET bio = '' WHERE bio = 'Исследователь экосистемы NEXUS'")
             await conn.commit()
             self._user_cache.clear()
 
@@ -744,12 +745,19 @@ class Database:
                 for row in await l_cur.fetchall():
                     logs_by_habit.setdefault(row["habit_id"], set()).add(row["log_date"])
 
+            u_cur = await conn.execute(
+                "SELECT category, COUNT(*) AS cnt FROM telemetry WHERE user_id = ? GROUP BY category",
+                (user_id,),
+            )
+            category_usage = {str(r["category"]): int(r["cnt"]) for r in await u_cur.fetchall() if r["category"]}
+
         return {
             "profile": profile,
             "favorites": favorites,
             "notes": notes,
             "todos": todos,
             "habits": self._build_habits_view(raw_habits, logs_by_habit),
+            "category_usage": category_usage,
         }
 
     async def create_habit(

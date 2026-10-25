@@ -692,3 +692,158 @@ async def test_universes_marvel_dc_and_zitraksmode_sync_and_zmsave(tmp_path, mon
         await db.close()
 
 
+@pytest.mark.asyncio
+async def test_earth_webcams_bilingual_search_spy_lobby_and_realistic_biometrics(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(db, "db_path", tmp_path / "test_v4_features.db")
+    await db.init()
+
+    test_bot_token = "111222333:AAH_TEST_V4_FEATURES_HMAC_SECRET_TOKEN"
+    await db.set_setting("bot_token", test_bot_token)
+    p1 = {"X-Telegram-Init-Data": _make_signed_init_data(test_bot_token, 8100001, "host_p1", "Артём")}
+    p2 = {"X-Telegram-Init-Data": _make_signed_init_data(test_bot_token, 8100002, "player_p2", "Илья")}
+    p3 = {"X-Telegram-Init-Data": _make_signed_init_data(test_bot_token, 8100003, "player_p3", "Даша")}
+    p4 = {"X-Telegram-Init-Data": _make_signed_init_data(test_bot_token, 8100004, "player_p4", "Макс")}
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Intuitive Omni-Search on slang/profanity ("хуйня") -> surfaces Islam & bilingual encyclopedia articles
+            slang_r = await client.get("/api/v2/search/intuitive", params={"q": "хуйня"})
+            assert slang_r.status_code == 200
+            slang_data = slang_r.json()
+            assert len(slang_data["articles"]) >= 2
+            titles_joined = " ".join(a["title"] for a in slang_data["articles"])
+            assert "Ислам" in titles_joined
+            islam_art = next(a for a in slang_data["articles"] if "Ислам" in a["title"])
+            assert len(islam_art["ru_text"]) > 200
+            assert len(islam_art["orig_text"]) > 40
+
+            # 2. Bilingual Constitutions & Religions full texts (Russian + Original language)
+            const_r = await client.get("/api/v2/knowledge/constitutions", params={"q": "германия"})
+            assert const_r.status_code == 200
+            de_item = const_r.json()["items"][0]
+            assert "Неприкосновенность" in de_item["ru_full"] or "достоинство" in de_item["ru_full"].lower()
+            assert "Die Würde des Menschen" in de_item["orig_full"]
+            assert "Deutsch" in de_item["orig_lang"]
+
+            rel_r = await client.get("/api/v2/knowledge/religions", params={"q": "ислам"})
+            assert rel_r.status_code == 200
+            rel_item = rel_r.json()["items"][0]
+            assert len(rel_item["ru_full"]) > 300
+            assert len(rel_item["orig_full"]) > 40
+
+            # 3. Earth 3D Live Public Webcams endpoint
+            cams_r = await client.get("/api/v2/knowledge/webcams", params={"q": ""})
+            assert cams_r.status_code == 200
+            assert len(cams_r.json()["items"]) >= 10
+
+            # 4. Calibrated 10-slider deadpan Penis Length Calculator (realistic cm, no 18-20+ inflation)
+            avg_pen = await client.post(
+                "/api/v2/party/pencil",
+                headers=p1,
+                json={
+                    "height_cm": 178,
+                    "shoe_size": 42.5,
+                    "age": 22,
+                    "clash_royale_trophies": 5200,
+                    "arm_girth_cm": 33.5,
+                    "wrist_cm": 17.5,
+                    "index_finger_cm": 7.4,
+                    "dota_mmr": 2800,
+                    "sleep_hours": 7.5,
+                    "room_temp_c": 22.0,
+                },
+            )
+            assert avg_pen.status_code == 200
+            pdata = avg_pen.json()
+            assert 11.5 <= pdata["length_cm"] <= 14.8, f"Expected realistic average, got {pdata['length_cm']}"
+            assert len(pdata["comparisons"]) >= 8
+            assert len(pdata["factors"]) >= 6
+
+            extreme_pen = await client.post(
+                "/api/v2/party/pencil",
+                headers=p1,
+                json={
+                    "height_cm": 205,
+                    "shoe_size": 48,
+                    "age": 26,
+                    "clash_royale_trophies": 9000,
+                    "arm_girth_cm": 48,
+                    "wrist_cm": 21,
+                    "index_finger_cm": 9.2,
+                    "dota_mmr": 9000,
+                    "sleep_hours": 8.5,
+                    "room_temp_c": 24.5,
+                },
+            )
+            assert extreme_pen.status_code == 200
+            assert extreme_pen.json()["length_cm"] <= 17.8
+
+            # 5. Spy ("Шпион") Multiplayer Lobby Flow (create -> join x3 -> start -> state -> vote -> spy guess)
+            c_res = await client.post(
+                "/api/v2/spy/create",
+                headers=p1,
+                json={"host_name": "Артём", "pack": "all", "spy_count": 1, "round_minutes": 6},
+            )
+            assert c_res.status_code == 200
+            room_code = c_res.json()["code"]
+            assert len(room_code) == 5
+            tokens = [c_res.json()["my_card"]["token"]]
+
+            for hdr, pname in [(p2, "Илья"), (p3, "Даша"), (p4, "Макс")]:
+                j_res = await client.post("/api/v2/spy/join", headers=hdr, json={"code": room_code, "player_name": pname})
+                assert j_res.status_code == 200
+                tokens.append(j_res.json()["my_card"]["token"])
+
+            st_res = await client.post("/api/v2/spy/start", headers=p1, json={"code": room_code, "player_token": tokens[0]})
+            assert st_res.status_code == 200
+            assert st_res.json()["status"] == "playing"
+
+            views = []
+            for hdr, tok in zip((p1, p2, p3, p4), tokens):
+                v = await client.get("/api/v2/spy/state", headers=hdr, params={"code": room_code, "token": tok})
+                assert v.status_code == 200
+                views.append(v.json())
+
+            spies = [v for v in views if v["my_card"]["is_spy"]]
+            civilians = [v for v in views if not v["my_card"]["is_spy"]]
+            assert len(spies) == 1
+            assert len(civilians) == 3
+            assert "СЕКРЕТНО" in spies[0]["my_card"]["location"]
+            secret_loc = civilians[0]["my_card"]["location"]
+            assert secret_loc and "СЕКРЕТНО" not in secret_loc
+            assert civilians[0]["my_card"]["role"]
+
+            # Spy makes an all-in location guess
+            spy_tok = spies[0]["my_card"]["token"]
+            g_res = await client.post(
+                "/api/v2/spy/guess",
+                headers=p1,
+                json={"code": room_code, "player_token": spy_tok, "guessed_location": secret_loc},
+            )
+            assert g_res.status_code == 200
+            assert g_res.json()["status"] == "finished"
+            assert g_res.json()["winner"] == "spies"
+
+            # 6. Workspace category_usage telemetry + Bot new commands (/earth, /chess, /spy, /guess & slang)
+            ws_p1 = await client.get("/api/workspace/state", headers=p1)
+            assert ws_p1.status_code == 200
+            assert "category_usage" in ws_p1.json()
+            assert ws_p1.json()["category_usage"].get("party", 0) >= 2
+
+            for bot_cmd, exp_sub in [
+                ("/earth", "земля"),
+                ("/chess", "шахмат"),
+                ("/spy", "шпион"),
+                ("/guess", "guess size"),
+                ("хуйня", "ислам"),
+            ]:
+                sim_r = await client.post("/api/sim/send-text", json={"text": bot_cmd})
+                assert sim_r.status_code == 200
+                assert exp_sub in sim_r.json()["messages"][-1]["text"].lower()
+    finally:
+        await db.close()
+
+
+

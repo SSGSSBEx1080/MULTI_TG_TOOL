@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Trophy } from 'lucide-react';
 import { apiGet, apiPost } from '../../lib/api';
 import { createIcosahedron, cross3, hexToRgb, project3D, rotateEuler, scale3, shadeBlinnPhong, sub3 } from '../../lib/engine3d';
+import { ChessAcademyHub } from './ChessAcademyHub';
+import { GuessSizeGame, SpyLobbyHub } from './SpyAndGuessHub';
 
 interface Props {
   activeTool: string;
@@ -11,6 +13,9 @@ interface Props {
 }
 
 const GAME_NAMES: Record<string, string> = {
+  chess_academy: '♟️ Шахматы',
+  spy_lobby: '🕵️ Шпион',
+  guess_size: '📐 Guess Size',
   arcade_wolf: '🐺 Ну, погоди!',
   wolf: '🐺 Ну, погоди!',
   arcade_doodle: '🚀 Doodle Jump',
@@ -1026,12 +1031,15 @@ const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSa
 // ============================================================================
 // MAIN ARCADE HUB WRAPPER
 // ============================================================================
-export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
-  const [gameTab, setGameTab] = useState<'wolf' | 'doodle' | 'tetris' | 'clicker'>('wolf');
+export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSync, onToast }) => {
+  const [gameTab, setGameTab] = useState<'chess' | 'spy' | 'guess' | 'wolf' | 'doodle' | 'tetris' | 'clicker'>('chess');
   const [highscores, setHighscores] = useState<any[]>([]);
 
   useEffect(() => {
-    if (activeTool === 'arcade_wolf') setGameTab('wolf');
+    if (activeTool === 'chess_academy') setGameTab('chess');
+    else if (activeTool === 'spy_lobby') setGameTab('spy');
+    else if (activeTool === 'guess_size') setGameTab('guess');
+    else if (activeTool === 'arcade_wolf') setGameTab('wolf');
     else if (activeTool === 'arcade_doodle') setGameTab('doodle');
     else if (activeTool === 'arcade_tetris') setGameTab('tetris');
     else if (activeTool === 'arcade_clicker') setGameTab('clicker');
@@ -1059,44 +1067,31 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSy
     }
   };
 
+  const isWideFeatured = gameTab === 'chess' || gameTab === 'spy' || gameTab === 'guess';
+
   return (
     <div className="space-y-5 min-w-0">
-      <div className="hidden lg:flex flex-wrap gap-2">
-        {[
-          { id: 'wolf', tool: 'arcade_wolf', label: '🐺 Волк ловит яйца (Ну, погоди!)' },
-          { id: 'doodle', tool: 'arcade_doodle', label: '🚀 Doodle Cyber Jump' },
-          { id: 'tetris', tool: 'arcade_tetris', label: '🧱 Тетрис' },
-          { id: 'clicker', tool: 'arcade_clicker', label: '⚡ Кликер' },
-        ].map((g) => (
-          <button
-            key={g.id}
-            type="button"
-            onClick={() => {
-              setGameTab(g.id as any);
-              onSelectTool(g.tool);
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
-              gameTab === g.id
-                ? 'bg-emerald-500/25 border-emerald-400/60 text-emerald-200 shadow-lg shadow-emerald-500/10'
-                : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/5'
-            }`}
-          >
-            {g.label}
-          </button>
-        ))}
-      </div>
+      {gameTab === 'chess' && <ChessAcademyHub onScoreSubmit={saveScore} onToast={onToast} />}
+      {gameTab === 'spy' && <SpyLobbyHub onToast={onToast} />}
+      {gameTab === 'guess' && <GuessSizeGame onScoreSubmit={saveScore} onToast={onToast} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <div className="lg:col-span-8 rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 min-w-0">
-          {gameTab === 'wolf' && <WolfEggsGame onSaveScore={(s) => saveScore('arcade_wolf', s)} />}
-          {gameTab === 'doodle' && <DoodleJumpGame onSaveScore={(s) => saveScore('arcade_doodle', s)} />}
-          {gameTab === 'tetris' && <NeonTetrisGame onSaveScore={(s) => saveScore('arcade_tetris', s)} />}
-          {gameTab === 'clicker' && <CyberClickerGame onSaveScore={(s) => saveScore('arcade_clicker', s)} />}
-        </div>
+        {!isWideFeatured && (
+          <div className="lg:col-span-8 rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 min-w-0">
+            {gameTab === 'wolf' && <WolfEggsGame onSaveScore={(s) => saveScore('arcade_wolf', s)} />}
+            {gameTab === 'doodle' && <DoodleJumpGame onSaveScore={(s) => saveScore('arcade_doodle', s)} />}
+            {gameTab === 'tetris' && <NeonTetrisGame onSaveScore={(s) => saveScore('arcade_tetris', s)} />}
+            {gameTab === 'clicker' && <CyberClickerGame onSaveScore={(s) => saveScore('arcade_clicker', s)} />}
+          </div>
+        )}
 
-        <div className="lg:col-span-4 rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 space-y-3 min-w-0">
+        <div
+          className={`${
+            isWideFeatured ? 'lg:col-span-12' : 'lg:col-span-4'
+          } rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 space-y-3 min-w-0`}
+        >
           <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
-            <Trophy className="w-4 h-4 shrink-0" /> Зал Славы Аркады
+            <Trophy className="w-4 h-4 shrink-0" /> Зал Славы Игр
           </div>
           <p className="text-xs text-slate-400">
             Каждая сыгранная партия приносит XP в ваш профиль и поднимает вас в общем рейтинге.
@@ -1106,7 +1101,7 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSy
               Рекордов от игроков из Telegram пока нет — сыграйте первым!
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className={isWideFeatured ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2' : 'space-y-2'}>
               {highscores.map((h, i) => (
                 <div
                   key={i}

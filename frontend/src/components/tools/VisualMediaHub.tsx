@@ -896,30 +896,6 @@ export const VisualMediaHub: React.FC<Props> = ({
   if (activeCategory === 'image') {
     return (
       <div className="space-y-5 min-w-0">
-        <div className="hidden lg:flex flex-wrap gap-2">
-          {[
-            { id: 'stego', tool: 'stego_lab', label: '🕵️ Крипто-Стеганография LSB' },
-            { id: 'code', tool: 'code_card', label: '📸 Carbon Скриншот Кода' },
-            { id: 'exif', tool: 'exif_clean', label: '🧹 Очистка EXIF & Палитра' },
-            { id: 'transform', tool: 'img_transform', label: '🎭 ТГ Стикер 512px & Фильтры' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setImgSubTab(tab.id as any);
-                onSelectTool(tab.tool);
-              }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition ${
-                imgSubTab === tab.id
-                  ? 'bg-purple-500/25 text-purple-200 border-purple-400/50'
-                  : 'bg-slate-900/60 text-slate-300 border-white/10 hover:bg-white/5'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
         {imgSubTab === 'stego' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Hide Secret */}
@@ -1258,51 +1234,6 @@ export const VisualMediaHub: React.FC<Props> = ({
   // =========================================================================
   return (
     <div className="space-y-5 min-w-0">
-      <div className="hidden lg:flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setPdfSubTab('create');
-            onSelectTool('text_to_pdf');
-          }}
-          className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
-            pdfSubTab === 'create'
-              ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
-              : 'bg-slate-900/60 border-white/10 text-slate-300'
-          }`}
-        >
-          📑 Текст в PDF
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setPdfSubTab('photos');
-            onSelectTool('img_to_pdf');
-          }}
-          className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
-            pdfSubTab === 'photos'
-              ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
-              : 'bg-slate-900/60 border-white/10 text-slate-300'
-          }`}
-        >
-          🗂️ Фото в PDF
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setPdfSubTab('inspect');
-            onSelectTool('pdf_inspect');
-          }}
-          className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
-            pdfSubTab === 'inspect'
-              ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
-              : 'bg-slate-900/60 border-white/10 text-slate-300'
-          }`}
-        >
-          🔒 Чтение, поворот и пароль PDF
-        </button>
-      </div>
-
       {pdfSubTab === 'photos' && (
         <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
           <div className="text-sm font-semibold text-white">🗂️ Объединение фотографий в один PDF-файл</div>

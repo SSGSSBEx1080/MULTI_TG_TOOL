@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Dices, Flame, GlassWater, Lightbulb, Ruler, Search, Volume2 } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
-import { PartyGlass3D } from '../three/Interactive3DScenes';
+import { Mini3DSceneBadge, PartyGlass3D, RealScaleComparison3D } from '../three/Interactive3DScenes';
 
 interface Props {
   activeTool: string;
@@ -33,17 +33,18 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
   const [showLiguria, setShowLiguria] = useState(false);
   const [liguriaData, setLiguriaData] = useState<any>(null);
 
-  // --- Pencil Index State ---
-  const [pHeight, setPHeight] = useState(181);
-  const [pShoe, setPShoe] = useState(43);
-  const [pNose, setPNose] = useState('medium');
-  const [pHand, setPHand] = useState(21.5);
-  const [pVoice, setPVoice] = useState('baritone');
-  const [pMmr, setPMmr] = useState(3200);
-  const [pLinux, setPLinux] = useState(true);
-  const [pCoffee, setPCoffee] = useState(2);
-  const [pPushups, setPPushups] = useState(45);
-  const [pZodiac, setPZodiac] = useState('fire');
+  // --- 10-Factor Realistic Anthropometric Calculator State ---
+  const [pAge, setPAge] = useState(21);
+  const [pHeight, setPHeight] = useState(178);
+  const [pShoe, setPShoe] = useState(42);
+  const [pArmGirth, setPArmGirth] = useState(31.5);
+  const [pWrist, setPWrist] = useState(17.2);
+  const [pFinger, setPFinger] = useState(7.3);
+  const [pClashTrophies, setPClashTrophies] = useState(4800);
+  const [pMmr, setPMmr] = useState(2400);
+  const [pSleep, setPSleep] = useState(7.0);
+  const [pTemp, setPTemp] = useState(21);
+  const [compareObjId, setCompareObjId] = useState('iphone_16');
   const [pencilRes, setPencilRes] = useState<any>(null);
 
   useEffect(() => {
@@ -86,31 +87,39 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
     }
   };
 
-  const calcPencil = async () => {
+  const calcPencil = async (syncUser = true) => {
     try {
       const r = await apiPost('/api/v2/party/pencil', {
+        age: pAge,
         height_cm: pHeight,
         shoe_size_eu: pShoe,
-        nose_type: pNose,
-        hand_span_cm: pHand,
-        voice_timbre: pVoice,
+        arm_girth_cm: pArmGirth,
+        wrist_cm: pWrist,
+        index_finger_cm: pFinger,
+        clash_royale_trophies: pClashTrophies,
         dota_mmr: pMmr,
-        linux_user: pLinux,
-        coffee_cups: pCoffee,
-        gym_pushups: pPushups,
-        zodiac_vibe: pZodiac,
+        sleep_hours: pSleep,
+        room_temp_c: pTemp,
       });
       setPencilRes(r);
-      onSync();
+      if (syncUser) onSync();
     } catch (e: any) {
       onToast(e.message);
     }
   };
 
   useEffect(() => {
+    if (subTab !== 'pencil') return;
+    const t = window.setTimeout(() => {
+      calcPencil(false);
+    }, 180);
+    return () => window.clearTimeout(t);
+  }, [subTab, pAge, pHeight, pShoe, pArmGirth, pWrist, pFinger, pClashTrophies, pMmr, pSleep, pTemp]);
+
+  useEffect(() => {
     if (subTab === 'vodka' && !alkoRes) calcVodka();
     else if (subTab === 'boredom' && !boredRes) loadBoredom();
-    else if (subTab === 'pencil' && !pencilRes) calcPencil();
+    else if (subTab === 'pencil' && !pencilRes) calcPencil(false);
   }, [subTab]);
 
   const toggleLiguria = async () => {
@@ -136,30 +145,6 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
 
   return (
     <div className="space-y-5 min-w-0">
-      {/* Sub-navigation */}
-      <div className="hidden lg:flex flex-wrap gap-2">
-        {[
-          { id: 'vodka', tool: 'vodka_calc', label: '🥃 Алко-Калькулятор 0..40 (Без догона)' },
-          { id: 'boredom', tool: 'boredom_advisor', label: '💡 Что делать если скучно (105+ идей + Лигурия)' },
-          { id: 'pencil', tool: 'pencil_calc', label: '📏 Длина члена (Био-Расчёт)' },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => {
-              setSubTab(t.id as any);
-              onSelectTool(t.tool);
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
-              subTab === t.id
-                ? 'bg-orange-500/25 border-orange-400/60 text-orange-200 shadow-lg shadow-orange-500/10'
-                : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/5'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {/* 1. ALCOHOL CALCULATOR */}
       {subTab === 'vodka' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -495,125 +480,309 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
         </div>
       )}
 
-      {/* 3. HUMOROUS BIOMETRIC PENCIL CALCULATOR */}
+      {/* 3. 10-FACTOR ANTHROPOMETRIC PENIS LENGTH CALCULATOR + 3D REAL OBJECT SCALE */}
       {subTab === 'pencil' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          <div className="lg:col-span-7 rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Ruler className="w-5 h-5 text-pink-400" /> Биометрический Калькулятор длины пениса
-              </h3>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-pink-500/15 text-pink-300 border border-pink-400/30">
-                10 параметров
+          <div className="lg:col-span-6 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <Mini3DSceneBadge seed="pencil_calc" color="#ec4899" size={38} />
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <Ruler className="w-4 h-4 text-pink-400" /> Соматометрический расчёт длины члена
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Десятифакторный клинический протокол (μ = 13.12 см, σ = 1.66 см, n = 15 521)
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-pink-500/15 text-pink-300 border border-pink-400/30 shrink-0">
+                10 факторов
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-              <div>
-                <label className="text-slate-400 block mb-1">Рост (см): <b>{pHeight}</b></label>
-                <input type="range" min={150} max={215} value={pHeight} onChange={(e) => setPHeight(Number(e.target.value))} className="w-full accent-pink-500" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>Возраст</span>
+                  <b className="font-mono text-pink-300">{pAge} лет</b>
+                </div>
+                <input
+                  type="range"
+                  min={18}
+                  max={75}
+                  value={pAge}
+                  onChange={(e) => setPAge(Number(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Размер обуви EU: <b>{pShoe}</b></label>
-                <input type="range" min={36} max={50} step={0.5} value={pShoe} onChange={(e) => setPShoe(Number(e.target.value))} className="w-full accent-pink-500" />
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>🏆 Кубки в Clash Royale</span>
+                  <b className="font-mono text-amber-300">{pClashTrophies}</b>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={9000}
+                  step={100}
+                  value={pClashTrophies}
+                  onChange={(e) => setPClashTrophies(Number(e.target.value))}
+                  className="w-full accent-amber-400"
+                />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Размах ладони (см): <b>{pHand}</b></label>
-                <input type="range" min={16} max={27} step={0.5} value={pHand} onChange={(e) => setPHand(Number(e.target.value))} className="w-full accent-pink-500" />
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>Рост тела</span>
+                  <b className="font-mono text-pink-300">{pHeight} см</b>
+                </div>
+                <input
+                  type="range"
+                  min={150}
+                  max={210}
+                  value={pHeight}
+                  onChange={(e) => setPHeight(Number(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Отжиманий за раз: <b>{pPushups}</b></label>
-                <input type="range" min={0} max={150} value={pPushups} onChange={(e) => setPPushups(Number(e.target.value))} className="w-full accent-pink-500" />
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>Размер обуви (EU)</span>
+                  <b className="font-mono text-pink-300">{pShoe} EU</b>
+                </div>
+                <input
+                  type="range"
+                  min={36}
+                  max={49}
+                  step={0.5}
+                  value={pShoe}
+                  onChange={(e) => setPShoe(Number(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">MMR в Dota 2: <b>{pMmr}</b></label>
-                <input type="range" min={0} max={12000} step={200} value={pMmr} onChange={(e) => setPMmr(Number(e.target.value))} className="w-full accent-pink-500" />
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>💪 Обхват руки (бицепс)</span>
+                  <b className="font-mono text-pink-300">{pArmGirth} см</b>
+                </div>
+                <input
+                  type="range"
+                  min={22}
+                  max={48}
+                  step={0.5}
+                  value={pArmGirth}
+                  onChange={(e) => setPArmGirth(Number(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Кружек чая/кофе: <b>{pCoffee}</b></label>
-                <input type="range" min={0} max={10} value={pCoffee} onChange={(e) => setPCoffee(Number(e.target.value))} className="w-full accent-pink-500" />
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>Обхват запястья</span>
+                  <b className="font-mono text-pink-300">{pWrist} см</b>
+                </div>
+                <input
+                  type="range"
+                  min={14}
+                  max={22.5}
+                  step={0.2}
+                  value={pWrist}
+                  onChange={(e) => setPWrist(Number(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Профиль носа</label>
-                <select value={pNose} onChange={(e) => setPNose(e.target.value)} className="w-full rounded-xl bg-slate-950 border border-white/10 px-2.5 py-2 text-white">
-                  <option value="small">Аккуратный</option>
-                  <option value="medium">Классический</option>
-                  <option value="roman">Римский профиль</option>
-                  <option value="eagle">Орлиный мощный</option>
-                </select>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>Длина указательного пальца</span>
+                  <b className="font-mono text-pink-300">{pFinger} см</b>
+                </div>
+                <input
+                  type="range"
+                  min={5.5}
+                  max={10.0}
+                  step={0.1}
+                  value={pFinger}
+                  onChange={(e) => setPFinger(Number(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Тембр голоса</label>
-                <select value={pVoice} onChange={(e) => setPVoice(e.target.value)} className="w-full rounded-xl bg-slate-950 border border-white/10 px-2.5 py-2 text-white">
-                  <option value="tenor">Тенор</option>
-                  <option value="baritone">Баритон</option>
-                  <option value="bass">Глубокий бас</option>
-                  <option value="ultra_bass">Суббас озвучки аниме</option>
-                </select>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>Рейтинг MMR (Dota 2 / CS)</span>
+                  <b className="font-mono text-sky-300">{pMmr}</b>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={12000}
+                  step={200}
+                  value={pMmr}
+                  onChange={(e) => setPMmr(Number(e.target.value))}
+                  className="w-full accent-sky-400"
+                />
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Стихия вайба</label>
-                <select value={pZodiac} onChange={(e) => setPZodiac(e.target.value)} className="w-full rounded-xl bg-slate-950 border border-white/10 px-2.5 py-2 text-white">
-                  <option value="fire">🔥 Огонь</option>
-                  <option value="earth">🪨 Земля</option>
-                  <option value="air">🌪 Воздух</option>
-                  <option value="water">🌊 Вода</option>
-                </select>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>Продолжительность сна</span>
+                  <b className="font-mono text-pink-300">{pSleep} ч/сут</b>
+                </div>
+                <input
+                  type="range"
+                  min={4}
+                  max={11}
+                  step={0.5}
+                  value={pSleep}
+                  onChange={(e) => setPSleep(Number(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5">
+                <div className="flex justify-between text-slate-300 mb-1">
+                  <span>Температура в помещении</span>
+                  <b className="font-mono text-pink-300">{pTemp} °C</b>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={34}
+                  step={1}
+                  value={pTemp}
+                  onChange={(e) => setPTemp(Number(e.target.value))}
+                  className="w-full accent-pink-500"
+                />
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
-              <input type="checkbox" checked={pLinux} onChange={(e) => setPLinux(e.target.checked)} className="accent-pink-500 w-4 h-4" />
-              <span>Использую Linux / собирал ядро / писал код ночью (+бонус ауры гика)</span>
-            </label>
-
             <button
-              onClick={calcPencil}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-500 text-slate-950 font-bold text-sm"
+              onClick={() => calcPencil(true)}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-indigo-500 text-slate-950 font-bold text-xs sm:text-sm shadow-lg shadow-pink-500/15"
             >
-              📏 Вычислить биометрический индекс
+              📏 Зафиксировать антропометрический протокол
             </button>
+
+            {pencilRes && (
+              <div className="p-3 rounded-xl bg-slate-950/85 border border-white/10 space-y-1.5 text-[11px]">
+                <div className="text-slate-300 font-semibold mb-1">
+                  Регрессионный вклад каждого параметра (база μ = 13.12 см):
+                </div>
+                {pencilRes.factors.map((f: any) => (
+                  <div key={f.label} className="flex justify-between gap-2 border-b border-white/[0.04] pb-1">
+                    <span className="text-slate-300">{f.label}</span>
+                    <span
+                      className={`font-mono shrink-0 ${
+                        f.impact_cm >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                      }`}
+                    >
+                      {f.impact}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/75 p-5 flex flex-col justify-between space-y-4">
-            {pencilRes && (
-              <>
-                <div className="space-y-3">
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-pink-500/20 to-purple-600/20 border border-pink-400/40 text-center">
-                    <div className="text-xs text-pink-200 uppercase tracking-wider">Расчётная длина члена</div>
-                    <div className="text-4xl font-black text-white mt-1">
-                      {pencilRes.estimated_cm} см <span className="text-lg text-pink-300">({pencilRes.estimated_inches}")</span>
-                    </div>
-                    <div className="text-xs font-semibold text-amber-300 mt-1.5">{pencilRes.rank_title}</div>
-                  </div>
+          <div className="lg:col-span-6 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 flex flex-col justify-between space-y-4">
+            {pencilRes && (() => {
+              const comps: any[] = pencilRes.comparisons || [];
+              const activeComp =
+                comps.find((c) => c.id === compareObjId) ||
+                pencilRes.closest_object ||
+                { name: 'Смартфон iPhone 16', length_cm: 14.76, width_cm: 7.16, shape: 'phone', color: '#6366f1' };
 
-                  {/* Visual Ruler */}
-                  <div className="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-1.5">
-                    <div className="flex justify-between text-[11px] text-slate-400">
-                      <span>Визуальная шкала (0 — 25 см)</span>
-                      <span className="text-emerald-300">Топ {100 - pencilRes.percentile}% планеты</span>
-                    </div>
-                    <div className="h-3 rounded-full bg-slate-800 overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-pink-500 via-purple-500 to-sky-400 transition-all duration-300"
-                        style={{ width: `${Math.min(100, (pencilRes.estimated_cm / 25) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-950/80 border border-white/10 space-y-1.5 max-h-48 overflow-y-auto text-xs">
-                    <div className="text-slate-400 font-semibold mb-1">Разбор факторов формулы:</div>
-                    {pencilRes.factors.map((f: any) => (
-                      <div key={f.label} className="flex justify-between">
-                        <span className="text-slate-300">{f.label}</span>
-                        <span className="font-mono text-pink-300">{f.impact}</span>
+              return (
+                <>
+                  <div className="space-y-3.5">
+                    {/* Crisp Clinical Result Readout */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-pink-500/15 via-slate-950 to-indigo-500/15 border border-pink-400/35">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[11px] text-pink-200 uppercase tracking-wider font-semibold">
+                            Расчётная длина (эрекция / покой)
+                          </div>
+                          <div className="text-3xl sm:text-4xl font-black text-white mt-0.5 font-mono">
+                            {pencilRes.estimated_cm} см{' '}
+                            <span className="text-base font-normal text-slate-300">
+                              / {pencilRes.flaccid_cm || (pencilRes.estimated_cm * 0.7).toFixed(1)} см
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs font-mono text-sky-300">
+                            Обхват: <b>{pencilRes.girth_est_cm} см</b>
+                          </div>
+                          <div className="text-xs font-mono text-emerald-300">
+                            Перцентиль: <b>P{pencilRes.percentile}</b>
+                          </div>
+                        </div>
                       </div>
-                    ))}
+                      <div className="text-xs font-medium text-amber-200 mt-2">{pencilRes.rank_title}</div>
+                    </div>
+
+                    {/* Humorous Interactive 3D Real-Object Scale Comparison */}
+                    <RealScaleComparison3D
+                      title="🔬 3D-сопоставление с эталонным предметом (масштаб 1:1)"
+                      leftObj={{
+                        label: 'Ваш результат',
+                        sizeCm: pencilRes.estimated_cm,
+                        widthCm: Math.max(2.9, (pencilRes.girth_est_cm || 11.6) / Math.PI),
+                        shape: 'anatomical',
+                        color: '#f472b6',
+                      }}
+                      rightObj={{
+                        label: activeComp.name,
+                        sizeCm: activeComp.length_cm,
+                        widthCm: activeComp.width_cm,
+                        shape: activeComp.shape || 'box',
+                        color: activeComp.color || '#38bdf8',
+                      }}
+                      heightPx={232}
+                    />
+
+                    {/* Selector of Everyday Real Objects */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-200">Сравнить с реальным предметом:</span>
+                        {activeComp.verdict && (
+                          <span className="text-amber-300 font-mono text-[11px]">{activeComp.verdict}</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {comps.map((obj) => (
+                          <button
+                            key={obj.id}
+                            type="button"
+                            onClick={() => setCompareObjId(obj.id)}
+                            className={`p-2 rounded-xl border text-left transition ${
+                              obj.id === activeComp.id
+                                ? 'bg-pink-500/20 border-pink-400 text-white'
+                                : 'bg-slate-950/80 border-white/10 text-slate-300 hover:border-white/25'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold truncate">{obj.name}</div>
+                            <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-0.5">
+                              <span>{obj.length_cm} см</span>
+                              <span className="text-pink-300">{obj.ratio}×</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <p className="text-[11px] text-slate-500 italic">{pencilRes.disclaimer}</p>
-              </>
-            )}
+
+                  <div className="p-2.5 rounded-xl bg-slate-950/90 border border-white/5 text-[11px] text-slate-400 leading-relaxed">
+                    {pencilRes.methodology} {pencilRes.disclaimer}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
