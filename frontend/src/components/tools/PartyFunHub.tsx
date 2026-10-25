@@ -136,7 +136,7 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
         {[
           { id: 'vodka', tool: 'vodka_calc', label: '🥃 Алко-Калькулятор 0..40 (Без догона)' },
           { id: 'boredom', tool: 'boredom_advisor', label: '💡 Что делать если скучно (105+ идей + Лигурия)' },
-          { id: 'pencil', tool: 'pencil_calc', label: '📏 Индекс «Карандаша» (Био-Рофл)' },
+          { id: 'pencil', tool: 'pencil_calc', label: '📏 Длина члена (Био-Расчёт)' },
         ].map((t) => (
           <button
             key={t.id}
@@ -492,7 +492,7 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
           <div className="lg:col-span-7 rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Ruler className="w-5 h-5 text-pink-400" /> Шуточный Био-Калькулятор «Длина Боевого Карандаша»
+                <Ruler className="w-5 h-5 text-pink-400" /> Биометрический Калькулятор длины пениса
               </h3>
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-pink-500/15 text-pink-300 border border-pink-400/30">
                 10 параметров
@@ -571,7 +571,7 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
               <>
                 <div className="space-y-3">
                   <div className="p-4 rounded-2xl bg-gradient-to-br from-pink-500/20 to-purple-600/20 border border-pink-400/40 text-center">
-                    <div className="text-xs text-pink-200 uppercase tracking-wider">Расчётная длина «карандаша»</div>
+                    <div className="text-xs text-pink-200 uppercase tracking-wider">Расчётная длина члена</div>
                     <div className="text-4xl font-black text-white mt-1">
                       {pencilRes.estimated_cm} см <span className="text-lg text-pink-300">({pencilRes.estimated_inches}")</span>
                     </div>

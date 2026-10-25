@@ -8,7 +8,7 @@ from backend.config import WEBAPP_URL
 from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
 
 
-def _webapp_button(text: str = "🚀 Открыть NEXUS Mini App", tab: str = "") -> InlineKeyboardButton:
+def _webapp_button(text: str = "🚀 Открыть MULTI_TG_TOOL", tab: str = "") -> InlineKeyboardButton:
     base = WEBAPP_URL.rstrip("/") if WEBAPP_URL.startswith("https://") else ""
     if base:
         url = f"{base}/?tma=1" + (f"&tool={tab}" if tab else "")
@@ -20,7 +20,7 @@ def _webapp_button(text: str = "🚀 Открыть NEXUS Mini App", tab: str = 
 
 def main_menu_kb(favorites_count: int = 0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(_webapp_button("🚀 Открыть NEXUS Studio (Mini App)"))
+    builder.row(_webapp_button("🌌 Открыть MULTI_TG_TOOL (Mini App)"))
 
     cat_buttons = [
         InlineKeyboardButton(

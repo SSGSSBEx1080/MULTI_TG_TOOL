@@ -182,7 +182,7 @@ async def cb_show_liguria(call: CallbackQuery) -> None:
 
 
 # ==============================================================================
-# 4. Юмористический индекс «Карандаша»
+# 4. Биометрический калькулятор длины пениса / члена
 # ==============================================================================
 @router.callback_query(F.data == "tool:open:pencil_calc")
 async def cb_open_pencil(call: CallbackQuery) -> None:
@@ -192,12 +192,12 @@ async def cb_open_pencil(call: CallbackQuery) -> None:
     b.row(InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:party"), InlineKeyboardButton(text="🏠 Домой", callback_data="nav:home"))
     await render_hud(
         call,
-        f"<b>📏 Шуточный Биометрический Индекс «Карандаша»</b>\n"
+        f"<b>📏 Биометрический калькулятор длины члена</b>\n"
         f"<blockquote>Демо-расчёт (рост 182 см, обувь 43 EU, 50 отжиманий, Linux):</blockquote>\n\n"
-        f"🎯 <b>Результат: {res['estimated_cm']} см ({res['estimated_inches']}\")</b>\n"
+        f"🎯 <b>Длина пениса: {res['estimated_cm']} см ({res['estimated_inches']}\")</b>\n"
         f"🏅 Вердикт: <b>{esc(res['rank_title'])}</b>\n"
-        f"📊 Процентиль: выше, чем у <b>{res['percentile']}%</b> респондентов НИИ Диванной Антропометрии!\n\n"
-        f"<i>Откройте Mini App по кнопке ниже, чтобы покрутить все 10 ползунков (рост, обувь, нос, ладонь, тембр, Дота MMR, отжимания и др.)!</i>",
+        f"📊 Процентиль: выше, чем у <b>{res['percentile']}%</b> респондентов!\n\n"
+        f"<i>Откройте Mini App ниже, чтобы покрутить все 10 ползунков (рост, обувь, нос, ладонь, тембр, Дота MMR, отжимания и др.).</i>",
         reply_markup=b.as_markup(),
     )
 
@@ -495,7 +495,7 @@ async def cb_give_respect_bot(call: CallbackQuery) -> None:
     await cb_view_user_profile(call_copy)
 
 
-# --- Ссылки Автора (QLS СЕНЯ) ---
+# --- Официальные ссылки & Поддержка ---
 @router.message(Command("author"))
 @router.callback_query(F.data == "tool:open:author_links")
 async def cb_author_links_bot(event: Message | CallbackQuery) -> None:
@@ -503,15 +503,14 @@ async def cb_author_links_bot(event: Message | CallbackQuery) -> None:
     b = InlineKeyboardBuilder()
     for lnk in info.get("links", []):
         if str(lnk.get("url", "")).startswith(("http://", "https://")):
-            b.row(InlineKeyboardButton(text=f"{lnk.get('emoji', '🔗')} {lnk.get('label', 'Ссылка')}", url=lnk["url"]))
-    b.row(webapp_button("🎬 Витрина QLS СЕНЯ + Настройка ссылок в Mini App", tab="social"))
+            lbl = str(lnk.get("label", "Ссылка"))
+            b.row(InlineKeyboardButton(text=lbl, url=lnk["url"]))
     b.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:home"))
     await render_hud(
         event,
-        f"<b>🎬 {esc(info['title'])}</b>\n"
+        f"<b>🕶️ {esc(info['title'])}</b>\n"
         f"<blockquote>{esc(info['tagline'])}</blockquote>\n\n"
-        f"{esc(info['bio'])}\n\n"
-        f"💎 <i>{esc(info['donation_note'])}</i>",
+        f"{esc(info['bio'])}",
         reply_markup=b.as_markup(),
     )
 

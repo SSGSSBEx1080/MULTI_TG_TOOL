@@ -237,7 +237,7 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         assert sim_init.status_code == 200
         msgs = sim_init.json()["messages"]
         bot_welcome = msgs[-1]
-        assert "NEXUS" in bot_welcome["text"]
+        assert "MULTI_TG_TOOL" in bot_welcome["text"]
 
         # 3. Tap Inline Callback Button (Single-Message HUD Edit in-place!)
         cb_res = await client.post(
@@ -282,12 +282,12 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         assert "Тайна Агента 007" in read_res.json()["messages"][-1]["text"]
 
         # 7. Test v2 Short & Long URL redirects + Profile Views tracking + Arcade Score + Author
-        lnk = await client.post("/api/v2/links/create", json={"url": "https://youtube.com/@qls_senya?utm_source=test"})
+        lnk = await client.post("/api/v2/links/create", json={"url": "https://www.youtube.com/@qls8571?utm_source=test"})
         assert lnk.status_code == 200
         short_path = lnk.json()["short_path"]
         redir = await client.get(short_path, follow_redirects=False)
         assert redir.status_code == 307
-        assert redir.headers["location"] == "https://youtube.com/@qls_senya"
+        assert redir.headers["location"] == "https://www.youtube.com/@qls8571"
 
         top = await client.get("/api/v2/social/leaderboard?sort_by=xp")
         assert len(top.json()["users"]) >= 4
@@ -301,4 +301,5 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         assert game_sc.json()["xp_earned"] >= 5
 
         auth = await client.get("/api/v2/author")
-        assert "QLS СЕНЯ" in auth.json()["title"]
+        assert "MULTI_TG_TOOL" in auth.json()["title"]
+        assert len(auth.json()["links"]) == 4

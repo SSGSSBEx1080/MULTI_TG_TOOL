@@ -19,16 +19,16 @@ RANKS = [
 ]
 
 DEFAULT_AUTHOR_INFO = {
-    "name": "QLS СЕНЯ",
-    "tagline": "Создатель мультитул-экосистемы NEXUS • Гейминг, Кодинг, Аниме & Инженерия",
-    "bio": "Делаю крутые штуки на стыке кода, игр (DMC, Sekiro, Dota 2) и безумных идей. Подписывайся на ресурсы и залетай в движ!",
+    "title": "QLS • MULTI_TG_TOOL",
+    "name": "QLS • MULTI_TG_TOOL",
+    "tagline": "В тени 🕶️",
+    "bio": "Официальные площадки и прямая поддержка проекта.",
+    "donation_note": "Прямая поддержка проекта:",
     "links": [
-        {"title": "📺 YouTube — QLS СЕНЯ", "url": "https://www.youtube.com/@QLS_SENYA", "badge": "Видео"},
-        {"title": "✈️ Telegram Канал Автора", "url": "https://t.me/qls_senya", "badge": "ТГК"},
-        {"title": "💬 Написать в ЛС Telegram", "url": "https://t.me/qls_senya_dm", "badge": "Связь"},
-        {"title": "🎮 Steam / Dota 2 Профиль", "url": "https://steamcommunity.com/", "badge": "Игры"},
-        {"title": "💻 GitHub Проекты", "url": "https://github.com/SSGSSBEx1080", "badge": "Код"},
-        {"title": "💎 Донат на развитие и чай", "url": "https://www.donationalerts.com/", "badge": "Донат"},
+        {"label": "📺 YouTube", "title": "📺 YouTube", "url": "https://www.youtube.com/@qls8571", "badge": "YouTube", "emoji": "📺"},
+        {"label": "🎵 TikTok", "title": "🎵 TikTok", "url": "https://www.tiktok.com/@qls_senya1488", "badge": "TikTok", "emoji": "🎵"},
+        {"label": "✈️ Telegram — @QLSCENR", "title": "✈️ Telegram — @QLSCENR", "url": "https://t.me/QLSCENR", "badge": "Telegram", "emoji": "✈️"},
+        {"label": "💎 Поддержать проект (ЮMoney)", "title": "💎 Поддержать проект (ЮMoney)", "url": "https://yoomoney.ru/fundraise/1JT4BDKO99S.260826", "badge": "Донат", "emoji": "💎"},
     ],
 }
 
@@ -214,7 +214,7 @@ class Database:
             user_cnt = (await cur.fetchone())["c"]
             if user_cnt < 4:
                 demo_users = [
-                    (DEFAULT_DEMO_USER_ID, "qls_senya", "СЕНЯ (Вы)", "Создаю контент, прохожу Sekiro и тестирую NEXUS 🌌", "👑", 620, 42, 28, 19, 840),
+                    (DEFAULT_DEMO_USER_ID, "QLSCENR", "QLS", "Архитектор в тени 🕶️", "👑", 620, 42, 28, 19, 840),
                     (880101, "jotaro_kujo", "Джотаро", "Yare Yare Daze • Мейнер Star Platinum и Тетриса", "⭐", 1240, 87, 64, 41, 1450),
                     (880102, "alt_ksusha", "Ксюша Альтушка", "Слушаю пост-панк, пью вишнёвый энергос и оцениваю анкеты в Бибинто 🖤", "🦇", 890, 53, 112, 77, 620),
                     (880103, "dota_theory", "Артур 7к ММР", "Собираю кастомные билды на всех героев кроме Кеза и Рингмастера", "⚔️", 540, 39, 31, 15, 980),
@@ -724,9 +724,9 @@ class Database:
     # --- Author Card Settings ---
     def _normalize_author(self, info: dict[str, Any]) -> dict[str, Any]:
         out = dict(info)
-        out["title"] = out.get("title") or out.get("name") or "QLS СЕНЯ"
+        out["title"] = out.get("title") or out.get("name") or "QLS • MULTI_TG_TOOL"
         out["name"] = out["title"]
-        out["donation_note"] = out.get("donation_note") or "Поддержать развитие проекта, новые ролики и чай можно по ссылке выше!"
+        out["donation_note"] = out.get("donation_note") or "Прямая поддержка проекта:"
         norm_links = []
         for lnk in out.get("links", []):
             lbl = lnk.get("label") or lnk.get("title") or "Ссылка"

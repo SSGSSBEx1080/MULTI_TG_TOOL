@@ -587,7 +587,7 @@ const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSa
   const upgrades = [
     { name: '⚡ Двойной свитч мыши (+2 за клик)', cost: 25, buy: () => setClickPower((p) => p + 2) },
     { name: '🤖 Авто-Скрипт на Python (+5/сек)', cost: 80, buy: () => setAutoPerSec((a) => a + 5) },
-    { name: '🖥 Сервер на Amvera (+25/сек)', cost: 300, buy: () => setAutoPerSec((a) => a + 25) },
+    { name: '🖥 Квантовый Кластер (+25/сек)', cost: 300, buy: () => setAutoPerSec((a) => a + 25) },
     { name: '🌌 Квантовый Стенд Реквием (+15 за клик & +80/сек)', cost: 1000, buy: () => { setClickPower((p) => p + 15); setAutoPerSec((a) => a + 80); } },
   ];
 

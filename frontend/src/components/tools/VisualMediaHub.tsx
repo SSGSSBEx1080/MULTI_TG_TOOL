@@ -35,16 +35,16 @@ export const VisualMediaHub: React.FC<Props> = ({
 }) => {
   // --- QR & Barcode State ---
   const [qrMode, setQrMode] = useState<'text' | 'wifi' | 'vcard'>('text');
-  const [qrData, setQrData] = useState('https://t.me/nexus_multitool_bot');
+  const [qrData, setQrData] = useState('https://t.me/multi_tg_bot');
   const [qrTheme, setQrTheme] = useState('cyber');
   const [qrShape, setQrShape] = useState('rounded');
-  const [qrBadge, setQrBadge] = useState('NX');
-  const [qrCaption, setQrCaption] = useState('NEXUS • Multi-Tool');
-  const [wifiSsid, setWifiSsid] = useState('NEXUS_5G_PRO');
+  const [qrBadge, setQrBadge] = useState('MT');
+  const [qrCaption, setQrCaption] = useState('MULTI_TG_TOOL • @multi_tg_bot');
+  const [wifiSsid, setWifiSsid] = useState('MULTI_5G_PRO');
   const [wifiPwd, setWifiPwd] = useState('CyberAccess2026');
-  const [vcardName, setVcardName] = useState('Алексей Соколов');
-  const [vcardPhone, setVcardPhone] = useState('+7 999 123-45-67');
-  const [vcardTg, setVcardTg] = useState('@nexus_architect');
+  const [vcardName, setVcardName] = useState('QLS');
+  const [vcardPhone, setVcardPhone] = useState('+7 999 000-00-00');
+  const [vcardTg, setVcardTg] = useState('@QLSCENR');
   const [qrResult, setQrResult] = useState<any>(null);
 
   const [bcVal, setBcVal] = useState('NEXUS-2026-X9');
@@ -92,7 +92,7 @@ export const VisualMediaHub: React.FC<Props> = ({
   // --- v2: QR Decoder & URL Shortener / Lengthener ---
   const [qrScanFile, setQrScanFile] = useState<File | null>(null);
   const [qrScanResult, setQrScanResult] = useState<any>(null);
-  const [linkInput, setLinkInput] = useState('https://youtube.com/@qls_senya?utm_source=telegram&utm_medium=post&fbclid=IwAR999');
+  const [linkInput, setLinkInput] = useState('https://www.youtube.com/@qls8571?utm_source=telegram&utm_medium=post&fbclid=IwAR999');
   const [linkBundle, setLinkBundle] = useState<any>(null);
 
   const [busy, setBusy] = useState(false);

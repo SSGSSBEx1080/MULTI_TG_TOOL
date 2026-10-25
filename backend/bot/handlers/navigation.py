@@ -20,17 +20,17 @@ def _build_welcome_text(profile: dict[str, Any]) -> str:
     bar = progress_bar(rank["progress_pct"], 8)
     name = esc(profile.get("first_name") or "Друг")
     return (
-        f"<b>🌌 NEXUS • Швейцарский Мультитул в Telegram</b>\n"
+        f"<b>🌌 MULTI_TG_TOOL • Галактический Мультитул в Telegram</b>\n"
         f"<blockquote>👋 Привет, <b>{name}</b>!\n"
         f"🎖 <b>Ранг:</b> {rank['title']}  •  <code>{rank['xp']}/{rank['next_xp']} XP</code>\n"
         f"📊 <b>Прогресс:</b> <code>{bar}</code> ({rank['progress_pct']}%)\n"
         f"🛠 <b>Запусков:</b> {profile.get('tools_used', 0)}</blockquote>\n\n"
-        f"<b>Что умеет NEXUS прямо сейчас:</b>\n"
-        f"• 🎨 <b>QR и Штрихкоды</b> — градиентные QR, Wi-Fi, vCard, EAN/Code128\n"
-        f"• 🕵️ <b>Фото и Стеганография</b> — прятать зашифрованный текст в PNG, чистить EXIF, стикеры 512px, Carbon-код\n"
-        f"• 📄 <b>PDF Кузница</b> — верстка PDF с кириллицей, шифрование AES-256, извлечение текста\n"
-        f"• 🔐 <b>Безопасность и Dev</b> — пароли, NX1 шифр, JWT, 2FA TOTP, JSON↔YAML, Regex, Cron\n"
-        f"• ⚡ <b>Smart Omni-Drop</b> — просто отправь <i>фото, PDF, пример, JSON или текст в неверной раскладке</i> без команд!"
+        f"<b>50+ инструментов и миров внутри MULTI_TG_TOOL:</b>\n"
+        f"• 🎨 <b>QR, Ссылки, Фото & PDF</b> — создание и чтение QR, укоротитель/удлинитель ссылок, стеганография PNG, PDF AES-256\n"
+        f"• 🎉 <b>Тусовка & Угар</b> — алко-калькулятор 0..40°, 105+ идей от скуки, био-расчёт длины члена\n"
+        f"• 📚 <b>Знания & Вселенные</b> — Стенд-декс JoJo (части 3–9), Мульти-Вики, Конституции, Формулы ЕГЭ, Население\n"
+        f"• 🎮 <b>Аркады & Соцсеть</b> — Тетрис, Flappy, Jump, Кликер, Топ игроков, Альтушки 18+, Bibinto, Анонимный чат\n"
+        f"• ⚡ <b>Smart Omni-Drop</b> — кидай <i>фото, PDF, дюймы/фунты, пример или кривую раскладку</i> прямо в чат без команд!"
     )
 
 
