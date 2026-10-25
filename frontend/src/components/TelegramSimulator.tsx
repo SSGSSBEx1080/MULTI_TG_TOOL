@@ -256,7 +256,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
     { label: '🌟 /stand', value: '/stand' },
     { label: '🏆 /top', value: '/top' },
     { label: '💘 /altushka', value: '/altushka' },
-    { label: '🎬 /author', value: '/author' },
+    { label: '🕶️ /author', value: '/author' },
     { label: '⌨️ Ghbdtn? rfr ltkf&', value: 'Ghbdtn? rfr ltkf&' },
   ];
 
@@ -267,19 +267,21 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
         {/* Authentic Telegram Chat Header */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 bg-[#131c31] border-b border-white/10">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-sky-500/20 shrink-0">
-              <Bot className="w-5 h-5 text-white" />
-            </div>
+            <img
+              src="/avatar.png"
+              alt="MULTI_TG_TOOL"
+              className="w-10 h-10 rounded-full object-cover border border-amber-400/50 shadow-lg shadow-purple-600/30 shrink-0"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm text-white truncate">NEXUS • Мультитул</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-medium">
-                  aiogram 3 LIVE
+                <span className="font-bold text-sm text-white truncate">MULTI_TG_TOOL</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-amber-300 border border-amber-400/30 font-medium">
+                  @multi_tg_bot
                 </span>
               </div>
               <div className="text-xs text-emerald-400 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                бот • реальный движок обработчиков
+                бот • ежемесячно 50+ инструментов
               </div>
             </div>
           </div>
@@ -296,7 +298,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
                   ? 'bg-purple-500/25 text-purple-200 border-purple-400/40'
                   : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
               }`}
-              title="Протестировать инлайн-режим @nexus_multitool_bot"
+              title="Протестировать инлайн-режим @multi_tg_bot"
             >
               <Zap className="w-3.5 h-3.5 text-purple-400" />
               <span className="hidden sm:inline">@inline</span>

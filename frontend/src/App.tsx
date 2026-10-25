@@ -119,18 +119,20 @@ export const App: React.FC = () => {
         <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0a101f]/90 backdrop-blur-xl">
           <div className="max-w-[1680px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 via-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-sky-500/20">
-                NX
-              </div>
+              <img
+                src="/avatar.png"
+                alt="MULTI_TG_TOOL"
+                className="w-10 h-10 rounded-full object-cover border border-amber-400/50 shadow-lg shadow-purple-600/30"
+              />
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm tracking-tight text-white">NEXUS MULTI-TG-TOOL</span>
-                  <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 font-medium">
-                    Bot + Mini App + Simulator
+                  <span className="font-black text-sm tracking-wide text-white">MULTI_TG_TOOL</span>
+                  <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-amber-300 border border-amber-400/30 font-medium">
+                    @multi_tg_bot
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400 hidden sm:block">
-                  aiogram 3.31 • FastAPI • 50+ тулов, Игры, Знания, Соцсеть & Автор QLS СЕНЯ
+                  50+ утилит • Аркады • Знания • Соцсеть & Рейтинг
                 </div>
               </div>
             </div>
@@ -179,7 +181,7 @@ export const App: React.FC = () => {
                 }`}
               >
                 <Settings2 className="w-3.5 h-3.5" />
-                Деплой, Донаты & Токен
+                Статистика
               </button>
             </div>
 

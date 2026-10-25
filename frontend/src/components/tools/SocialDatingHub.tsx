@@ -63,9 +63,8 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
   const [anonMsgs, setAnonMsgs] = useState<any[]>([]);
   const [anonInput, setAnonInput] = useState('');
 
-  // --- Author Links (QLS СЕНЯ) ---
+  // --- Author Links (QLS) ---
   const [authorInfo, setAuthorInfo] = useState<any>(null);
-  const [editingAuthor, setEditingAuthor] = useState(false);
 
   useEffect(() => {
     if (activeTool === 'leaderboard_hub') setSubTab('top');
@@ -218,14 +217,6 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
     onSync();
   };
 
-  const saveAuthor = async () => {
-    if (!authorInfo) return;
-    const saved = await apiPost('/api/v2/author', authorInfo);
-    setAuthorInfo(saved);
-    setEditingAuthor(false);
-    onToast('Витрина автора сохранена! 🎬');
-  };
-
   const currentBib = bibintoProfiles[bibIdx % Math.max(1, bibintoProfiles.length)];
 
   return (
@@ -238,7 +229,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
           { id: 'bibinto', tool: 'bibinto_rate', label: '💎 Bibinto (Оцени 1–10)' },
           { id: 'turing', tool: 'turing_game', label: '🤖 Человек или ИИ?' },
           { id: 'anon', tool: 'anon_chat', label: '🎭 Анонимный Чат' },
-          { id: 'author', tool: 'author_links', label: '🎬 Автор: QLS СЕНЯ' },
+          { id: 'author', tool: 'author_links', label: '🕶️ Ссылки & Поддержка' },
         ].map((t) => (
           <button
             key={t.id}
@@ -702,93 +693,39 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
         </div>
       )}
 
-      {/* 6. AUTHOR SHOWCASE: QLS СЕНЯ */}
+      {/* 6. AUTHOR SHOWCASE: MINIMAL SHADOW STYLE */}
       {subTab === 'author' && authorInfo && (
-        <div className="max-w-2xl mx-auto rounded-3xl border border-amber-400/35 bg-gradient-to-br from-[#171226] via-[#0e1526] to-[#1a1122] p-6 shadow-2xl space-y-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3.5">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 via-rose-500 to-purple-600 flex items-center justify-center text-3xl shadow-lg">
-                🎬
-              </div>
-              <div>
-                <h3 className="text-xl font-black text-white">{authorInfo.title}</h3>
-                <div className="text-xs text-amber-300 font-medium">{authorInfo.tagline}</div>
-              </div>
+        <div className="max-w-xl mx-auto rounded-3xl border border-amber-400/30 bg-gradient-to-br from-[#0c0916] via-[#120d24] to-[#1a0e17] p-6 shadow-2xl space-y-5">
+          <div className="flex items-center gap-3.5">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-700 via-rose-600 to-amber-500 flex items-center justify-center text-2xl shadow-lg border border-amber-300/30">
+              🕶️
             </div>
-            <button
-              onClick={() => setEditingAuthor(!editingAuthor)}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-slate-200"
-            >
-              {editingAuthor ? 'Отмена' : '✏️ Изменить ссылки'}
-            </button>
+            <div>
+              <h3 className="text-lg font-black tracking-wide text-white">{authorInfo.title || 'QLS • MULTI_TG_TOOL'}</h3>
+              <div className="text-xs text-amber-300/90 font-medium">{authorInfo.tagline || 'В тени 🕶️'}</div>
+            </div>
           </div>
 
-          <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">{authorInfo.bio}</p>
-
-          {!editingAuthor ? (
-            <div className="space-y-2.5">
-              {(authorInfo.links || []).map((lnk: any, i: number) => (
-                <a
-                  key={i}
-                  href={lnk.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full p-3.5 rounded-2xl bg-slate-950/90 hover:bg-slate-950 border border-white/10 hover:border-amber-400/50 flex items-center justify-between transition group"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{lnk.emoji || '🔗'}</span>
-                    <div>
-                      <div className="text-sm font-bold text-white group-hover:text-amber-300 transition">{lnk.label}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">{lnk.url}</div>
-                    </div>
+          <div className="space-y-2.5">
+            {(authorInfo.links || []).map((lnk: any, i: number) => (
+              <a
+                key={i}
+                href={lnk.url}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full p-3.5 rounded-2xl bg-black/60 hover:bg-black/80 border border-white/10 hover:border-amber-400/50 flex items-center justify-between transition group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-xl shrink-0">{lnk.emoji || '🔗'}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white group-hover:text-amber-300 transition truncate">{lnk.label}</div>
+                    <div className="text-[11px] text-slate-400 font-mono truncate">{lnk.url}</div>
                   </div>
-                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-amber-300" />
-                </a>
-              ))}
-              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-400/25 text-xs text-amber-200 text-center">
-                💎 {authorInfo.donation_note}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3 text-xs p-4 rounded-2xl bg-slate-950 border border-white/10">
-              <input
-                value={authorInfo.title}
-                onChange={(e) => setAuthorInfo({ ...authorInfo, title: e.target.value })}
-                className="w-full rounded-xl bg-slate-900 border border-white/10 px-3 py-2 text-white font-bold"
-              />
-              <textarea
-                rows={2}
-                value={authorInfo.bio}
-                onChange={(e) => setAuthorInfo({ ...authorInfo, bio: e.target.value })}
-                className="w-full rounded-xl bg-slate-900 border border-white/10 px-3 py-2 text-white"
-              />
-              {(authorInfo.links || []).map((lnk: any, idx: number) => (
-                <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <input
-                    value={lnk.label}
-                    onChange={(e) => {
-                      const next = [...authorInfo.links];
-                      next[idx] = { ...next[idx], label: e.target.value };
-                      setAuthorInfo({ ...authorInfo, links: next });
-                    }}
-                    className="rounded-xl bg-slate-900 border border-white/10 px-3 py-2 text-white"
-                  />
-                  <input
-                    value={lnk.url}
-                    onChange={(e) => {
-                      const next = [...authorInfo.links];
-                      next[idx] = { ...next[idx], url: e.target.value };
-                      setAuthorInfo({ ...authorInfo, links: next });
-                    }}
-                    className="rounded-xl bg-slate-900 border border-white/10 px-3 py-2 text-sky-300 font-mono"
-                  />
                 </div>
-              ))}
-              <button onClick={saveAuthor} className="w-full py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold">
-                💾 Сохранить ссылки автора
-              </button>
-            </div>
-          )}
+                <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-amber-300 shrink-0 ml-2" />
+              </a>
+            ))}
+          </div>
         </div>
       )}
     </div>

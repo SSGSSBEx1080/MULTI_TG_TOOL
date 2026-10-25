@@ -17,6 +17,7 @@ frontend/dist/
 
 # Runtime & Secrets
 .env
+Unselected files/
 data/*.db
 data/*.db-journal
 data/*.db-wal

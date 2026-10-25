@@ -16,7 +16,7 @@ from backend.config import BOT_TOKEN, SIMULATOR_BOT_TOKEN
 logger = logging.getLogger("nexus.bot")
 
 BOT_COMMANDS = [
-    BotCommand(command="start", description="🌌 Главное меню NEXUS v2"),
+    BotCommand(command="start", description="🌌 Главное меню MULTI_TG_TOOL"),
     BotCommand(command="bored", description="💡 Что делать если скучно (105+ идей)"),
     BotCommand(command="alcohol", description="🥃 Алко-калькулятор 0..40 без догона"),
     BotCommand(command="units", description="🔮 Умный конвертер («6 дюймов»)"),
@@ -25,7 +25,7 @@ BOT_COMMANDS = [
     BotCommand(command="top", description="🏆 Топ игроков и визиты профилей"),
     BotCommand(command="altushka", description="💘 Дейтинг-чат с альтушками 18+"),
     BotCommand(command="turing", description="🤖 Игра: Человек или ИИ?"),
-    BotCommand(command="author", description="🎬 Ссылки автора QLS СЕНЯ"),
+    BotCommand(command="author", description="🕶️ Официальные ссылки & Поддержка"),
     BotCommand(command="pass", description="🛡️ Генератор криптостойких паролей"),
     BotCommand(command="qr", description="✨ Быстрый градиентный QR-код"),
     BotCommand(command="profile", description="👤 Мой профиль и ранг XP"),
