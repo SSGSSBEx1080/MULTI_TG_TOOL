@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Calculator, Copy } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
+import { PhysicsLab3D } from '../three/Interactive3DScenes';
 
 interface Props {
   activeTool: string;
@@ -156,6 +157,9 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, 
           );
         })}
       </div>
+
+      {/* Interactive 3D Physics Experiment Stage */}
+      <PhysicsLab3D calcId={activeCalc.id} values={values} result={result} />
 
       {/* Solver workspace */}
       <div className="rounded-2xl bg-slate-900/80 border border-white/10 p-4 space-y-4">

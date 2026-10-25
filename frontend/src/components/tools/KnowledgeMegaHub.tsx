@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BookOpen, Compass, Globe2, GraduationCap, Scale, Search, Sparkles } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
+import { WorldGlobeAndMath3D } from '../three/Interactive3DScenes';
 
 interface Props {
   activeTool: string;
@@ -122,6 +123,27 @@ export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, on
           </button>
         ))}
       </div>
+
+      {/* Interactive 3D Earth Globe & Lorenz Chaotic Attractor */}
+      <WorldGlobeAndMath3D
+        mode={subTab === 'ege' || subTab === 'wiki' ? 'math' : 'globe'}
+        onPickQuery={(countryName) => {
+          if (subTab === 'const') {
+            setConstQuery(countryName);
+          } else if (subTab === 'pop') {
+            setPopQuery(countryName);
+            loadPop(countryName);
+          } else if (subTab === 'religions') {
+            setRelQuery(countryName);
+          } else {
+            setSubTab('pop');
+            onSelectTool('population_hub');
+            setPopQuery(countryName);
+            loadPop(countryName);
+          }
+          onToast(`🌍 Выбрано на 3D-глобусе: ${countryName}`);
+        }}
+      />
 
       {/* 1. CONSTITUTIONS */}
       {subTab === 'const' && (

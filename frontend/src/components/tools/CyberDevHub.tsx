@@ -10,6 +10,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { apiPost, copyText } from '../../lib/api';
+import { CryptoStateCube3D } from '../three/Interactive3DScenes';
 
 interface Props {
   activeCategory: string;
@@ -315,6 +316,8 @@ export const CyberDevHub: React.FC<Props> = ({
                   </div>
                 </div>
               )}
+
+              <CryptoStateCube3D entropyBits={pwResult?.entropy_bits || pwLen * 5.8} />
             </div>
 
             <div className="lg:col-span-7 rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-2.5">

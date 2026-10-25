@@ -15,6 +15,7 @@ import {
   Youtube,
 } from 'lucide-react';
 import { apiGet, apiPost, copyText, openExternalLink } from '../../lib/api';
+import { Tilt3DCard } from '../three/Tilt3DCard';
 
 interface Props {
   activeTool: string;
@@ -433,7 +434,12 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
           </div>
 
           {/* Detailed Profile Inspector */}
-          <div ref={profileInspectorRef} className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 flex flex-col justify-between min-w-0">
+          <div ref={profileInspectorRef} className="lg:col-span-5 min-w-0">
+            <Tilt3DCard
+              accentColor="#38bdf8"
+              maxTilt={6}
+              className="h-full rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 flex flex-col justify-between"
+            >
             {selectedProfile ? (
               <div className="space-y-4">
                 <div className="flex flex-wrap sm:flex-nowrap items-start justify-between gap-3">
@@ -505,6 +511,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
                 <p>Кликните на любого участника слева, чтобы посмотреть его детальную статистику и засчитать визит в его профиль!</p>
               </div>
             )}
+            </Tilt3DCard>
           </div>
         </div>
       )}
@@ -807,7 +814,11 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
 
       {/* 6. AUTHOR SHOWCASE: MINIMAL SHADOW STYLE */}
       {subTab === 'author' && authorInfo && (
-        <div className="max-w-xl mx-auto rounded-3xl border border-amber-400/30 bg-gradient-to-br from-[#0c0916] via-[#120d24] to-[#1a0e17] p-6 shadow-2xl space-y-5">
+        <Tilt3DCard
+          accentColor="#f59e0b"
+          maxTilt={8}
+          className="max-w-xl mx-auto rounded-3xl border border-amber-400/30 bg-gradient-to-br from-[#0c0916] via-[#120d24] to-[#1a0e17] p-6 shadow-2xl space-y-5"
+        >
           <div className="flex items-center gap-3.5">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-700 via-rose-600 to-amber-500 flex items-center justify-center text-2xl shadow-lg border border-amber-300/30">
               🕶️
@@ -837,7 +848,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
               </button>
             ))}
           </div>
-        </div>
+        </Tilt3DCard>
       )}
     </div>
   );
