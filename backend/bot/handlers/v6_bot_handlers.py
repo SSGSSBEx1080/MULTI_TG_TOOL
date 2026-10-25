@@ -265,6 +265,8 @@ V6_TOOL_PREVIEWS: set[str] = {
     "spend_billionaire",
     "absurd_password_game",
     "deep_sea_space_scale",
+    "trolley_problem_sim",
+    "asteroid_launcher_sim",
     "pc_builder_pro",
     "materials_fasteners_encyc",
     "outfit_looksmax_hub",
@@ -272,15 +274,18 @@ V6_TOOL_PREVIEWS: set[str] = {
     "elden_ring_guide",
     "minecraft_guide",
     "fortnite_cs2_guides",
+    "gta_genshin_roblox_guides",
     "billiards_3d_sim",
     "curling_sim",
     "carrom_sim",
     "bowling_3d_sim",
+    "air_hockey_sim",
     "solar_system_3d",
     "eclipse_comet_tracker",
     "cell_atom_quarks_3d",
     "periodic_table_v6",
     "graph_plotter_2d_3d",
+    "fourier_epicycles_3d",
     "irrational_numbers_inf",
     "library_of_babel",
     "earth_stats_2026",
@@ -293,6 +298,8 @@ V6_TOOL_PREVIEWS: set[str] = {
     "car_specs_catalog",
     "route_planner_calc",
     "color_matching_studio",
+    "world_time_sun",
+    "phys_ballistics_optics",
 }
 
 
@@ -345,11 +352,50 @@ def _build_v6_summary_html(tid: str) -> str:
             + f"• По трассе: <code>{rt['route_distance_km']} км</code> ({rt['duration_formatted']})\n"
             + f"• Топливо: <code>{rt['fuel_liters']} л</code> (~{rt['fuel_cost_rub']} ₽)"
         )
-    if tid in ("dota2_guide", "elden_ring_guide", "minecraft_guide", "fortnite_cs2_guides"):
-        idx_map = {"dota2_guide": 0, "elden_ring_guide": 1, "minecraft_guide": 2, "fortnite_cs2_guides": 3}
-        g = GAMING_WIKIS_DB[idx_map.get(tid, 0)]
+    if tid in ("dota2_guide", "elden_ring_guide", "minecraft_guide", "fortnite_cs2_guides", "gta_genshin_roblox_guides"):
+        idx_map = {
+            "dota2_guide": 0,
+            "elden_ring_guide": 1,
+            "minecraft_guide": 2,
+            "fortnite_cs2_guides": 3,
+            "gta_genshin_roblox_guides": 6,
+        }
+        g = GAMING_WIKIS_DB[min(len(GAMING_WIKIS_DB) - 1, idx_map.get(tid, 0))]
         sec = g["sections"][0]
         return header + f"<b>{g['emoji']} {esc(g['game'])} — {esc(sec['title'])}</b>\n{esc(sec['body'][:550])}"
+    if tid == "trolley_problem_sim":
+        return (
+            header
+            + "• 8 классических и современных этических дилемм (Филиппа Фут, Джудит Томсон, ИИ-автопилот, петля времени).\n"
+            + "• Сравнение утилитаризма и деонтологии + статистика решений участников."
+        )
+    if tid == "asteroid_launcher_sim":
+        return (
+            header
+            + "• Настройка диаметра (10 м – 15 км), плотности (лёд / камень / железо), скорости (11–72 км/с) и угла входа.\n"
+            + "• Расчёт тротилового эквивалента (Мт ТНТ), диаметра и глубины кратера, радиуса ударной волны и магнитуды Рихтера."
+        )
+    if tid == "air_hockey_sim":
+        return (
+            header
+            + "• Неоновый стол аэрохоккея 60 FPS с физикой упругого соударения шайбы и биты.\n"
+            + "• Настраиваемая скорость соперника-ИИ и матч до 7 голов."
+        )
+    if tid == "fourier_epicycles_3d":
+        return (
+            header
+            + "• Визуализация суммы вращающихся векторов (эпициклов Фурье) для меандра, пилообразной, треугольной волны и фигур Лиссажу."
+        )
+    if tid == "world_time_sun":
+        return (
+            header
+            + "• Реальное положение солнечного зенита, линия терминатора День/Ночь, ночные огни мегаполисов и мировое время на 3D-глобусе Земли."
+        )
+    if tid == "phys_ballistics_optics":
+        return (
+            header
+            + "• Баллистическая траектория под углом на Земле (9.81 м/с²), Луне (1.62 м/с²), Марсе (3.72 м/с²) и Юпитере (24.79 м/с²) + расчёт фокуса линз."
+        )
     if tid == "eclipse_comet_tracker":
         evs = get_upcoming_eclipses_and_comets()["events"][:4]
         lines = "\n".join(f"• <b>{esc(e['countdown_label'])}</b> — {esc(e['title'])}" for e in evs)

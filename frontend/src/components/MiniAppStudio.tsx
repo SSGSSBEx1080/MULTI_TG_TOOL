@@ -1122,7 +1122,7 @@ export const MiniAppStudio: React.FC<Props> = ({
         )}
 
         {/* Mobile Bottom Navigation Bar */}
-        <nav className="fixed bottom-0 inset-x-0 z-30 bg-[#070b17]/95 backdrop-blur-xl border-t border-white/10 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] grid grid-cols-5 gap-1">
+        <nav className="fixed bottom-0 inset-x-0 z-30 bg-[#070b17]/95 backdrop-blur-xl border-t border-white/10 px-1.5 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] grid grid-cols-6 gap-1">
           <button
             onClick={onBackToCategories}
             className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
@@ -1130,7 +1130,25 @@ export const MiniAppStudio: React.FC<Props> = ({
             }`}
           >
             <span className="text-base leading-none">🗂️</span>
-            <span className="mt-0.5">Разделы</span>
+            <span className="mt-0.5 truncate">Разделы</span>
+          </button>
+          <button
+            onClick={() => onSelectCategory('ai_assistant')}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              mobileDrillOpen && activeCategory === 'ai_assistant' ? 'text-sky-300 bg-sky-500/15' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">🤖</span>
+            <span className="mt-0.5 truncate">ИИ Сеть</span>
+          </button>
+          <button
+            onClick={() => onSelectCategory('knowledge')}
+            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
+              mobileDrillOpen && activeCategory === 'knowledge' ? 'text-amber-300 bg-amber-500/15' : 'text-slate-400'
+            }`}
+          >
+            <span className="text-base leading-none">🌍</span>
+            <span className="mt-0.5 truncate">3D Земля</span>
           </button>
           <button
             onClick={() => onSelectCategory('arcade')}
@@ -1139,32 +1157,25 @@ export const MiniAppStudio: React.FC<Props> = ({
             }`}
           >
             <span className="text-base leading-none">♟️</span>
-            <span className="mt-0.5">Игры</span>
+            <span className="mt-0.5 truncate">Игры</span>
           </button>
           <button
-            onClick={() => onSelectCategory('knowledge')}
+            onClick={() => onSelectCategory('jojo_adult_encyc')}
             className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
-              mobileDrillOpen && activeCategory === 'knowledge' ? 'text-sky-300 bg-sky-500/15' : 'text-slate-400'
+              mobileDrillOpen && activeCategory === 'jojo_adult_encyc'
+                ? 'text-fuchsia-300 bg-fuchsia-500/15'
+                : 'text-slate-400'
             }`}
           >
-            <span className="text-base leading-none">🌍</span>
-            <span className="mt-0.5">Планета</span>
-          </button>
-          <button
-            onClick={() => onSelectCategory('universes')}
-            className={`py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium transition ${
-              mobileDrillOpen && activeCategory === 'universes' ? 'text-rose-300 bg-rose-500/15' : 'text-slate-400'
-            }`}
-          >
-            <span className="text-base leading-none">🎬</span>
-            <span className="mt-0.5">Кино/Мод</span>
+            <span className="text-base leading-none">🃏</span>
+            <span className="mt-0.5 truncate">JoJo/18+</span>
           </button>
           <button
             onClick={onOpenPalette}
             className="py-1 rounded-xl flex flex-col items-center justify-center text-[10px] font-medium text-slate-400 active:text-white"
           >
             <span className="text-base leading-none">🔍</span>
-            <span className="mt-0.5">Поиск</span>
+            <span className="mt-0.5 truncate">Поиск</span>
           </button>
         </nav>
       </div>

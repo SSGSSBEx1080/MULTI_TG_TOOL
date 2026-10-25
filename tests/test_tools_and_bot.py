@@ -233,7 +233,7 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         cat_res = await client.get("/api/tools/catalog")
         categories = cat_res.json()["categories"]
         assert len(categories) == 28
-        assert sum(len(c["tools"]) for c in categories) == 141
+        assert sum(len(c["tools"]) for c in categories) == 148
 
         # 2. Verify NO fake/demo users exist in Leaderboard initially
         top_initial = await client.get("/api/v2/social/leaderboard?sort_by=xp")
@@ -984,7 +984,7 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
     from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
 
     assert len(TOOL_CATEGORIES) == 28
-    assert len(TOOLS_BY_ID) == 141
+    assert len(TOOLS_BY_ID) == 148
 
     await db.init()
     await bot_manager.init_simulator()
@@ -1159,6 +1159,64 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
                 mid = msgs[-1]["message_id"]
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_3d_earth_orientation_and_graceful_bot_shutdown(caplog) -> None:
+    import math
+    from pathlib import Path
+    from backend.bot.factory import bot_manager
+    from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
+
+    # 1. Catalog growth guard: strictly >= 28 categories & >= 148 tools
+    assert len(TOOL_CATEGORIES) >= 28
+    assert len(TOOLS_BY_ID) >= 148
+
+    # 2. Source & mathematical verification that 3D Earth is strictly North-UP (never upside down)
+    repo_root = Path(__file__).resolve().parent.parent
+    earth_src = (repo_root / "frontend" / "src" / "components" / "tools" / "EarthWebcams3D.tsx").read_text(encoding="utf-8")
+    engine_src = (repo_root / "frontend" / "src" / "lib" / "engine3d.ts").read_text(encoding="utf-8")
+    cosmos_src = (repo_root / "frontend" / "src" / "components" / "tools" / "CosmosMicroMathHub.tsx").read_text(encoding="utf-8")
+
+    assert "-radius * Math.sin(lat)" not in earth_src, "EarthWebcams3D must never invert latitude Y!"
+    assert "latLonToVec3" in earth_src
+    assert "y: radius * Math.sin(lat)" in engine_src
+    assert "y: -z * 0.28" not in cosmos_src, "3D surface Z peaks must point UP (+Y), not down!"
+
+    def lat_lon_to_screen_sy(lat_deg: float, lon_deg: float, rx: float = 0.0, ry: float = 0.0) -> float:
+        lat = math.radians(lat_deg)
+        lon = math.radians(lon_deg)
+        x = math.cos(lat) * math.sin(lon)
+        y = math.sin(lat)
+        z = math.cos(lat) * math.cos(lon)
+        # rotY(ry)
+        x1 = x * math.cos(ry) + z * math.sin(ry)
+        y1 = y
+        z1 = -x * math.sin(ry) + z * math.cos(ry)
+        # rotX(rx)
+        y2 = y1 * math.cos(rx) - z1 * math.sin(rx)
+        z2 = y1 * math.sin(rx) + z1 * math.cos(rx)
+        scale = 320.0 / (3.55 - z2)
+        return 180.0 - y2 * scale
+
+    sy_north = lat_lon_to_screen_sy(89.0, 0.0)
+    sy_moscow = lat_lon_to_screen_sy(55.75, 0.0)
+    sy_eq = lat_lon_to_screen_sy(0.0, 0.0)
+    sy_sydney = lat_lon_to_screen_sy(-33.86, 0.0)
+    sy_south = lat_lon_to_screen_sy(-89.0, 0.0)
+    assert sy_north < sy_moscow < sy_eq < sy_sydney < sy_south
+
+    # Centered Moscow fly-to check: rx = +lat, ry = -lon places Moscow at exact screen center & North Pole above it!
+    moscow_rx = math.radians(55.75)
+    moscow_ry = math.radians(-37.54)
+    assert abs(lat_lon_to_screen_sy(55.75, 37.54, moscow_rx, moscow_ry) - 180.0) < 1e-6
+    assert lat_lon_to_screen_sy(89.9, 0.0, moscow_rx, moscow_ry) < 180.0
+
+    # 3. Graceful Telegram polling stop check (no ServerDisconnectedError or unhandled exceptions)
+    await bot_manager.stop_live_polling()
+    assert bot_manager.live_status["running"] is False
+    assert "ServerDisconnectedError" not in caplog.text
+
 
 
 

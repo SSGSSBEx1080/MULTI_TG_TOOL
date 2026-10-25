@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import logging
 import os
 
 for _env_key in (
@@ -11,6 +12,14 @@ for _env_key in (
     "NUMEXPR_NUM_THREADS",
 ):
     os.environ.setdefault(_env_key, "1")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    datefmt="%y/%m/%d %H:%M:%S",
+)
+for _noisy_logger in ("httpx", "httpcore"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
 import uvicorn
 from backend.config import HOST, PORT

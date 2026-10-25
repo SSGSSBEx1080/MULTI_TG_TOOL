@@ -25,7 +25,7 @@ interface Props {
 }
 
 const toolToKnowledgeTab = (tool: string): 'earth' | 'const' | 'religions' | 'wiki' | 'ege' | 'pop' => {
-  if (tool === 'earth_3d_cams') return 'earth';
+  if (tool === 'earth_3d_cams' || tool === 'world_time_sun') return 'earth';
   if (tool === 'religions_hub' || tool === 'religions_compare') return 'religions';
   if (tool === 'multi_wiki') return 'wiki';
   if (tool === 'ege_formulas') return 'ege';
@@ -156,8 +156,10 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
 
   return (
     <div className="space-y-4 min-w-0">
-      {/* 0. GOOGLE EARTH 3D + PUBLIC LIVE WEBCAMS */}
-      {subTab === 'earth' && <EarthWebcams3D initialSearch={searchSeed} />}
+      {/* 0. GOOGLE EARTH 3D + PUBLIC LIVE WEBCAMS + SOLAR TERMINATOR */}
+      {subTab === 'earth' && (
+        <EarthWebcams3D initialSearch={searchSeed} focusSunTime={activeTool === 'world_time_sun'} />
+      )}
 
       {/* Interactive 3D Earth Globe & Lorenz Chaotic Attractor for Reference Tabs */}
       {subTab !== 'earth' && (

@@ -115,6 +115,7 @@ export const CosmosMicroMathHub: React.FC<{
       'cell_atom_quarks_3d',
       'periodic_table_v6',
       'graph_plotter_2d_3d',
+      'fourier_epicycles_3d',
       'irrational_numbers_inf',
       'library_of_babel',
     ] as const
@@ -141,6 +142,13 @@ export const CosmosMicroMathHub: React.FC<{
   const [plotDim, setPlotDim] = useState<'3d' | '2d'>('3d');
   const [expr2D, setExpr2D] = useState<string>('sin(x) * 2 + 0.3 * x');
   const [expr3D, setExpr3D] = useState<string>('sin(sqrt(x^2 + y^2) * 1.6) * 1.4');
+
+  // Fourier Epicycles & Lissajous
+  const [fourierWave, setFourierWave] = useState<'square' | 'sawtooth' | 'triangle' | 'lissajous'>('square');
+  const [harmonics, setHarmonics] = useState<number>(7);
+  const [lissA, setLissA] = useState<number>(3);
+  const [lissB, setLissB] = useState<number>(4);
+  const fourierTraceRef = useRef<number[]>([]);
 
   // Irrational Numbers & Babel
   const [irrConst, setIrrConst] = useState<string>('pi');
@@ -367,26 +375,130 @@ export const CosmosMicroMathHub: React.FC<{
           }
           ctx.stroke();
         } else {
-          // 3D Surface z = f(x, y) mesh
+          // 3D Surface z = f(x, y) dual-axis mesh (+Z strictly UP on screen!)
           const N = 22;
           const span = 4.0;
-          const ry = t * 0.25;
-          const rx = 0.58;
-          for (let i = 0; i < N; i++) {
-            ctx.beginPath();
+          const ry = t * 0.22;
+          const rx = 0.56;
+          const gridPts: { sx: number; sy: number; zVal: number }[][] = [];
+          for (let i = 0; i <= N; i++) {
+            const row: { sx: number; sy: number; zVal: number }[] = [];
+            const x = -span + (i / N) * span * 2;
             for (let j = 0; j <= N; j++) {
-              const x = -span + (i / N) * span * 2;
               const y = -span + (j / N) * span * 2;
               const z = Math.max(-2.5, Math.min(2.5, safeMathEval(expr3D, x, y)));
-              const p = project3D(rotateEuler({ x: x * 0.28, y: -z * 0.28, z: y * 0.28 }, rx, ry), W, H, fov, cam);
-              if (j === 0) ctx.moveTo(p.sx, p.sy);
-              else ctx.lineTo(p.sx, p.sy);
+              const p = project3D(rotateEuler({ x: x * 0.28, y: z * 0.28, z: y * 0.28 }, rx, ry), W, H, fov, cam);
+              row.push({ sx: p.sx, sy: p.sy, zVal: z });
             }
-            const hue = Math.round(185 + (i / N) * 110);
+            gridPts.push(row);
+          }
+          for (let i = 0; i <= N; i++) {
+            ctx.beginPath();
+            for (let j = 0; j <= N; j++) {
+              const pt = gridPts[i][j];
+              if (j === 0) ctx.moveTo(pt.sx, pt.sy);
+              else ctx.lineTo(pt.sx, pt.sy);
+            }
+            const hue = Math.round(185 + (i / N) * 115);
             ctx.strokeStyle = `hsla(${hue}, 88%, 62%, 0.78)`;
-            ctx.lineWidth = 1.3;
+            ctx.lineWidth = 1.2;
             ctx.stroke();
           }
+          for (let j = 0; j <= N; j += 2) {
+            ctx.beginPath();
+            for (let i = 0; i <= N; i++) {
+              const pt = gridPts[i][j];
+              if (i === 0) ctx.moveTo(pt.sx, pt.sy);
+              else ctx.lineTo(pt.sx, pt.sy);
+            }
+            ctx.strokeStyle = 'rgba(125,211,252,0.28)';
+            ctx.lineWidth = 0.9;
+            ctx.stroke();
+          }
+        }
+      } else if (tab === 'fourier_epicycles_3d') {
+        if (fourierWave === 'lissajous') {
+          const cx = W * 0.5;
+          const cy = H * 0.5;
+          const rxAmp = Math.min(W, H) * 0.36;
+          ctx.beginPath();
+          for (let s = 0; s <= 360; s++) {
+            const ph = (s / 360) * Math.PI * 2;
+            const px = cx + Math.sin(lissA * ph + t * 0.9) * rxAmp;
+            const py = cy - Math.sin(lissB * ph) * rxAmp * 0.85;
+            if (s === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2.4;
+          ctx.stroke();
+          const dotX = cx + Math.sin(lissA * t * 1.4 + t * 0.9) * rxAmp;
+          const dotY = cy - Math.sin(lissB * t * 1.4) * rxAmp * 0.85;
+          ctx.fillStyle = '#facc15';
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          let ex = Math.min(W * 0.26, 155);
+          let ey = H * 0.5;
+          const baseR = Math.min(W * 0.14, H * 0.27);
+          const omega = t * 1.65;
+
+          for (let k = 0; k < harmonics; k++) {
+            const prevX = ex;
+            const prevY = ey;
+            let n = 1;
+            let amp = 0;
+            if (fourierWave === 'square') {
+              n = k * 2 + 1;
+              amp = baseR * (4 / (n * Math.PI));
+            } else if (fourierWave === 'sawtooth') {
+              n = k + 1;
+              amp = baseR * (2 / ((k % 2 === 0 ? 1 : -1) * n * Math.PI));
+            } else {
+              n = k * 2 + 1;
+              const sign = k % 2 === 0 ? 1 : -1;
+              amp = baseR * ((8 * sign) / (Math.PI * Math.PI * n * n));
+            }
+            ex += amp * Math.cos(n * omega);
+            ey -= amp * Math.sin(n * omega);
+
+            ctx.beginPath();
+            ctx.arc(prevX, prevY, Math.abs(amp), 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(148,163,184,0.28)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(prevX, prevY);
+            ctx.lineTo(ex, ey);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.6;
+            ctx.stroke();
+          }
+
+          const trace = fourierTraceRef.current;
+          trace.unshift(ey);
+          if (trace.length > 360) trace.pop();
+
+          const waveStartX = Math.min(W * 0.48, 285);
+          ctx.beginPath();
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(waveStartX, trace[0]);
+          ctx.strokeStyle = 'rgba(250,204,21,0.65)';
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          ctx.beginPath();
+          for (let i = 0; i < trace.length; i++) {
+            const wx = waveStartX + i * ((W - waveStartX - 18) / 360);
+            if (i === 0) ctx.moveTo(wx, trace[i]);
+            else ctx.lineTo(wx, trace[i]);
+          }
+          ctx.strokeStyle = '#34d399';
+          ctx.lineWidth = 2.3;
+          ctx.stroke();
         }
       }
 
@@ -395,7 +507,7 @@ export const CosmosMicroMathHub: React.FC<{
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [visible, tab, bodies, selectedPlanet, timeSpeed, selectedZ, microLayer, plotDim, expr2D, expr3D]);
+  }, [visible, tab, bodies, selectedPlanet, timeSpeed, selectedZ, microLayer, plotDim, expr2D, expr3D, fourierWave, harmonics, lissA, lissB]);
 
   const currentElem = useMemo(
     () => ELEMENTS_118.find((e) => e[0] === selectedZ) || ELEMENTS_118[78],
@@ -411,6 +523,7 @@ export const CosmosMicroMathHub: React.FC<{
           { id: 'cell_atom_quarks_3d', label: '🧬 Клетка, Атом и Кварки' },
           { id: 'periodic_table_v6', label: '⚛️ Таблица Менделеева (118)' },
           { id: 'graph_plotter_2d_3d', label: '📈 2D и 3D Графики Функций' },
+          { id: 'fourier_epicycles_3d', label: '〰️ Ряды Фурье и Лиссажу' },
           { id: 'irrational_numbers_inf', label: '♾️ Числа π, φ, e (до 5000 знаков)' },
           { id: 'library_of_babel', label: '🏛️ Вавилонская Библиотека' },
         ].map((b) => (
@@ -643,6 +756,70 @@ export const CosmosMicroMathHub: React.FC<{
           />
 
           <canvas ref={canvasRef} style={{ height: 320 }} className="w-full rounded-2xl bg-[#030612] border border-white/10 block" />
+        </div>
+      )}
+
+      {/* 5B. FOURIER EPICYCLES & LISSAJOUS HARMONICS */}
+      {tab === 'fourier_epicycles_3d' && (
+        <div className="rounded-2xl bg-slate-900/80 border border-teal-500/25 p-4 space-y-4 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm sm:text-base font-bold text-white">〰️ Синтез Волн Эпициклами Фурье и Фигуры Лиссажу</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  { id: 'square', label: 'Меандр (Прямоугольная)' },
+                  { id: 'sawtooth', label: 'Пилообразная' },
+                  { id: 'triangle', label: 'Треугольная' },
+                  { id: 'lissajous', label: 'Фигуры Лиссажу' },
+                ] as const
+              ).map((w) => (
+                <button
+                  key={w.id}
+                  type="button"
+                  onClick={() => {
+                    fourierTraceRef.current = [];
+                    setFourierWave(w.id);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-semibold border transition ${
+                    fourierWave === w.id
+                      ? 'bg-teal-500/25 border-teal-400 text-teal-100'
+                      : 'bg-slate-950 border-white/10 text-slate-300'
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {fourierWave === 'lissajous' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-slate-950 border border-white/10 flex items-center justify-between gap-3">
+                <span className="text-slate-300">Частота X (f₁ = {lissA}):</span>
+                <input type="range" min={1} max={9} value={lissA} onChange={(e) => setLissA(Number(e.target.value))} className="w-40 accent-teal-400" />
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-white/10 flex items-center justify-between gap-3">
+                <span className="text-slate-300">Частота Y (f₂ = {lissB}):</span>
+                <input type="range" min={1} max={9} value={lissB} onChange={(e) => setLissB(Number(e.target.value))} className="w-40 accent-sky-400" />
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 rounded-xl bg-slate-950 border border-white/10 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-slate-300 font-semibold">
+                Число гармоник ряда Фурье: <b className="text-teal-300 font-mono">{harmonics}</b>
+              </span>
+              <input
+                type="range"
+                min={1}
+                max={25}
+                value={harmonics}
+                onChange={(e) => setHarmonics(Number(e.target.value))}
+                className="flex-1 min-w-[180px] accent-teal-400"
+              />
+            </div>
+          )}
+
+          <canvas ref={canvasRef} style={{ height: 300 }} className="w-full rounded-2xl bg-[#030612] border border-white/10 block" />
         </div>
       )}
 
