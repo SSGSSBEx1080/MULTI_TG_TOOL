@@ -12,7 +12,14 @@ interface Props {
 }
 
 export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
-  const [subTab, setSubTab] = useState<'vodka' | 'boredom' | 'pencil' | 'lie' | 'wheel' | 'croco'>('vodka');
+  const [subTab, setSubTab] = useState<'vodka' | 'boredom' | 'pencil' | 'lie' | 'wheel' | 'croco'>(() => {
+    if (activeTool === 'boredom_advisor') return 'boredom';
+    if (activeTool === 'pencil_calc') return 'pencil';
+    if (activeTool === 'lie_detector_fun') return 'lie';
+    if (activeTool === 'fortune_wheel_8ball') return 'wheel';
+    if (activeTool === 'croco_words') return 'croco';
+    return 'vodka';
+  });
 
   // --- Alcohol 0..40 State ---
   const [people, setPeople] = useState(4);

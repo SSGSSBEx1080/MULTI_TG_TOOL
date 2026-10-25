@@ -24,7 +24,11 @@ interface ZodiacSign {
 }
 
 export const HoroscopeHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
-  const [subTab, setSubTab] = useState<'horoscope' | 'birth' | 'compat'>('horoscope');
+  const [subTab, setSubTab] = useState<'horoscope' | 'birth' | 'compat'>(() => {
+    if (activeTool === 'zodiac_info') return 'birth';
+    if (activeTool === 'compat_calc') return 'compat';
+    return 'horoscope';
+  });
   const [signs, setSigns] = useState<ZodiacSign[]>([]);
 
   // 1. Horoscope state
@@ -121,31 +125,6 @@ export const HoroscopeHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync
 
   return (
     <div className="space-y-4 min-w-0">
-      {/* Sub-navigation (Desktop only — mobile already has sticky sub-tool strip) */}
-      <div className="hidden lg:grid grid-cols-3 gap-1.5 bg-slate-900/80 p-1 rounded-xl border border-white/10">
-        {[
-          { id: 'horoscope', tool: 'daily_horoscope', label: '🔮 Гороскоп' },
-          { id: 'birth', tool: 'zodiac_info', label: '♈ По дате' },
-          { id: 'compat', tool: 'compat_calc', label: '💞 Совместимость' },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => {
-              setSubTab(t.id as any);
-              onSelectTool?.(t.tool);
-            }}
-            className={`py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition truncate ${
-              subTab === t.id
-                ? 'bg-purple-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {/* Interactive 3D Celestial Ecliptic Sphere */}
       <ZodiacCelestial3D
         selectedSign={

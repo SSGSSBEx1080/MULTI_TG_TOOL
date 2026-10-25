@@ -36,7 +36,13 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   onToast,
 }) => {
   // --- Hub 6: Calc & Network ---
-  const [calcTab, setCalcTab] = useState<'smart_units' | 'math' | 'units' | 'finance' | 'subnet'>('smart_units');
+  const [calcTab, setCalcTab] = useState<'smart_units' | 'math' | 'units' | 'finance' | 'subnet'>(() => {
+    if (activeTool === 'smart_calc') return 'math';
+    if (activeTool === 'unit_conv') return 'units';
+    if (activeTool === 'finance_calc') return 'finance';
+    if (activeTool === 'subnet_calc') return 'subnet';
+    return 'smart_units';
+  });
   const [smartUnitInput, setSmartUnitInput] = useState('6 дюймов');
   const [smartUnitRes, setSmartUnitRes] = useState<any>(null);
   const [mathExpr, setMathExpr] = useState('sqrt(2048 * 2) + (0xFF & 0x3C) + 2^10');
@@ -60,7 +66,14 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   const [subRes, setSubRes] = useState<any>(null);
 
   // --- Hub 7: Text & Random ---
-  const [txtTab, setTxtTab] = useState<'rhyme' | 'russian_ege' | 'layout' | 'fonts' | 'diff' | 'random'>('rhyme');
+  const [txtTab, setTxtTab] = useState<'rhyme' | 'russian_ege' | 'layout' | 'fonts' | 'diff' | 'random'>(() => {
+    if (activeTool === 'russian_ege_ortho') return 'russian_ege';
+    if (activeTool === 'layout_fixer') return 'layout';
+    if (activeTool === 'font_styler') return 'fonts';
+    if (activeTool === 'text_diff') return 'diff';
+    if (activeTool === 'randomizer') return 'random';
+    return 'rhyme';
+  });
   const [rhymeWord, setRhymeWord] = useState('любовь');
   const [rhymeRes, setRhymeRes] = useState<any>(null);
   const [layoutText, setLayoutText] = useState('Ghbdtn? rfr ltkf&');
@@ -80,7 +93,11 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   const [rndRes, setRndRes] = useState<any>(null);
 
   // --- Hub 8: Workspace ---
-  const [wsTab, setWsTab] = useState<'habits' | 'todos' | 'notes'>('habits');
+  const [wsTab, setWsTab] = useState<'habits' | 'todos' | 'notes'>(() => {
+    if (activeTool === 'todo_board') return 'todos';
+    if (activeTool === 'notes_vault') return 'notes';
+    return 'habits';
+  });
   const [habitTitle, setHabitTitle] = useState('');
   const [habitIcon, setHabitIcon] = useState('✅');
   const [habitTarget, setHabitTarget] = useState(7);
@@ -113,13 +130,13 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   }, [activeTool]);
 
   useEffect(() => {
-    if (activeCategory === 'calc' && !smartUnitRes) {
+    if (activeCategory === 'calc' && calcTab === 'smart_units' && !smartUnitRes) {
       apiPost('/api/v2/units/smart', { query: smartUnitInput }).then(setSmartUnitRes).catch(() => {});
     }
-    if (activeCategory === 'text' && !rhymeRes) {
+    if (activeCategory === 'text' && txtTab === 'rhyme' && !rhymeRes) {
       apiPost('/api/v2/rhyme', { word: rhymeWord }).then(setRhymeRes).catch(() => {});
     }
-  }, [activeCategory]);
+  }, [activeCategory, calcTab, txtTab]);
 
   const runSmartUnits = (q?: string) => {
     const target = (q ?? smartUnitInput).trim();
@@ -184,9 +201,16 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
                   🔮 Умный Конвертер Естественного Языка (Авто-определение единиц)
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Просто напишите как в жизни («6 дюймов», «5 футов 11 дюймов», «100 миль в час», «2.5 пуда») — популярные величины идут первыми!
+                  Напишите величину фразой («6 дюймов», «5 футов 11 дюймов», «100 миль в час», «2.5 пуда»).
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setCalcTab('units')}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-indigo-200 transition shrink-0"
+              >
+                📊 Таблица всех шкал →
+              </button>
             </div>
 
             <div className="flex flex-wrap gap-1.5">
@@ -332,6 +356,16 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
 
         {calcTab === 'units' && (
           <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-bold text-white">📊 Табличный конвертер по категориям</div>
+              <button
+                type="button"
+                onClick={() => setCalcTab('smart_units')}
+                className="px-3 py-1.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-xs font-semibold text-indigo-200 transition"
+              >
+                ← 💬 Умный ввод фразой
+              </button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
               <div>
                 <label className="text-xs text-slate-400 block mb-1">Категория</label>

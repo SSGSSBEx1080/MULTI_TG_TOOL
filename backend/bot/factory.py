@@ -24,6 +24,15 @@ logger = logging.getLogger("multi_tg_tool.bot")
 
 BOT_COMMANDS = [
     BotCommand(command="start", description="Главное меню"),
+    BotCommand(command="earth", description="3D Земля и веб-камеры мира"),
+    BotCommand(command="chess", description="Шахматная академия и ИИ"),
+    BotCommand(command="spy", description="Игра «Шпион» для компании"),
+    BotCommand(command="speaker", description="Очистка динамика от воды (165 Гц)"),
+    BotCommand(command="binaural", description="Бинауральные ритмы и фоновый шум"),
+    BotCommand(command="reaction", description="Тест реакции (мс) и CPS"),
+    BotCommand(command="sand", description="Песочница стихий (песок, лава, вода)"),
+    BotCommand(command="udareniya", description="Тренажёр ударений ЕГЭ ФИПИ"),
+    BotCommand(command="yo", description="Ёфикатор и транслитерация текста"),
     BotCommand(command="horoscope", description="Гороскоп по знакам зодиака"),
     BotCommand(command="compat", description="Совместимость по датам рождения"),
     BotCommand(command="physics", description="Физические расчёты"),

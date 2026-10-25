@@ -213,16 +213,17 @@ async def handle_smart_omni_text(message: Message) -> None:
 
     omni = intuitive_omni_search(raw)
     builder_txt = InlineKeyboardBuilder()
-    for t_hit in omni.get("tools", [])[:2]:
+    for t_hit in omni.get("tools", [])[:3]:
+        emoji = t_hit.get("emoji", "🔹")
         builder_txt.row(
-            InlineKeyboardButton(text=t_hit["title"][:40], callback_data=f"tool:open:{t_hit['tool_id']}")
+            InlineKeyboardButton(text=f"{emoji} {t_hit['title'][:36]}", callback_data=f"tool:open:{t_hit['tool_id']}")
         )
     builder_txt.row(
         InlineKeyboardButton(text="⌨️ Сменить раскладку", callback_data="tool:open:layout_fixer"),
         InlineKeyboardButton(text="✨ Шрифты", callback_data="tool:open:font_styler"),
     )
     builder_txt.row(
-        InlineKeyboardButton(text="📚 Справочники", callback_data="cat:knowledge"),
+        InlineKeyboardButton(text="📚 Справочники", callback_data="nav:cat:knowledge"),
         InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:home"),
     )
 

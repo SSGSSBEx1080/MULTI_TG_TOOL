@@ -53,14 +53,27 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, categories, onS
     }
     if (!query.trim()) return items;
     const q = query.toLowerCase();
-    return items.filter(
+    const localHits = items.filter(
       (i) =>
         i.title.toLowerCase().includes(q) ||
         i.desc.toLowerCase().includes(q) ||
         i.categoryTitle.toLowerCase().includes(q) ||
         i.id.toLowerCase().includes(q)
     );
-  }, [categories, query]);
+    const seen = new Set(localHits.map((h) => h.id));
+    const remoteTools: any[] = remoteRes?.tools || [];
+    for (const rt of remoteTools) {
+      const tid = rt.tool_id || rt.id;
+      if (tid && !seen.has(tid)) {
+        const full = items.find((it) => it.id === tid);
+        if (full) {
+          seen.add(tid);
+          localHits.push(full);
+        }
+      }
+    }
+    return localHits;
+  }, [categories, query, remoteRes]);
 
   if (!open) return null;
 

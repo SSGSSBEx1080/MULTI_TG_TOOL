@@ -928,8 +928,54 @@ async def test_timbrica_activities_api_search_and_bot(tmp_path, monkeypatch) -> 
                 b_r = await client.post("/api/sim/send-text", json={"text": cmd})
                 assert b_r.status_code == 200
                 assert substr in b_r.json()["messages"][-1]["text"].lower()
+
+            # 7. Verify Omni-Router inline buttons (including "📚 Справочники" -> nav:cat:knowledge) & /help
+            omni_msg_r = await client.post("/api/sim/send-text", json={"text": "ислам и пупырка"})
+            assert omni_msg_r.status_code == 200
+            omni_last = omni_msg_r.json()["messages"][-1]
+            omni_mid = omni_last["message_id"]
+            all_cb_btns = [
+                btn
+                for row in omni_last["inline_keyboard"]
+                for btn in row
+                if btn.get("callback_data")
+            ]
+            assert any(b["callback_data"] == "nav:cat:knowledge" for b in all_cb_btns)
+            for btn in all_cb_btns:
+                click_r = await client.post(
+                    "/api/sim/callback",
+                    json={"message_id": omni_mid, "callback_data": btn["callback_data"]},
+                )
+                assert click_r.status_code == 200
+                cur_last = click_r.json()["messages"][-1]
+                omni_mid = cur_last["message_id"]
+                assert cur_last["text"] != omni_last["text"], f"Dead button detected: {btn}"
+
+            help_r = await client.post("/api/sim/send-text", json={"text": "/help"})
+            assert help_r.status_code == 200
+            help_txt = help_r.json()["messages"][-1]["text"]
+            for must_have in ("/earth", "/chess", "/spy", "/speaker", "/binaural", "/sand", "/udareniya"):
+                assert must_have in help_txt
+
+            # 8. Verify all self-hosted animated GIF visuals (/art/*.gif) are served with GIF89a magic bytes
+            for gif_name in (
+                "speaker_eject.gif",
+                "binaural_sync.gif",
+                "polygraph_scan.gif",
+                "sand_reactions.gif",
+                "breathing_calm.gif",
+                "fipi_stress.gif",
+                "persona_ksyusha.gif",
+                "persona_alisa.gif",
+                "persona_milana.gif",
+                "persona_rita.gif",
+            ):
+                gif_r = await client.get(f"/art/{gif_name}")
+                assert gif_r.status_code == 200, f"Missing static GIF /art/{gif_name}"
+                assert gif_r.content[:6] in (b"GIF89a", b"GIF87a")
     finally:
         await db.close()
+
 
 
 

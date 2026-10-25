@@ -32,6 +32,7 @@ function playShortBeep(freq = 880, dur = 0.09) {
 // 1. REACTION TIME (VISUAL & AUDIO MS) + CPS CLICK SPEED TEST
 // ============================================================================
 const ReactionAndCpsView: React.FC<{ onSaveScore: (id: string, s: number) => void }> = ({ onSaveScore }) => {
+  const [mobReflexTab, setMobReflexTab] = useState<'reaction' | 'cps'>('reaction');
   const [mode, setMode] = useState<'visual' | 'audio'>('visual');
   const [phase, setPhase] = useState<'idle' | 'waiting' | 'ready' | 'early' | 'done'>('idle');
   const [times, setTimes] = useState<number[]>([]);
@@ -129,9 +130,36 @@ const ReactionAndCpsView: React.FC<{ onSaveScore: (id: string, s: number) => voi
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      {/* Millisecond Reaction Test */}
-      <div className="lg:col-span-7 rounded-2xl border border-indigo-500/30 bg-slate-900/80 p-4 sm:p-5 space-y-4">
+    <div className="space-y-3">
+      {/* Mobile switch so Reaction & CPS are both immediately reachable above the fold */}
+      <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/10 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobReflexTab('reaction')}
+          className={`py-2 px-2 rounded-lg text-xs font-bold transition ${
+            mobReflexTab === 'reaction' ? 'bg-indigo-500 text-white' : 'text-slate-300'
+          }`}
+        >
+          ⚡ Скорость реакции (мс)
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobReflexTab('cps')}
+          className={`py-2 px-2 rounded-lg text-xs font-bold transition ${
+            mobReflexTab === 'cps' ? 'bg-sky-500 text-slate-950' : 'text-slate-300'
+          }`}
+        >
+          🖱️ Скорость клика (CPS)
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Millisecond Reaction Test */}
+        <div
+          className={`lg:col-span-7 rounded-2xl border border-indigo-500/30 bg-slate-900/80 p-4 sm:p-5 space-y-4 ${
+            mobReflexTab === 'reaction' ? 'block' : 'hidden lg:block'
+          }`}
+        >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
@@ -214,7 +242,11 @@ const ReactionAndCpsView: React.FC<{ onSaveScore: (id: string, s: number) => voi
       </div>
 
       {/* CPS Click Speed Test */}
-      <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-4">
+      <div
+        className={`lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-4 ${
+          mobReflexTab === 'cps' ? 'block' : 'hidden lg:block'
+        }`}
+      >
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <MousePointerClick className="w-4 h-4 text-sky-400" /> Тест скорости клика (CPS)
@@ -275,6 +307,7 @@ const ReactionAndCpsView: React.FC<{ onSaveScore: (id: string, s: number) => voi
             Сбросить таймер CPS
           </button>
         )}
+      </div>
       </div>
     </div>
   );
@@ -903,6 +936,13 @@ const BreathCalm3DView: React.FC = () => {
       </div>
 
       <p className="text-xs text-slate-400">{proto.desc}</p>
+
+      <img
+        src="/art/breathing_calm.gif"
+        alt="Ритмическое дыхание антистресс"
+        loading="lazy"
+        className="w-full max-h-28 object-contain rounded-xl border border-teal-500/25 bg-[#070f1a]"
+      />
 
       <div className="relative">
         <canvas

@@ -91,7 +91,14 @@ export const RussianLanguageStudio: React.FC<{ onToast: (m: string) => void }> =
       </div>
 
       {sub === 'stress' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="space-y-4">
+          <img
+            src="/art/fipi_stress.gif"
+            alt="Орфоэпический минимум ФИПИ ЕГЭ"
+            loading="lazy"
+            className="w-full max-h-28 object-contain rounded-xl border border-amber-500/25 bg-[#0c0e1c]"
+          />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           <div className="lg:col-span-7 p-4 rounded-2xl bg-slate-950 border border-white/10 space-y-4">
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-400">Орфоэпический минимум ФИПИ • Слово {idx + 1}/{deck.length || 1}</span>
@@ -197,6 +204,7 @@ export const RussianLanguageStudio: React.FC<{ onToast: (m: string) => void }> =
                 </div>
               ))}
             </div>
+          </div>
           </div>
         </div>
       )}

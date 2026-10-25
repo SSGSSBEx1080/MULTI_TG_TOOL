@@ -522,17 +522,84 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                 <div className="space-y-2.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-purple-300">🃏 Энциклопедия Стендов JoJo's Bizarre Adventure</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {wikiData.jojo_stands.map((s: any) => (
-                      <div key={s.name} className="p-3.5 rounded-xl bg-slate-950/90 border border-purple-400/20 space-y-1 text-xs">
-                        <div className="flex justify-between gap-2">
-                          <span className="font-bold text-white">{s.name}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 shrink-0">{s.part}</span>
+                    {wikiData.jojo_stands.map((s: any) => {
+                      const rankToVal = (ch: string): number => {
+                        if (ch.includes('∞') || ch.includes('S')) return 1.0;
+                        if (ch.includes('A')) return 0.88;
+                        if (ch.includes('B')) return 0.72;
+                        if (ch.includes('C')) return 0.56;
+                        if (ch.includes('D')) return 0.38;
+                        if (ch.includes('E')) return 0.22;
+                        return 0.6;
+                      };
+                      const rawParts = String(s.stats || '').split('|');
+                      const vals =
+                        rawParts.length >= 5
+                          ? [0, 1, 2, 3, 4, 5].map((k) => rankToVal(rawParts[k] || 'B'))
+                          : [0.85, 0.78, 0.6, 0.72, 0.68, 0.82];
+                      const labels = ['PWR', 'SPD', 'RNG', 'DUR', 'PRC', 'POT'];
+                      const cx = 44;
+                      const cy = 44;
+                      const maxR = 28;
+                      const polyPts = vals
+                        .map((v, idx) => {
+                          const a = -Math.PI / 2 + (idx * Math.PI * 2) / 6;
+                          return `${(cx + Math.cos(a) * maxR * v).toFixed(1)},${(cy + Math.sin(a) * maxR * v).toFixed(1)}`;
+                        })
+                        .join(' ');
+                      const outerPts = [0, 1, 2, 3, 4, 5]
+                        .map((idx) => {
+                          const a = -Math.PI / 2 + (idx * Math.PI * 2) / 6;
+                          return `${(cx + Math.cos(a) * maxR).toFixed(1)},${(cy + Math.sin(a) * maxR).toFixed(1)}`;
+                        })
+                        .join(' ');
+
+                      return (
+                        <div key={s.name} className="p-3.5 rounded-xl bg-slate-950/90 border border-purple-400/20 flex items-start gap-3 text-xs">
+                          <svg viewBox="0 0 88 88" className="w-20 h-20 shrink-0">
+                            <circle cx={cx} cy={cy} r={maxR} fill="rgba(88,28,135,0.22)" stroke="rgba(192,132,252,0.35)" strokeWidth="1" />
+                            <polygon points={outerPts} fill="none" stroke="rgba(148,163,184,0.28)" strokeWidth="0.8" />
+                            {[0, 1, 2, 3, 4, 5].map((idx) => {
+                              const a = -Math.PI / 2 + (idx * Math.PI * 2) / 6;
+                              const lx = cx + Math.cos(a) * (maxR + 10);
+                              const ly = cy + Math.sin(a) * (maxR + 10);
+                              return (
+                                <g key={idx}>
+                                  <line
+                                    x1={cx}
+                                    y1={cy}
+                                    x2={cx + Math.cos(a) * maxR}
+                                    y2={cy + Math.sin(a) * maxR}
+                                    stroke="rgba(148,163,184,0.22)"
+                                    strokeWidth="0.7"
+                                  />
+                                  <text
+                                    x={lx}
+                                    y={ly + 2.5}
+                                    textAnchor="middle"
+                                    fontSize="6.5"
+                                    fontWeight="700"
+                                    fill="#e9d5ff"
+                                  >
+                                    {labels[idx]}
+                                  </text>
+                                </g>
+                              );
+                            })}
+                            <polygon points={polyPts} fill="rgba(232,121,249,0.38)" stroke="#facc15" strokeWidth="1.4" />
+                          </svg>
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex justify-between gap-2">
+                              <span className="font-bold text-white truncate">{s.name}</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 shrink-0">{s.part}</span>
+                            </div>
+                            <div className="text-amber-300 text-[11px]">Владелец: {s.user}</div>
+                            <div className="font-mono text-[10px] text-sky-300">{s.stats}</div>
+                            <p className="text-slate-300 pt-1">{s.ability}</p>
+                          </div>
                         </div>
-                        <div className="text-amber-300 text-[11px]">Владелец: {s.user}</div>
-                        <div className="font-mono text-[10px] text-sky-300">{s.stats}</div>
-                        <p className="text-slate-300 pt-1">{s.ability}</p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
