@@ -44,6 +44,13 @@ from backend.tools.spy_and_guess_engine import (
     start_spy_round,
     vote_spy_player,
 )
+from backend.tools.timbrica_activities import (
+    get_ege_stress_deck,
+    get_lie_detector_pack,
+    roll_croco_words,
+    transliterate_multistandard,
+    yoficate_russian_text,
+)
 from backend.tools.party_and_fun import (
     FOREIGN_TONGUE_TWISTERS,
     LIGURIA_TEXT,
@@ -969,5 +976,45 @@ async def api_spy_finish(req: SpyActionReq) -> dict[str, Any]:
         return finish_spy_round_by_host(req.code, req.player_token)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==============================================================================
+# 9. Активности Русского языка, Вечеринки и Игр (ЕГЭ Ударения, Ёфикатор, Транслит, Крокодил)
+# ==============================================================================
+@router.get("/api/v2/timbrica/ege-stress")
+async def api_ege_stress(count: int = 15, q: str = "") -> dict[str, Any]:
+    return get_ege_stress_deck(count=count, query=q)
+
+
+class TextTransformReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    text: str
+
+
+@router.post("/api/v2/timbrica/yoficate")
+async def api_yoficate_text(req: TextTransformReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = yoficate_russian_text(req.text)
+    await db.record_tool_use(uid, "russian_ege_ortho", "text", "miniapp", "yoficate", xp_gain=5)
+    return res
+
+
+@router.post("/api/v2/timbrica/translit")
+async def api_translit_multistandard(req: TextTransformReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = transliterate_multistandard(req.text)
+    await db.record_tool_use(uid, "russian_ege_ortho", "text", "miniapp", "translit", xp_gain=5)
+    return res
+
+
+@router.get("/api/v2/timbrica/croco")
+async def api_croco_words(level: str = "all", count: int = 6, letter: str = "") -> dict[str, Any]:
+    return roll_croco_words(level=level, count=count, letter=letter)
+
+
+@router.get("/api/v2/timbrica/lie-questions")
+async def api_lie_questions(category: str = "all") -> dict[str, Any]:
+    return get_lie_detector_pack(category=category)
+
 
 

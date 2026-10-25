@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Dices, Flame, GlassWater, Lightbulb, Ruler, Search, Volume2 } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
 import { Mini3DSceneBadge, PartyGlass3D, RealScaleComparison3D } from '../three/Interactive3DScenes';
+import { CrocoWordsGameView, FortuneWheel8BallBubbleView, LieDetectorPartyView } from './TimbricaPartyExtras';
 
 interface Props {
   activeTool: string;
@@ -11,7 +12,7 @@ interface Props {
 }
 
 export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
-  const [subTab, setSubTab] = useState<'vodka' | 'boredom' | 'pencil'>('vodka');
+  const [subTab, setSubTab] = useState<'vodka' | 'boredom' | 'pencil' | 'lie' | 'wheel' | 'croco'>('vodka');
 
   // --- Alcohol 0..40 State ---
   const [people, setPeople] = useState(4);
@@ -51,6 +52,9 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
     if (activeTool === 'vodka_calc') setSubTab('vodka');
     else if (activeTool === 'boredom_advisor') setSubTab('boredom');
     else if (activeTool === 'pencil_calc') setSubTab('pencil');
+    else if (activeTool === 'lie_detector_fun') setSubTab('lie');
+    else if (activeTool === 'fortune_wheel_8ball') setSubTab('wheel');
+    else if (activeTool === 'croco_words') setSubTab('croco');
   }, [activeTool]);
 
   const calcVodka = async () => {
@@ -786,6 +790,10 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
           </div>
         </div>
       )}
+
+      {subTab === 'lie' && <LieDetectorPartyView onToast={onToast} />}
+      {subTab === 'wheel' && <FortuneWheel8BallBubbleView />}
+      {subTab === 'croco' && <CrocoWordsGameView />}
     </div>
   );
 };

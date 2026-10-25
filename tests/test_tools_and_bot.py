@@ -227,12 +227,13 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # 1. Health & Catalog (15 factual categories)
+        # 1. Health & Catalog (17 factual categories, 81 tools)
         r = await client.get("/api/health")
         assert r.status_code == 200
         cat_res = await client.get("/api/tools/catalog")
         categories = cat_res.json()["categories"]
-        assert len(categories) == 15
+        assert len(categories) == 17
+        assert sum(len(c["tools"]) for c in categories) == 81
 
         # 2. Verify NO fake/demo users exist in Leaderboard initially
         top_initial = await client.get("/api/v2/social/leaderboard?sort_by=xp")
@@ -844,6 +845,92 @@ async def test_earth_webcams_bilingual_search_spy_lobby_and_realistic_biometrics
                 assert exp_sub in sim_r.json()["messages"][-1]["text"].lower()
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_timbrica_activities_api_search_and_bot(tmp_path, monkeypatch) -> None:
+    """Verify all newly ported Timbrica activities: EGE stress, Yoficator, Translit, Croco, Lie Detector, Omni-Search & Bot."""
+    monkeypatch.setattr(db, "db_path", tmp_path / "test_timbrica.db")
+    bot_manager.sim_session.chats.clear()
+    await db.init()
+    try:
+        await bot_manager.init_simulator()
+        app = create_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. FIPI EGE Stress Trainer
+            st_r = await client.get("/api/v2/timbrica/ege-stress?count=12")
+            assert st_r.status_code == 200
+            st_data = st_r.json()
+            assert st_data["total_corpus"] >= 60
+            assert len(st_data["items"]) == 12
+            assert all(it["correct"] in it["options"] for it in st_data["items"])
+
+            st_search = await client.get("/api/v2/timbrica/ege-stress?q=звонит")
+            assert st_search.status_code == 200
+            assert any(it["base"] == "звонит" and "звони́т" in it["correct"] for it in st_search.json()["items"])
+
+            # 2. Yoficator
+            yo_r = await client.post(
+                "/api/v2/timbrica/yoficate",
+                json={"text": "Еще теплый звездный вечер: режиссер ведет серьезный расчет съемок."},
+            )
+            assert yo_r.status_code == 200
+            yo_out = yo_r.json()
+            assert yo_out["replacements_count"] >= 5
+            assert "Ещё" in yo_out["output"]
+            assert "тёплый" in yo_out["output"]
+            assert "съёмок" in yo_out["output"]
+
+            # 3. Multi-standard Transliteration (ICAO/MVD, GOST, ISO-9, URL Slug)
+            tr_r = await client.post("/api/v2/timbrica/translit", json={"text": "Щеглов Артём Юрьевич"})
+            assert tr_r.status_code == 200
+            standards = {s["id"]: s["value"] for s in tr_r.json()["standards"]}
+            assert standards["icao_mvd"].startswith("SHCHEGLOV")
+            assert "shcheglov" in standards["url_slug"]
+
+            # 4. Crocodile / Hat Words & Lie Detector Party Questions
+            cr_r = await client.get("/api/v2/timbrica/croco?level=actions&count=8")
+            assert cr_r.status_code == 200
+            assert len(cr_r.json()["words"]) == 8
+
+            lie_r = await client.get("/api/v2/timbrica/lie-questions?category=spicy")
+            assert lie_r.status_code == 200
+            assert len(lie_r.json()["questions"]) >= 4
+
+            # 5. Intuitive Omni-Search routes for all Timbrica categories
+            for query_txt, expected_tool in [
+                ("чистка динамика от воды 165 гц", "speaker_cleaner"),
+                ("бинауральные ритмы розовый шум", "binaural_noise"),
+                ("ударения егэ ёфикатор", "russian_ege_ortho"),
+                ("падающий песок лава", "sand_physics"),
+                ("таблицы шульте струпа", "schulte_stroop"),
+                ("детектор лжи полиграф", "lie_detector_fun"),
+            ]:
+                om_r = await client.get("/api/v2/search/intuitive", params={"q": query_txt})
+                assert om_r.status_code == 200
+                found_ids = [t["id"] for t in om_r.json()["tools"]]
+                assert expected_tool in found_ids, f"Expected {expected_tool} for '{query_txt}', got {found_ids}"
+
+            # 6. Telegram Bot commands for Timbrica tools + inline button callback
+            for cmd, substr in [
+                ("/udareniya", "ударен"),
+                ("/yo Еще теплый вечер", "ещё тёплый"),
+                ("/croco", "крокодил"),
+                ("/lie", "детектор лжи"),
+                ("/speaker", "165"),
+                ("/binaural", "бинаурал"),
+                ("/reaction", "реакц"),
+                ("/aim", "аим"),
+                ("/schulte", "шульте"),
+                ("/sand", "песочниц"),
+            ]:
+                b_r = await client.post("/api/sim/send-text", json={"text": cmd})
+                assert b_r.status_code == 200
+                assert substr in b_r.json()["messages"][-1]["text"].lower()
+    finally:
+        await db.close()
+
 
 
 
