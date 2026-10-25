@@ -100,6 +100,9 @@ class BreastCalcReq(BaseModel):
     height_cm: float = 166.0
     underbust_cm: float = 74.0
     hip_cm: float = 95.0
+    body_fat_pct: float = 24.0
+    standing_bust_cm: float = 0.0
+    leaning_bust_cm: float = 0.0
     hair_length_cm: float = 42.0
     matcha_latte_per_week: int = 4
     pinterest_pins: int = 650
@@ -116,6 +119,9 @@ async def api_v6_breast_calc(req: BreastCalcReq, request: Request) -> dict[str, 
         height_cm=req.height_cm,
         underbust_cm=req.underbust_cm,
         hip_cm=req.hip_cm,
+        body_fat_pct=req.body_fat_pct,
+        standing_bust_cm=req.standing_bust_cm,
+        leaning_bust_cm=req.leaning_bust_cm,
         hair_length_cm=req.hair_length_cm,
         matcha_latte_per_week=req.matcha_latte_per_week,
         pinterest_pins=req.pinterest_pins,
@@ -123,7 +129,7 @@ async def api_v6_breast_calc(req: BreastCalcReq, request: Request) -> dict[str, 
         shower_temp_c=req.shower_temp_c,
         sims_genshin_hours=req.sims_genshin_hours,
     )
-    await db.record_tool_use(uid, "breast_size_calc", "party", "miniapp", res["eu_size"], xp_gain=6)
+    await db.record_tool_use(uid, "breast_size_calc", "party", "miniapp", str(res.get("eu_size") or "measurements required"), xp_gain=6)
     return res
 
 

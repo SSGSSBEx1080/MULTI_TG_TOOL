@@ -7,7 +7,7 @@ import time
 from typing import Any
 from urllib.parse import parse_qsl, unquote
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 from backend.config import BOT_TOKEN, DEFAULT_DEMO_USER_ID
 from backend.database import db
@@ -73,6 +73,23 @@ async def _ensure_user_cached(uid: int, username: str, first_name: str, is_real:
     if len(_ENSURED_USERS_TTL) >= _MAX_CACHE_ITEMS:
         _ENSURED_USERS_TTL.clear()
     _ENSURED_USERS_TTL[key] = now
+
+
+async def resolve_verified_telegram_user(request: Request) -> int:
+    """Require valid, signed Telegram WebApp initData for identity-bearing actions."""
+    saved_token = await db.get_setting("bot_token", BOT_TOKEN)
+    init_data = (request.headers.get("X-Telegram-Init-Data") or "").strip()
+    tg_user = _parse_and_verify_init_data(init_data, saved_token) if init_data else None
+    if not tg_user:
+        raise HTTPException(status_code=401, detail="Откройте приложение через Telegram для действия от своего имени")
+    uid = int(tg_user["id"])
+    await _ensure_user_cached(
+        uid,
+        username=str(tg_user.get("username") or ""),
+        first_name=str(tg_user.get("first_name") or "Пользователь"),
+        is_real=True,
+    )
+    return uid
 
 
 async def resolve_api_user(request: Request, fallback_id: int = DEFAULT_DEMO_USER_ID) -> int:

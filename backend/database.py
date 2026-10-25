@@ -277,6 +277,31 @@ class Database:
                     created_at REAL NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS public_chat_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT NOT NULL DEFAULT 'general',
+                    sender_id INTEGER NOT NULL,
+                    sender_name TEXT NOT NULL,
+                    sender_username TEXT DEFAULT '',
+                    sender_avatar TEXT DEFAULT '👤',
+                    sender_rank TEXT DEFAULT '🌱 Новичок',
+                    text TEXT NOT NULL,
+                    reply_to_id INTEGER DEFAULT 0,
+                    reply_preview TEXT DEFAULT '',
+                    sticker TEXT DEFAULT '',
+                    is_pinned INTEGER DEFAULT 0,
+                    edited_at REAL DEFAULT 0,
+                    created_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS public_chat_reactions (
+                    message_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    emoji TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (message_id, user_id, emoji)
+                );
+
                 CREATE TABLE IF NOT EXISTS dating_profiles (
                     user_id INTEGER PRIMARY KEY,
                     display_name TEXT NOT NULL,
@@ -300,6 +325,8 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_telemetry_tool ON telemetry(tool_id);
                 CREATE INDEX IF NOT EXISTS idx_game_scores_game ON game_scores(game_id, user_id);
                 CREATE INDEX IF NOT EXISTS idx_anon_room_id ON anon_messages(room, id DESC);
+                CREATE INDEX IF NOT EXISTS idx_pubchat_topic_id ON public_chat_messages(topic, id DESC);
+                CREATE INDEX IF NOT EXISTS idx_pubchat_reactions_msg ON public_chat_reactions(message_id);
                 CREATE INDEX IF NOT EXISTS idx_visits_target ON profile_visits(target_user_id);
                 """
             )
@@ -323,6 +350,7 @@ class Database:
             await conn.execute(f"DELETE FROM game_scores WHERE user_id IN ({placeholders})", FAKE_SEED_USER_IDS)
             await conn.execute(f"DELETE FROM dating_profiles WHERE user_id IN ({placeholders})", FAKE_SEED_USER_IDS)
             await conn.execute(f"DELETE FROM anon_messages WHERE sender_id IN ({placeholders})", FAKE_SEED_USER_IDS)
+            await conn.execute(f"DELETE FROM public_chat_messages WHERE sender_id IN ({placeholders})", FAKE_SEED_USER_IDS)
             await conn.execute(
                 f"UPDATE users SET is_real = 1 WHERE user_id > 10000 AND user_id NOT IN ({placeholders}) AND user_id < 900000000000",
                 FAKE_SEED_USER_IDS,
@@ -920,6 +948,213 @@ class Database:
 
     async def list_anon_messages(self, room: str = "global", limit: int = 40) -> list[dict[str, Any]]:
         return await self.get_anon_messages(room=room, limit=limit)
+
+    # --- Public Non-Anonymous Telegram Chat (Replies, Reactions, Pins, Edits, Stickers) ---
+    async def get_public_chat_messages(
+        self, topic: str = "general", viewer_id: int = 0, limit: int = 60
+    ) -> dict[str, Any]:
+        topic_clean = (topic or "general").strip()[:32] or "general"
+        async with self._session() as conn:
+            cur = await conn.execute(
+                "SELECT * FROM public_chat_messages WHERE topic = ? ORDER BY id DESC LIMIT ?",
+                (topic_clean, max(5, min(120, limit))),
+            )
+            rows = [dict(r) for r in await cur.fetchall()]
+            rows.reverse()
+
+            msg_ids = [r["id"] for r in rows]
+            reactions_by_msg: dict[int, dict[str, dict[str, Any]]] = {}
+            if msg_ids:
+                ph = ",".join("?" for _ in msg_ids)
+                rcur = await conn.execute(
+                    f"SELECT message_id, user_id, emoji FROM public_chat_reactions WHERE message_id IN ({ph})",
+                    msg_ids,
+                )
+                for rrow in await rcur.fetchall():
+                    mid = int(rrow["message_id"])
+                    emo = str(rrow["emoji"])
+                    uid = int(rrow["user_id"])
+                    bucket = reactions_by_msg.setdefault(mid, {}).setdefault(
+                        emo, {"emoji": emo, "count": 0, "me": False}
+                    )
+                    bucket["count"] += 1
+                    if viewer_id and uid == viewer_id:
+                        bucket["me"] = True
+
+            pcur = await conn.execute(
+                "SELECT * FROM public_chat_messages WHERE topic = ? AND is_pinned = 1 ORDER BY id DESC LIMIT 1",
+                (topic_clean,),
+            )
+            pinned_row = await pcur.fetchone()
+
+        for r in rows:
+            r["reactions"] = list(reactions_by_msg.get(r["id"], {}).values())
+            r["is_own"] = bool(viewer_id and int(r["sender_id"]) == int(viewer_id))
+            r.pop("sender_id", None)
+
+        pinned = dict(pinned_row) if pinned_row else None
+        if pinned:
+            pinned.pop("sender_id", None)
+        return {
+            "topic": topic_clean,
+            "pinned": pinned,
+            "messages": rows,
+        }
+
+    async def post_public_chat_message(
+        self,
+        sender_id: int,
+        text: str,
+        topic: str = "general",
+        reply_to_id: int = 0,
+        sticker: str = "",
+        custom_name: str = "",
+    ) -> dict[str, Any]:
+        clean_text = (text or "").strip()[:1200]
+        clean_sticker = (sticker or "").strip()[:24]
+        if not clean_text and not clean_sticker:
+            raise ValueError("Введите текст сообщения или выберите стикер")
+        topic_clean = (topic or "general").strip()[:32] or "general"
+        user = await self.ensure_user(sender_id)
+        if user:
+            first_name = user.get("first_name")
+            s_name = (first_name if first_name and first_name != "Пользователь" else custom_name or f"Участник {sender_id % 10000}").strip()[:48]
+            s_user = (user.get("username") or "").strip()[:36]
+            s_ava = (user.get("avatar_emoji") or "👤").strip()[:8]
+            s_rank = (user.get("rank_title") or "🌱 Новичок")[:32]
+        else:
+            s_name = (custom_name or f"Участник {sender_id % 10000}").strip()[:48]
+            s_user = ""
+            s_ava = "👤"
+            s_rank = "🌱 Новичок"
+
+        now = time.time()
+        reply_preview = ""
+        valid_reply_id = 0
+        async with self._session() as conn:
+            recent = await conn.execute(
+                "SELECT created_at FROM public_chat_messages WHERE sender_id = ? ORDER BY id DESC LIMIT 1",
+                (int(sender_id),),
+            )
+            last_message = await recent.fetchone()
+            if last_message and now - float(last_message["created_at"]) < 1.0:
+                raise ValueError("Подождите секунду перед следующим сообщением")
+            if reply_to_id and reply_to_id > 0:
+                rc = await conn.execute(
+                    "SELECT id, sender_name, text, sticker FROM public_chat_messages WHERE id = ? AND topic = ?",
+                    (int(reply_to_id), topic_clean),
+                )
+                target = await rc.fetchone()
+                if target:
+                    valid_reply_id = int(target["id"])
+                    snippet = (target["text"] or target["sticker"] or "")[:70]
+                    reply_preview = f"{target['sender_name']}: {snippet}"
+
+            await conn.execute(
+                """
+                INSERT INTO public_chat_messages
+                (topic, sender_id, sender_name, sender_username, sender_avatar, sender_rank, text, reply_to_id, reply_preview, sticker, is_pinned, edited_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
+                """,
+                (
+                    topic_clean,
+                    int(sender_id),
+                    s_name,
+                    s_user,
+                    s_ava,
+                    s_rank,
+                    clean_text,
+                    valid_reply_id,
+                    reply_preview,
+                    clean_sticker,
+                    now,
+                ),
+            )
+            await conn.commit()
+        return await self.get_public_chat_messages(topic=topic_clean, viewer_id=sender_id)
+
+    async def toggle_public_chat_reaction(
+        self, message_id: int, user_id: int, emoji: str, topic: str = "general"
+    ) -> dict[str, Any]:
+        allowed = {"❤️", "🔥", "😂", "👍", "👎", "⚡", "🗿", "🤡", "💎", "🎉"}
+        emo = (emoji or "❤️").strip()
+        if emo not in allowed:
+            emo = "❤️"
+        now = time.time()
+        async with self._session() as conn:
+            msg_cur = await conn.execute(
+                "SELECT 1 FROM public_chat_messages WHERE id = ? AND topic = ?",
+                (int(message_id), (topic or "general").strip()[:32] or "general"),
+            )
+            if not await msg_cur.fetchone():
+                raise ValueError("Сообщение не найдено в этой теме")
+            cur = await conn.execute(
+                "SELECT 1 FROM public_chat_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?",
+                (int(message_id), int(user_id), emo),
+            )
+            exists = await cur.fetchone()
+            if exists:
+                await conn.execute(
+                    "DELETE FROM public_chat_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?",
+                    (int(message_id), int(user_id), emo),
+                )
+            else:
+                await conn.execute(
+                    "INSERT INTO public_chat_reactions (message_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)",
+                    (int(message_id), int(user_id), emo, now),
+                )
+            await conn.commit()
+        return await self.get_public_chat_messages(topic=topic, viewer_id=user_id)
+
+    async def edit_or_pin_public_chat_message(
+        self,
+        message_id: int,
+        user_id: int,
+        action: str,
+        new_text: str = "",
+        topic: str = "general",
+    ) -> dict[str, Any]:
+        now = time.time()
+        async with self._session() as conn:
+            cur = await conn.execute(
+                "SELECT id, sender_id, topic, is_pinned FROM public_chat_messages WHERE id = ?",
+                (int(message_id),),
+            )
+            row = await cur.fetchone()
+            if not row:
+                raise ValueError("Сообщение не найдено")
+            row_topic = str(row["topic"])
+            if topic and str(topic).strip()[:32] != row_topic:
+                raise ValueError("Сообщение находится в другой теме")
+            if action == "pin":
+                if int(row["sender_id"]) != int(user_id):
+                    raise ValueError("Закрепить или открепить можно только своё сообщение")
+                next_pin = 0 if int(row["is_pinned"]) else 1
+                if next_pin == 1:
+                    await conn.execute("UPDATE public_chat_messages SET is_pinned = 0 WHERE topic = ?", (row_topic,))
+                await conn.execute(
+                    "UPDATE public_chat_messages SET is_pinned = ? WHERE id = ?",
+                    (next_pin, int(message_id)),
+                )
+            elif action == "edit":
+                if int(row["sender_id"]) != int(user_id):
+                    raise ValueError("Редактировать можно только свои сообщения")
+                cleaned = (new_text or "").strip()[:1200]
+                if not cleaned:
+                    raise ValueError("Текст не может быть пустым")
+                await conn.execute(
+                    "UPDATE public_chat_messages SET text = ?, edited_at = ? WHERE id = ?",
+                    (cleaned, now, int(message_id)),
+                )
+            elif action == "delete":
+                if int(row["sender_id"]) != int(user_id):
+                    raise ValueError("Удалять можно только свои сообщения")
+                await conn.execute("DELETE FROM public_chat_messages WHERE id = ?", (int(message_id),))
+                await conn.execute("DELETE FROM public_chat_reactions WHERE message_id = ?", (int(message_id),))
+            else:
+                raise ValueError("Неизвестное действие с сообщением")
+            await conn.commit()
+        return await self.get_public_chat_messages(topic=topic or row_topic, viewer_id=user_id)
 
     # --- Dating Profiles ---
     def _enrich_dating(self, row: aiosqlite.Row | dict[str, Any]) -> dict[str, Any]:

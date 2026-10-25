@@ -227,187 +227,48 @@ def calculate_pencil_index(
     arm_girth_cm: float = 31.5,
     wrist_cm: float = 17.2,
     index_finger_cm: float = 7.3,
-    clash_royale_trophies: int = 4600,
-    dota_mmr: int = 2400,
-    sleep_hours: float = 7.0,
-    room_temp_c: float = 21.0,
-    **extra: Any,
+    ring_finger_cm: float = 7.6,
+    body_fat_pct: float = 16.0,
+    **_ignored: Any,
 ) -> dict[str, Any]:
+    """Return published population reference values, never an individual prediction.
+
+    The anthropometric covariates are retained only for API compatibility: available
+    population correlations are too weak to infer an individual's genital dimensions.
+    Veale et al. (2015) report clinician-measured means from up to 15,521 participants.
     """
-    Детерминированная антропометрическая модель (базовая популяционная медиана 13.12 см, SD = 1.66 см,
-    согласно клиническому метаанализу Veale et al., BJU International, n = 15,521).
-    """
-    # Legacy alias compatibility for API callers
-    if "hand_span_cm" in extra and wrist_cm == 17.2:
-        wrist_cm = max(14.0, min(22.5, float(extra["hand_span_cm"]) * 0.80))
-
-    base = 13.12
-    factors: list[dict[str, Any]] = []
-
-    # 1. Возрастной коэффициент эластичности белочной оболочки (tunica albuginea)
-    clamped_age = max(18, min(75, int(age)))
-    if clamped_age <= 27:
-        age_delta = round((clamped_age - 21) * 0.035, 2)
-    else:
-        age_delta = round(0.21 - (clamped_age - 27) * 0.014, 2)
-    base += age_delta
-    factors.append({
-        "label": f"Эластичность коллагена tunica albuginea (возраст {clamped_age} лет)",
-        "impact_cm": age_delta,
-    })
-
-    # 2. Соматотропная проекция длины тела (рост)
-    clamped_h = max(148.0, min(212.0, float(height_cm)))
-    h_delta = round((clamped_h - 176.0) * 0.028, 2)
-    base += h_delta
-    factors.append({
-        "label": f"Линейная соматотропная корреляция роста ({clamped_h:.0f} см, r = 0.21)",
-        "impact_cm": h_delta,
-    })
-
-    # 3. Дистальный акроподиальный индекс стопы (размер обуви EU)
-    clamped_shoe = max(36.0, min(49.0, float(shoe_size_eu)))
-    s_delta = round((clamped_shoe - 42.0) * 0.11, 2)
-    base += s_delta
-    factors.append({
-        "label": f"Экспрессия генов кластера HOXA13 / HOXD13 (обувь {clamped_shoe:.0f} EU)",
-        "impact_cm": s_delta,
-    })
-
-    # 4. Обхват плеча (индекс периферической гемодинамики)
-    clamped_arm = max(21.0, min(50.0, float(arm_girth_cm)))
-    if clamped_arm <= 38.0:
-        arm_delta = round((clamped_arm - 31.0) * 0.045, 2)
-    else:
-        # Выше 38 см срабатывает перераспределение системного кровотока в скелетную мускулатуру
-        arm_delta = round(0.31 - (clamped_arm - 38.0) * 0.055, 2)
-    base += arm_delta
-    factors.append({
-        "label": f"Периферический резерв плечевой артерии (обхват руки {clamped_arm:.1f} см)",
-        "impact_cm": arm_delta,
-    })
-
-    # 5. Остеометрический индекс запястья (индекс Соловьёва)
-    clamped_wrist = max(13.5, min(23.0, float(wrist_cm)))
-    w_delta = round((clamped_wrist - 17.2) * 0.10, 2)
-    base += w_delta
-    factors.append({
-        "label": f"Остеометрический индекс Соловьёва (запястье {clamped_wrist:.1f} см)",
-        "impact_cm": w_delta,
-    })
-
-    # 6. Длина указательного пальца (фаланговый маркер Манинга 2D)
-    clamped_finger = max(5.5, min(10.5, float(index_finger_cm)))
-    f_delta = round((clamped_finger - 7.3) * 0.14, 2)
-    base += f_delta
-    factors.append({
-        "label": f"Пренатальный андрогенный рецепторный индекс (палец 2D: {clamped_finger:.1f} см)",
-        "impact_cm": f_delta,
-    })
-
-    # 7. Кубки в Clash Royale (кортизоловая вазоконстрикция симпатической нервной системы)
-    trophies = max(0, min(9000, int(clash_royale_trophies)))
-    if trophies <= 3000:
-        cr_delta = round(0.14 - (trophies / 3000.0) * 0.08, 2)
-    else:
-        cr_delta = round(-((trophies - 3000) / 6000.0) * 0.82, 2)
-    base += cr_delta
-    factors.append({
-        "label": f"Кортизоловый спазм сосудов от стресса Clash Royale ({trophies} кубков)",
-        "impact_cm": cr_delta,
-    })
-
-    # 8. Рейтинг MMR в Dota 2 / тактических дисциплинах (венозный стаз малого таза)
-    mmr = max(0, min(12000, int(dota_mmr)))
-    if mmr <= 2000:
-        mmr_delta = 0.08
-    else:
-        mmr_delta = round(-((mmr - 2000) / 10000.0) * 0.68, 2)
-    base += mmr_delta
-    factors.append({
-        "label": f"Сидячий гемодинамический стаз малого таза ({mmr} MMR)",
-        "impact_cm": mmr_delta,
-    })
-
-    # 9. Ночная фаза БДГ-сна (эндогенный синтез свободного тестостерона)
-    clamped_sleep = max(3.5, min(11.5, float(sleep_hours)))
-    sleep_delta = round(max(-0.48, min(0.32, (clamped_sleep - 7.2) * 0.13)), 2)
-    base += sleep_delta
-    factors.append({
-        "label": f"Ночной синтез лютеинизирующего гормона (сон {clamped_sleep:.1f} ч/сут)",
-        "impact_cm": sleep_delta,
-    })
-
-    # 10. Терморегуляторный рефлекс гладкой мускулатуры m. dartos
-    clamped_temp = max(10.0, min(35.0, float(room_temp_c)))
-    temp_delta = round(max(-0.75, min(0.28, (clamped_temp - 21.5) * 0.055)), 2)
-    base += temp_delta
-    factors.append({
-        "label": f"Терморефлекс tunica dartos (температура среды {clamped_temp:.0f} °C)",
-        "impact_cm": temp_delta,
-    })
-
-    final_cm = round(max(8.2, min(17.8, base)), 2)
-    final_inches = round(final_cm / 2.54, 2)
-    flaccid_cm = round(max(5.8, final_cm * 0.695 + (clamped_temp - 21.0) * 0.04), 2)
-    girth_cm = round(max(9.1, min(14.2, 11.66 + (final_cm - 13.12) * 0.38 + (clamped_wrist - 17.2) * 0.14)), 2)
-
-    # Точный перцентиль нормального распределения Veale et al. (mean = 13.12, SD = 1.66)
-    z = (final_cm - 13.12) / 1.66
-    percentile = round(min(99.6, max(0.8, 0.5 * (1.0 + math.erf(z / math.sqrt(2.0))) * 100.0)), 1)
-
-    if final_cm >= 15.8:
-        rank_title = "Верхний дециль популяционной выборки (P90+)"
-    elif final_cm >= 14.2:
-        rank_title = "Выше среднепопуляционной медианы (M + 1σ)"
-    elif final_cm >= 12.3:
-        rank_title = "Центральная клиническая норма (интерквартиль Q2–Q3)"
-    elif final_cm >= 10.8:
-        rank_title = "Компактный морфотип в границах физиологической нормы"
-    else:
-        rank_title = "Выраженная стресс-индуцированная вазоконстрикция"
-
-    for f in factors:
-        imp = f.get("impact_cm", 0.0)
-        f["impact"] = f"{'+' if imp >= 0 else ''}{imp:.2f} см"
-
-    comparisons = []
-    for obj in REAL_WORLD_COMPARISON_OBJECTS:
-        ratio = round(final_cm / obj["length_cm"], 2)
-        diff = round(final_cm - obj["length_cm"], 2)
-        comparisons.append({
-            **obj,
-            "ratio": ratio,
-            "diff_cm": diff,
-            "verdict": (
-                f"Почти 1-в-1 ({diff:+.1f} см)"
-                if abs(diff) <= 0.65
-                else (f"Длиннее на {diff:.1f} см ({ratio}×)" if diff > 0 else f"Короче на {abs(diff):.1f} см ({ratio}×)")
-            ),
-        })
-    closest_obj = min(comparisons, key=lambda item: abs(item["diff_cm"]))
-
     return {
-        "length_cm": final_cm,
-        "estimated_cm": final_cm,
-        "flaccid_cm": flaccid_cm,
-        "length_inches": final_inches,
-        "estimated_inches": final_inches,
-        "girth_est_cm": girth_cm,
+        "result_kind": "population_reference_not_individual_estimate",
+        "length_cm": 13.12,
+        "bpel_cm": 13.12,
+        "estimated_cm": 13.12,
         "population_mean_cm": 13.12,
-        "percentile": percentile,
-        "rank_title": rank_title,
-        "closest_object": closest_obj,
-        "comparisons": comparisons,
-        "factors": factors,
+        "population_sd_cm": 1.66,
+        "ci95_low_cm": 9.87,
+        "ci95_high_cm": 16.37,
+        "flaccid_cm": 9.16,
+        "flaccid_sd_cm": 1.57,
+        "girth_est_cm": 11.66,
+        "girth_sd_cm": 1.10,
+        "length_inches": round(13.12 / 2.54, 2),
+        "percentile": None,
+        "rank_title": "Среднее значение клинической выборки — не индивидуальный прогноз",
+        "comparisons": [],
+        "factors": [],
         "methodology": (
-            "Расчёт выполнен по десятифакторной регрессионной матрице НИИ Прикладной Соматометрии "
-            "(эталон выборки: BJU International, μ = 13.12 см, σ = 1.66 см, доверительный интервал 95%)."
+            "Veale D. et al. BJU International (2015), систематический обзор и номограммы измерений "
+            "до 15 521 мужчин: средняя длина в эрекции 13.12 см (SD 1.66), средний обхват 11.66 см (SD 1.10). "
+            "Это популяционные описательные статистики, а не формула расчёта по росту, стопе, возрасту или игровому рейтингу."
         ),
-        "disclaimer": (
-            "Протокол учитывает остеометрию запястья, экспрессию генов HOXD13, пренатальный индекс 2D "
-            "и нейроэндокринную кортизоловую нагрузку в соревновательных дисциплинах."
+        "measurement": (
+            "Для ориентировочного самостоятельного измерения длины в эрекции измеряют по верхней поверхности "
+            "от лобковой кости до кончика головки; клиницист может стандартизировать метод. Температура, "
+            "состояние эрекции и техника влияют на результат. При вопросах о развитии, боли или функции обратитесь к урологу."
         ),
+        "scientific_refs": [
+            "Veale D. et al. (2015), Am I normal? A systematic review and construction of nomograms for flaccid and erect penis length and circumference in up to 15,521 men, BJU International 115(6):978–986.",
+        ],
+        "disclaimer": "Параметры тела и увлечения не позволяют достоверно предсказать индивидуальный размер. Показанное среднее нельзя считать вашим результатом.",
     }
 
 
@@ -432,163 +293,48 @@ def calculate_breast_size_index(
     height_cm: float = 166.0,
     underbust_cm: float = 74.0,
     hip_cm: float = 95.0,
-    hair_length_cm: float = 42.0,
-    matcha_latte_per_week: int = 4,
-    pinterest_pins: int = 650,
-    skincare_jars: int = 9,
-    shower_temp_c: float = 41.0,
-    sims_genshin_hours: int = 280,
+    body_fat_pct: float = 24.0,
+    standing_bust_cm: float = 0.0,
+    leaning_bust_cm: float = 0.0,
+    **_ignored: Any,
 ) -> dict[str, Any]:
+    """Estimate bra-size starting point only from actual tape measurements.
+
+    Cosmetic/lifestyle inputs are ignored. Cup sizing differs by manufacturer and
+    national system; this offers an approximate EU starting size, not a diagnosis.
     """
-    Десятифакторная антропометрическая модель женской маммометрии
-    (базовая медианная проекция Δ = ОГ − ОПГ = 14.3 см, чашка B/C, стандарт EN 13402).
-    """
-    clamped_age = max(18, min(68, int(age)))
-    clamped_h = max(145.0, min(195.0, float(height_cm)))
-    clamped_ub = max(62.0, min(104.0, float(underbust_cm)))
-    clamped_hip = max(78.0, min(132.0, float(hip_cm)))
-    clamped_hair = max(3.0, min(110.0, float(hair_length_cm)))
-    clamped_matcha = max(0, min(28, int(matcha_latte_per_week)))
-    clamped_pins = max(0, min(10000, int(pinterest_pins)))
-    clamped_jars = max(0, min(50, int(skincare_jars)))
-    clamped_shower = max(33.0, min(48.0, float(shower_temp_c)))
-    clamped_games = max(0, min(6000, int(sims_genshin_hours)))
+    under = max(50.0, min(140.0, float(underbust_cm)))
+    bust = max(0.0, min(180.0, float(standing_bust_cm)))
+    if bust < under + 4:
+        return {
+            "result_kind": "measurements_required",
+            "eu_size": None,
+            "underbust_cm": round(under, 1),
+            "bust_cm": None,
+            "cup_difference_cm": None,
+            "note": "Для ориентировочного размера измерьте обхват груди стоя по наиболее выступающим точкам, без сдавливания, и обхват под грудью на спокойном выдохе. Рост, возраст, бёдра, волосы и образ жизни размер чашки не предсказывают.",
+            "methodology": "Начальная оценка по разнице обхвата груди и под грудью; посадка зависит от бренда, кроя, формы и эластичности изделия.",
+            "disclaimer": "Размер белья — не медицинская характеристика и не оценка тела. Подбор по примерке/профессиональной консультации надёжнее онлайн-конверсии.",
+        }
 
-    # Базовая разница ОГ - ОПГ (в см) в европейской популяции ~14.2 см (между B и C)
-    delta_cm = 14.20
-    factors: list[dict[str, Any]] = []
-
-    # 1. Тонус связок Купера (ligamenta suspensoria) по возрасту
-    age_d = round(min(0.85, max(-0.55, (clamped_age - 22) * 0.045)), 2)
-    delta_cm += age_d
-    factors.append({"label": f"Эластичность фасциальных связок Купера ({clamped_age} лет)", "impact_cm": age_d})
-
-    # 2. Гиноидный эстрадиоловый индекс (соотношение обхвата бёдер к ОПГ)
-    hip_ratio_d = round(max(-2.1, min(3.2, (clamped_hip - (clamped_ub + 20.5)) * 0.145)), 2)
-    delta_cm += hip_ratio_d
-    factors.append({"label": f"Гиноидное эстрадиоловое депо адипоцитов (бёдра {clamped_hip:.0f} см)", "impact_cm": hip_ratio_d})
-
-    # 3. Продольная соматотропная проекция грудной клетки (рост)
-    h_d = round((clamped_h - 166.0) * 0.024, 2)
-    delta_cm += h_d
-    factors.append({"label": f"Торакальная пропорция грудной клетки (рост {clamped_h:.0f} см)", "impact_cm": h_d})
-
-    # 4. Фолликулярная ароматазная корреляция длины волос
-    hair_d = round(max(-0.5, min(0.75, (clamped_hair - 38.0) * 0.012)), 2)
-    delta_cm += hair_d
-    factors.append({"label": f"Экспрессия рецепторов эстрогена ER-β (волосы {clamped_hair:.0f} см)", "impact_cm": hair_d})
-
-    # 5. Фитоэстрогеновый индекс матчи и растительного молока
-    if clamped_matcha <= 9:
-        matcha_d = round(clamped_matcha * 0.085, 2)
-    else:
-        matcha_d = round(0.76 - (clamped_matcha - 9) * 0.035, 2)
-    delta_cm += matcha_d
-    factors.append({"label": f"Изофлавоновая модуляция растительного латте/матчи ({clamped_matcha} чаш./нед)", "impact_cm": matcha_d})
-
-    # 6. Нейроэстетический дофаминовый отклик досок Pinterest
-    pins_d = round(min(0.62, math.log10(clamped_pins + 10) * 0.22 - 0.35), 2)
-    delta_cm += pins_d
-    factors.append({"label": f"Визуально-лимбическая стимуляция гипофиза ({clamped_pins} пинов Pinterest)", "impact_cm": pins_d})
-
-    # 7. Трансдермальная дисциплина баночек ухода на полке
-    jars_d = round(max(-0.35, min(0.68, (clamped_jars - 7) * 0.032)), 2)
-    delta_cm += jars_d
-    factors.append({"label": f"Пептидно-церамидный индекс домашней полки ({clamped_jars} средств)", "impact_cm": jars_d})
-
-    # 8. Термальная вазодилатация («кипяток» в душе)
-    shower_d = round(max(-0.60, min(0.72, (clamped_shower - 39.5) * 0.095)), 2)
-    delta_cm += shower_d
-    factors.append({"label": f"Капиллярная гиперемия от температуры душа ({clamped_shower:.0f} °C)", "impact_cm": shower_d})
-
-    # 9. Ночной мелатониново-пролактиновый сдвиг (Sims 4 / Genshin / Клуб Романтики)
-    games_d = round(min(0.58, (clamped_games / 1200.0) * 0.28) if clamped_games <= 2400 else round(0.56 - (clamped_games - 2400) / 8000.0, 2), 2)
-    delta_cm += games_d
-    factors.append({"label": f"Циркадный пролактиновый фон (Sims / Genshin / новеллы: {clamped_games} ч)", "impact_cm": games_d})
-
-    # 10. Опорный каркас пояса (ОПГ)
-    ub_d = round((clamped_ub - 74.0) * 0.04, 2)
-    delta_cm += ub_d
-    factors.append({"label": f"Ширина основания грудной фасции (ОПГ {clamped_ub:.0f} см)", "impact_cm": ub_d})
-
-    delta_cm = round(max(8.5, min(24.5, delta_cm)), 2)
-    bust_cm = round(clamped_ub + delta_cm, 1)
-
-    # Стандарт EN 13402: округление пояса с шагом 5 см
-    eu_band = int(round(clamped_ub / 5.0) * 5)
-    eu_band = max(65, min(105, eu_band))
-    us_band = int(round(eu_band / 5) * 2 + 2)  # 65->30, 70->32, 75->34, 80->36, 85->38
-
-    cup_table = [
-        (10.0, "AA", "AA"),
-        (12.0, "A", "A"),
-        (14.0, "B", "B"),
-        (16.0, "C", "C"),
-        (18.0, "D", "D"),
-        (20.0, "E", "DD"),
-        (22.0, "F", "DDD / F"),
-        (99.0, "G", "G"),
-    ]
-    eu_cup = "B"
-    us_cup = "B"
-    for max_d, c_eu, c_us in cup_table:
-        if delta_cm < max_d:
-            eu_cup, us_cup = c_eu, c_us
-            break
-
-    # Реалистичный объём одной молочной железы (мл) с учётом и чашки, и ширины пояса (sister sizing!)
-    band_steps = (eu_band - 75) / 5.0
-    cup_idx = ["AA", "A", "B", "C", "D", "E", "F", "G"].index(eu_cup)
-    base_volumes = [130, 195, 275, 380, 500, 635, 780, 930]
-    frac = (delta_cm - (8.0 + cup_idx * 2.0)) / 2.0
-    frac = max(-0.4, min(0.6, frac))
-    single_volume_ml = int(round(max(105.0, (base_volumes[cup_idx] * (1.0 + 0.14 * frac)) * (1.0 + band_steps * 0.11))))
-    pair_weight_g = int(round(single_volume_ml * 2 * 0.91))  # плотность адипозно-гландулярной ткани ~0.91 г/см³
-    spine_load_newtons = round((pair_weight_g / 1000.0) * 9.81, 2)
-
-    z = (delta_cm - 14.3) / 2.85
-    percentile = round(min(99.4, max(1.2, 0.5 * (1.0 + math.erf(z / math.sqrt(2.0))) * 100.0)), 1)
-
-    for f in factors:
-        imp = f["impact_cm"]
-        f["impact"] = f"{'+' if imp >= 0 else ''}{imp:.2f} см к проекции"
-
-    comparisons = []
-    for obj in BREAST_COMPARISON_OBJECTS:
-        diff_ml = single_volume_ml - obj["volume_ml"]
-        ratio = round(single_volume_ml / obj["volume_ml"], 2)
-        comparisons.append({
-            **obj,
-            "diff_ml": diff_ml,
-            "ratio": ratio,
-            "verdict": (
-                f"Точное совпадение объёма ({diff_ml:+d} мл)"
-                if abs(diff_ml) <= 38
-                else (f"Крупнее на {diff_ml} мл ({ratio}×)" if diff_ml > 0 else f"Компактнее на {abs(diff_ml)} мл ({ratio}×)")
-            ),
-        })
-    closest_obj = min(comparisons, key=lambda item: abs(item["diff_ml"]))
-
+    # Approximate EU band convention. Brands and national standards vary.
+    band = max(60, min(120, int(round(under / 5.0) * 5)))
+    difference = max(0.0, bust - under)
+    # Broad EU cup intervals (roughly 2 cm steps), shown as a starting point only.
+    cup_table = [(10.0, "AA"), (12.0, "A"), (14.0, "B"), (16.0, "C"), (18.0, "D"), (20.0, "E"), (22.0, "F"), (24.0, "G"), (26.0, "H"), (99.0, "I+")]
+    cup = next(letter for ceiling, letter in cup_table if difference < ceiling)
     return {
-        "eu_size": f"{eu_band}{eu_cup}",
-        "us_uk_size": f"{us_band}{us_cup}",
-        "eu_band": eu_band,
-        "eu_cup": eu_cup,
-        "underbust_cm": round(clamped_ub, 1),
-        "bust_cm": bust_cm,
-        "delta_cm": delta_cm,
-        "single_volume_ml": single_volume_ml,
-        "pair_volume_ml": single_volume_ml * 2,
-        "pair_weight_g": pair_weight_g,
-        "spine_load_newtons": spine_load_newtons,
-        "percentile": percentile,
-        "closest_object": closest_obj,
-        "comparisons": comparisons,
-        "factors": factors,
-        "methodology": (
-            "Расчёт выполнен по десятифакторному протоколу НИИ Прикладной Маммометрии (стандарт EN 13402, "
-            "коэффициент плотности гландулярно-липидной паренхимы ρ = 0.91 г/см³, поправка Sister-Sizing по ОПГ)."
-        ),
+        "result_kind": "approximate_measurement_based_size",
+        "eu_size": f"{band}{cup}",
+        "eu_band": band,
+        "eu_cup": cup,
+        "underbust_cm": round(under, 1),
+        "bust_cm": round(bust, 1),
+        "cup_difference_cm": round(difference, 1),
+        "sister_sizes": [f"{band-5}{cup} (возможен более плотный пояс)", f"{band+5}{cup} (возможен более свободный пояс)"] if 65 <= band <= 110 else [],
+        "methodology": "Приблизительный стартовый размер по фактически введённым обхватам; таблицы и посадка отличаются по брендам и странам. Нужна примерка.",
+        "disclaimer": "Не существует научно надёжной формулы вывода размера груди по возрасту, росту, рациону или увлечениям. Онлайн-оценка не является медицинским заключением.",
+        "scientific_refs": ["EN 13402 — система обозначения размеров одежды; конкретная реализация размеров бюстгальтеров может отличаться по рынку и изготовителю."],
     }
 
 

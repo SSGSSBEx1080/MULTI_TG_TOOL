@@ -300,6 +300,46 @@ V6_TOOL_PREVIEWS: set[str] = {
     "color_matching_studio",
     "world_time_sun",
     "phys_ballistics_optics",
+    "public_chat",
+    "anatomy_reference",
+    "hormone_encyclopedia",
+    "vitamin_reference",
+    "nutrition_bju_calc",
+    "bone_skeleton_guide",
+    "menstrual_cycle_tracker",
+    "pregnancy_test_guide",
+    "medicine_safety_guide",
+    "habit_change_guide",
+    "appearance_wellbeing_guide",
+    "semen_health_guide",
+    "alarm_clock",
+    "sleep_calculator",
+    "music_keyboard",
+    "music_guitar",
+    "music_drums",
+    "body_hair_growth",
+    "sleep_hygiene",
+    "world_calendar_clock",
+    "appliance_anatomy",
+    "welding_safety_guide",
+    "world_socket_guide",
+    "connector_port_encyclopedia",
+    "utility_bill_guide",
+    "unit_alphabet_catalog",
+    "welding_process_selector",
+    "word_chain_games",
+    "mahjong_solitaire",
+    "flower_bouquet_calc",
+    "religion_symbols_atlas",
+    "solar_moons_catalog",
+    "light_refraction_lab",
+    "film_episode_ratings",
+    "anime_comic_tournament",
+    "cooking_recipe_guide",
+    "citizenship_guide",
+    "lifetime_human_statistics",
+    "matter_phase_lab",
+    "optics_eyewear_tools",
 }
 
 
@@ -308,14 +348,11 @@ def _build_v6_summary_html(tid: str) -> str:
     header = f"<b>{meta['emoji']} {esc(meta['title'])}</b>\n<blockquote>{esc(meta['desc'])}</blockquote>\n\n"
 
     if tid == "breast_size_calc":
-        demo = calculate_breast_size_index()
         return (
             header
-            + f"Пример базового профиля (ОПГ {demo['underbust_cm']} см, ОГ {demo['bust_cm']} см):\n"
-            + f"• Размер EU/RU: <b>{demo['eu_size']}</b> (US/UK: <b>{demo['us_uk_size']}</b>)\n"
-            + f"• Объём одной железы: <b>{demo['single_volume_ml']} мл</b> (пара: {demo['pair_weight_g']} г)\n"
-            + f"• Ближайший 3D-эталон: <b>{esc(demo['closest_object']['name'])}</b>\n\n"
-            + "Откройте интерактивные ползунки и 3D-стенд сравнения в приложении:"
+            + "Ориентир размера строится только по фактическим измерениям обхвата под грудью и груди стоя.\n"
+            + "Рост, возраст, рацион и увлечения чашку не предсказывают; размеры брендов различаются.\n\n"
+            + "Откройте инструмент в приложении, чтобы ввести измерения. Примерка нескольких близких размеров надёжнее таблицы."
         )
     if tid == "adult_actresses_db":
         sample = "\n".join(

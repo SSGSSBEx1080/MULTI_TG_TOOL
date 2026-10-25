@@ -25,6 +25,7 @@ const CalcTextWorkspaceHub = lazy(() =>
   import('./tools/CalcTextWorkspaceHub').then((m) => ({ default: m.CalcTextWorkspaceHub }))
 );
 const PartyFunHub = lazy(() => import('./tools/PartyFunHub').then((m) => ({ default: m.PartyFunHub })));
+const EverydayLifeHub = lazy(() => import('./tools/EverydayLifeHub').then((m) => ({ default: m.EverydayLifeHub })));
 const KnowledgeMegaHub = lazy(() =>
   import('./tools/KnowledgeMegaHub').then((m) => ({ default: m.KnowledgeMegaHub }))
 );
@@ -408,6 +409,10 @@ export const MiniAppStudio: React.FC<Props> = ({
     }
     if (activeTool === 'color_matching_studio') {
       return <ColorMatchingProStudio onToast={onToast} />;
+    }
+
+    if (['health_reference', 'daily_planning', 'home_engineering', 'culture_games'].includes(activeCategory)) {
+      return <EverydayLifeHub activeTool={activeTool} onToast={onToast} />;
     }
 
     // 8 Mega-Expansion v6 Categories

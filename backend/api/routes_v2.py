@@ -273,6 +273,8 @@ class PencilCalcReq(BaseModel):
     arm_girth_cm: float = 31.5
     wrist_cm: float = 17.2
     index_finger_cm: float = 7.3
+    ring_finger_cm: float = 7.6
+    body_fat_pct: float = 16.0
     clash_royale_trophies: int = 4600
     dota_mmr: int = 2400
     sleep_hours: float = 7.0
@@ -291,6 +293,8 @@ async def api_party_pencil(req: PencilCalcReq, request: Request) -> dict[str, An
         arm_girth_cm=req.arm_girth_cm,
         wrist_cm=req.wrist_cm,
         index_finger_cm=req.index_finger_cm,
+        ring_finger_cm=req.ring_finger_cm,
+        body_fat_pct=req.body_fat_pct,
         clash_royale_trophies=req.clash_royale_trophies,
         dota_mmr=req.dota_mmr,
         sleep_hours=req.sleep_hours,

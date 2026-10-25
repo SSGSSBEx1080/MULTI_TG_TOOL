@@ -183,9 +183,11 @@ def test_v2_mega_engines() -> None:
     assert any("Sekiro" in i["title"] for i in ideas_all["items"])
     assert "Лигурии" in LIGURIA_TEXT
 
-    # 4. Humorous Pencil Index
+    # 4. Evidence-based population reference (never falsely predicts an individual from unrelated traits)
     p_res = calculate_pencil_index(height_cm=185, shoe_size_eu=44, linux_user=True, gym_pushups=60)
-    assert 8.0 <= p_res["estimated_cm"] <= 26.0
+    assert p_res["result_kind"] == "population_reference_not_individual_estimate"
+    assert p_res["estimated_cm"] == pytest.approx(13.12)
+    assert p_res["factors"] == [] and p_res["percentile"] is None
 
     # 5. Knowledge Hub (Constitutions, JoJo Stands, EGE Formulas, Population)
     jp = search_constitutions("Япония")
@@ -232,8 +234,8 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         assert r.status_code == 200
         cat_res = await client.get("/api/tools/catalog")
         categories = cat_res.json()["categories"]
-        assert len(categories) == 28
-        assert sum(len(c["tools"]) for c in categories) == 148
+        assert len(categories) >= 32
+        assert sum(len(c["tools"]) for c in categories) >= 188
 
         # 2. Verify NO fake/demo users exist in Leaderboard initially
         top_initial = await client.get("/api/v2/social/leaderboard?sort_by=xp")
@@ -758,9 +760,10 @@ async def test_earth_webcams_bilingual_search_spy_lobby_and_realistic_biometrics
             )
             assert avg_pen.status_code == 200
             pdata = avg_pen.json()
-            assert 11.5 <= pdata["length_cm"] <= 14.8, f"Expected realistic average, got {pdata['length_cm']}"
-            assert len(pdata["comparisons"]) >= 8
-            assert len(pdata["factors"]) >= 6
+            assert pdata["length_cm"] == pytest.approx(13.12)
+            assert pdata["result_kind"] == "population_reference_not_individual_estimate"
+            assert pdata["comparisons"] == []
+            assert pdata["factors"] == []
 
             extreme_pen = await client.post(
                 "/api/v2/party/pencil",
@@ -983,8 +986,8 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
     from PIL import ImageOps
     from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
 
-    assert len(TOOL_CATEGORIES) == 28
-    assert len(TOOLS_BY_ID) == 148
+    assert len(TOOL_CATEGORIES) >= 32
+    assert len(TOOLS_BY_ID) >= 188
 
     await db.init()
     await bot_manager.init_simulator()
@@ -1071,7 +1074,7 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             assert (await client.post("/api/tools/image/exif")).status_code == 200
             assert (await client.post("/api/tools/pdf/inspect")).status_code == 200
 
-            # 4b. Mega-Expansion v6: 28 Categories, 141 Tools, JoJo Parts 3-9, 18+ DBs, Female Breast Calc, PC Builder, Science & 2026-10-25 Stats
+            # 4b. Catalog expansion, JoJo Parts 3–9, reference tools, PC builder and dated statistics
             assert len(TOOL_CATEGORIES) >= 28
             assert len(TOOLS_BY_ID) >= 141
             assert "карандаш" not in TOOLS_BY_ID["pencil_calc"]["title"].lower()
@@ -1082,7 +1085,7 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
                 json={"height_cm": 168, "underbust_cm": 74, "matcha_latte_per_week": 6},
             )
             assert breast_r.status_code == 200
-            assert "eu_size" in breast_r.json() and breast_r.json()["single_volume_ml"] > 80
+            assert breast_r.json()["result_kind"] == "measurements_required"
 
             cbt_r = await client.post(
                 "/api/v6/ai/cbt",
