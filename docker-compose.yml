@@ -1,0 +1,14 @@
+services:
+  nexus:
+    build: .
+    container_name: nexus-multi-tg-tool
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - BOT_TOKEN=${BOT_TOKEN:-}
+      - WEBAPP_URL=${WEBAPP_URL:-}
+    volumes:
+      - ./data:/app/data

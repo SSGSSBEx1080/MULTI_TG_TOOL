@@ -1,0 +1,9 @@
+[project]
+name = "nexus-multi-tg-tool"
+version = "2.0.0"
+description = "NEXUS — Multi-Tool Telegram Bot (aiogram 3) + Telegram Mini App + Live Interactive Simulator"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"

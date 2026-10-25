@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Frontend build caches
+node_modules/
+frontend/dist/
+.vite/
+*.tsbuildinfo
+
+# Runtime & Secrets
+.env
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/uploads/*
+data/generated/*
+!data/.gitkeep
