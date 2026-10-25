@@ -4,6 +4,7 @@ import ast
 import ipaddress
 import math
 import operator
+import re
 from typing import Any
 
 SAFE_CONSTANTS: dict[str, float] = {
@@ -35,6 +36,8 @@ SAFE_FUNCTIONS: dict[str, Any] = {
     "rad": math.radians,
     "gcd": lambda a, b: math.gcd(int(a), int(b)),
     "lcm": lambda a, b: math.lcm(int(a), int(b)),
+    "xor": lambda a, b: int(a) ^ int(b),
+    "bxor": lambda a, b: int(a) ^ int(b),
     "pow": pow,
     "min": min,
     "max": max,
@@ -78,6 +81,13 @@ def _eval_node(node: ast.AST) -> float | int:
             if abs(right) > 1000:
                 raise ValueError("Слишком большая степень (> 1000)")
             return left**right
+        if isinstance(node.op, (ast.BitAnd, ast.BitOr, ast.BitXor, ast.LShift, ast.RShift)):
+            if isinstance(left, float) and left.is_integer():
+                left = int(left)
+            if isinstance(right, float) and right.is_integer():
+                right = int(right)
+            if not isinstance(left, int) or not isinstance(right, int):
+                raise ValueError("Побитовые операции поддерживают только целые числа")
         op_fn = BINARY_OPS.get(type(node.op))
         if op_fn is None:
             raise ValueError("Оператор не поддерживается")
@@ -103,7 +113,12 @@ def evaluate_math(expression: str) -> dict[str, Any]:
     if not expr:
         raise ValueError("Пустое математическое выражение")
     normalized = expr.replace("×", "*").replace("÷", "/").replace("−", "-")
-    # Note: keep ^ as bitwise XOR only if 0x/0b present, otherwise users often write 2^10 for power!
+    # Convert decimal/algebraic ^ to exponentiation **; preserve bitwise ^ between explicit 0x/0b literals
+    normalized = re.sub(
+        r"(?<!0x)(?<!0X)(?<!0b)(?<!0B)(\b\d+(?:\.\d+)?|\))\s*\^\s*(?!0x|0X|0b|0B)",
+        r"\1 ** ",
+        normalized,
+    )
     if "0x" not in normalized.lower() and "0b" not in normalized.lower():
         normalized = normalized.replace("^", "**")
 

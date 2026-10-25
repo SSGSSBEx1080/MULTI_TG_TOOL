@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from typing import Any
 
@@ -534,14 +535,15 @@ def intuitive_omni_search(query: str) -> dict[str, Any]:
         u_res = smart_parse_and_convert(raw)
         if u_res and u_res.get("conversions"):
             top_conv = " • ".join(f"{c['formatted']} {c['unit']}" for c in u_res["conversions"][:3])
+            disp_in = str(u_res.get("parsed_display") or u_res.get("recognized_input") or raw)
             instant_answer = {
                 "badge": "Мгновенная конвертация",
                 "value": top_conv,
-                "sub": f"{u_res['value']} {u_res['from_label']}",
+                "sub": disp_in,
             }
             instant_front = {
                 "kind": "Конвертер величин",
-                "title": f"{u_res['value']} {u_res['from_label']}",
+                "title": disp_in,
                 "output": top_conv,
             }
     except Exception:
@@ -563,6 +565,43 @@ def intuitive_omni_search(query: str) -> dict[str, Any]:
             }
         except Exception:
             pass
+
+    # 1b. Instant chemical formula molar mass (e.g. H2SO4, C6H12O6, Ca(OH)2) or Russian plate region ("регион 116")
+    if instant_answer is None and re.fullmatch(r"[A-Z][A-Za-z0-9()]{1,24}", raw) and any(c.isdigit() for c in raw):
+        try:
+            from backend.tools.mega_expansion_v5 import calculate_molar_mass
+
+            mol = calculate_molar_mass(raw)
+            instant_answer = {
+                "badge": "Молярная масса",
+                "value": f"{mol['molar_mass_g_mol']} г/моль",
+                "sub": f"Формула {mol['formula']}",
+            }
+            instant_front = {
+                "kind": "Молярная масса",
+                "title": mol["formula"],
+                "output": f"{mol['molar_mass_g_mol']} г/моль",
+            }
+        except Exception:
+            pass
+
+    if instant_answer is None:
+        m_reg = re.match(r"^(?:регион|автокод|код\s+региона)\s*(\d{2,3})$", ql)
+        if m_reg:
+            from backend.tools.mega_expansion_v5 import search_plate_codes
+
+            hits = [r for r in search_plate_codes(m_reg.group(1))["results"] if m_reg.group(1) in r["codes"]]
+            if hits:
+                instant_answer = {
+                    "badge": f"Регион {m_reg.group(1)}",
+                    "value": f"{hits[0]['region']} ({hits[0]['capital']})",
+                    "sub": f"Коды: {', '.join(hits[0]['codes'])}",
+                }
+                instant_front = {
+                    "kind": f"Автокод {m_reg.group(1)}",
+                    "title": hits[0]["region"],
+                    "output": f"{hits[0]['capital']} • коды {', '.join(hits[0]['codes'])}",
+                }
 
     # Also test keyboard-layout-fixed query (e.g. 'шсифы' / 'vjcrdf' / 'if[vfns')
     try:
@@ -639,27 +678,32 @@ def intuitive_omni_search(query: str) -> dict[str, Any]:
                     "search_hint": rel["name"],
                 }
             )
-        for con in search_constitutions(cand)[:3]:
-            art_preview = con["articles"][0]["ru"] if con.get("articles") else con["key_principles"]
-            orig_preview = con["articles"][0]["orig"] if con.get("articles") else con.get("preamble_orig", "")
-            articles.append(
-                {
-                    "id": f"const_{con['code']}",
-                    "kind": f"Конституция • {con.get('orig_lang', con['code'])}",
-                    "title": f"{con['flag']} Конституция: {con['country']} ({con['year']})",
-                    "subtitle": f"{con['form']} • {con.get('orig_lang', con['code'])}",
-                    "ru_text": con.get("ru_full", art_preview),
-                    "orig_text": con.get("orig_full", orig_preview),
-                    "orig_lang": con.get("orig_lang", con["code"]),
-                    "snippet": art_preview,
-                    "quote": orig_preview[:200],
-                    "category_id": "knowledge",
-                    "tool_id": "constitutions_hub",
-                    "target_category": "knowledge",
-                    "target_tool": "constitutions_hub",
-                    "search_hint": con["country"],
-                }
-            )
+        if len(cand) >= 2:
+            for con in search_constitutions(cand)[:3]:
+                if len(cand) <= 2 and cand.upper() != con.get("code", "").upper() and cand not in con.get("country", "").lower():
+                    continue
+                art_preview = con["articles"][0]["ru"] if con.get("articles") else con.get("key_principles", "")
+                orig_preview = con["articles"][0]["orig"] if con.get("articles") else con.get("preamble_orig", "")
+                gov_form = con.get("gov_form") or con.get("form") or "Конституционный строй"
+                orig_lang = con.get("orig_lang") or con.get("code", "")
+                articles.append(
+                    {
+                        "id": f"const_{con['code']}",
+                        "kind": f"Конституция • {orig_lang}",
+                        "title": f"{con.get('flag', '🏛')} Конституция: {con['country']} ({con.get('year', '')})",
+                        "subtitle": f"{gov_form} • {orig_lang}",
+                        "ru_text": con.get("ru_full", art_preview),
+                        "orig_text": con.get("orig_full", orig_preview),
+                        "orig_lang": orig_lang,
+                        "snippet": art_preview,
+                        "quote": orig_preview[:200],
+                        "category_id": "knowledge",
+                        "tool_id": "constitutions_hub",
+                        "target_category": "knowledge",
+                        "target_tool": "constitutions_hub",
+                        "search_hint": con["country"],
+                    }
+                )
         for conc in CONCEPTS_WIKI_DB:
             if cand in conc["term"].lower() or cand in conc["desc"].lower() or cand in conc["cat"].lower():
                 articles.append(

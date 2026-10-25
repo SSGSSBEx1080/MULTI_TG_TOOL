@@ -23,6 +23,7 @@ import {
   triggerFileDownload,
 } from '../../lib/api';
 import { HoloQr3DShowcase } from '../three/Tilt3DCard';
+import { QrStudioPro } from './QrStudioPro';
 
 const FileActionRow: React.FC<{
   downloadUrl?: string;
@@ -471,426 +472,18 @@ export const VisualMediaHub: React.FC<Props> = ({
   };
 
   // =========================================================================
-  // HUB 1: QR & BARCODES
+  // HUB 1: QR & BARCODES (PRO STUDIO + LIVE SCANNER + BATCH A4)
   // =========================================================================
   if (activeCategory === 'qr') {
-    const isFav = favorites.includes(activeTool || 'qr_studio');
     return (
-      <div className="space-y-5 min-w-0">
-        {qrSubTab === 'designer' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* Controls */}
-            <div className="lg:col-span-7 rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5 space-y-4 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <QrCode className="w-5 h-5 text-sky-400 shrink-0" />
-                  <h3 className="font-semibold text-sm sm:text-base text-white truncate">
-                    Дизайнер Градиентных QR-кодов
-                  </h3>
-                </div>
-              </div>
-
-              {/* Mode Switch */}
-              <div className="grid grid-cols-3 gap-1.5 sm:gap-2 p-1 rounded-xl bg-slate-950/70 border border-white/10">
-                {[
-                  { id: 'text', tool: 'qr_studio', label: '🔗 Ссылка / Текст' },
-                  { id: 'wifi', tool: 'wifi_qr', label: '📶 Wi-Fi сеть' },
-                  { id: 'vcard', tool: 'qr_studio', label: '🪪 Визитка vCard' },
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => {
-                      setQrMode(t.id as any);
-                      onSelectTool(t.tool);
-                    }}
-                    className={`py-2 px-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition truncate ${
-                      qrMode === t.id ? 'bg-sky-500 text-slate-950 font-semibold' : 'text-slate-300 hover:bg-white/5'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-            {qrMode === 'text' && (
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">URL или произвольный текст</label>
-                <input
-                  value={qrData}
-                  onChange={(e) => setQrData(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950 border border-white/10 px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-sky-400"
-                />
-              </div>
-            )}
-
-            {qrMode === 'wifi' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Название сети (SSID)</label>
-                  <input
-                    value={wifiSsid}
-                    onChange={(e) => setWifiSsid(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Пароль WPA/WPA2</label>
-                  <input
-                    value={wifiPwd}
-                    onChange={(e) => setWifiPwd(e.target.value)}
-                    className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                  />
-                </div>
-              </div>
-            )}
-
-            {qrMode === 'vcard' && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  value={vcardName}
-                  onChange={(e) => setVcardName(e.target.value)}
-                  placeholder="Имя Фамилия"
-                  className="rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                />
-                <input
-                  value={vcardPhone}
-                  onChange={(e) => setVcardPhone(e.target.value)}
-                  placeholder="Телефон"
-                  className="rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                />
-                <input
-                  value={vcardTg}
-                  onChange={(e) => setVcardTg(e.target.value)}
-                  placeholder="@telegram"
-                  className="rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                />
-              </div>
-            )}
-
-            {/* Theme & Shape */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {[
-                { id: 'cyber', label: '🌌 Кибер Неон' },
-                { id: 'telegram', label: '💎 Telegram Blue' },
-                { id: 'emerald', label: '🌿 Изумруд' },
-                { id: 'sunset', label: '🌅 Закат' },
-                { id: 'royal', label: '🔮 Индиго' },
-                { id: 'classic', label: '⬛ Классика' },
-              ].map((th) => (
-                <button
-                  key={th.id}
-                  onClick={() => setQrTheme(th.id)}
-                  className={`py-2 px-3 rounded-xl text-xs font-medium border text-left transition ${
-                    qrTheme === th.id
-                      ? 'bg-sky-500/20 border-sky-400 text-sky-200'
-                      : 'bg-slate-950/60 border-white/10 text-slate-300 hover:bg-white/5'
-                  }`}
-                >
-                  {th.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Форма модулей</label>
-                <select
-                  value={qrShape}
-                  onChange={(e) => setQrShape(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                >
-                  <option value="rounded">Скруглённый</option>
-                  <option value="dots">Круглые точки</option>
-                  <option value="gapped">Пиксельная сетка</option>
-                  <option value="vbars">Вертикальные линии</option>
-                  <option value="square">Строгий квадрат</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Центральный бейдж</label>
-                <input
-                  value={qrBadge}
-                  onChange={(e) => setQrBadge(e.target.value)}
-                  maxLength={6}
-                  placeholder="MT"
-                  className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Подпись снизу</label>
-                <input
-                  value={qrCaption}
-                  onChange={(e) => setQrCaption(e.target.value)}
-                  className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={generateQr}
-              disabled={busy}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-slate-950 font-semibold text-sm shadow-lg shadow-sky-500/20 transition"
-            >
-              ✨ Сгенерировать дизайнерский QR-код
-            </button>
-          </div>
-
-          {/* Live QR Canvas Preview (2D + Interactive 3D Hologram) */}
-          <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5 flex flex-col items-center justify-between min-w-0">
-            {qrResult ? (
-              <>
-                <div className="w-full flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-semibold text-slate-300">Предпросмотр QR</span>
-                  <div className="flex rounded-lg bg-slate-950 border border-white/10 p-0.5 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setQrView3D(true)}
-                      className={`px-2.5 py-1 rounded-md font-semibold transition ${
-                        qrView3D ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      🧊 3D Сцена
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setQrView3D(false)}
-                      className={`px-2.5 py-1 rounded-md font-semibold transition ${
-                        !qrView3D ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      🖼 2D PNG
-                    </button>
-                  </div>
-                </div>
-
-                {qrView3D ? (
-                  <HoloQr3DShowcase
-                    imageDataUrl={qrResult.image_data_url}
-                    badgeText={qrBadge}
-                    caption={qrCaption}
-                  />
-                ) : (
-                  <div className="p-3 rounded-2xl bg-slate-950/80 border border-white/10 shadow-xl">
-                    <img
-                      src={qrResult.image_data_url}
-                      alt="Styled QR"
-                      className="max-h-72 w-auto rounded-xl object-contain"
-                    />
-                  </div>
-                )}
-
-                <div className="w-full mt-4 space-y-2">
-                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-white/10 text-xs text-slate-300">
-                    <span className="text-sky-400 font-semibold">{qrResult.inspection?.type}:</span>{' '}
-                    <code className="text-slate-200 break-all">{qrResult.payload.slice(0, 95)}</code>
-                  </div>
-                  <FileActionRow
-                    downloadUrl={qrResult.download_url}
-                    dataUrl={qrResult.image_data_url}
-                    filename="qr_code.png"
-                    label="Скачать PNG"
-                    onToast={onToast}
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="py-20 text-sm text-slate-400">Генерация предпросмотра…</div>
-            )}
-          </div>
-        </div>
-        )}
-
-        {/* Barcode Generator Card */}
-        {qrSubTab === 'barcode' && (
-        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5">
-          <h4 className="text-sm font-semibold text-white mb-3">🏷️ Генератор Товарных и Складских Штрихкодов (Code128 / EAN-13)</h4>
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-            <div className="md:col-span-5">
-              <label className="text-xs text-slate-400 block mb-1">Значение штрихкода</label>
-              <input
-                value={bcVal}
-                onChange={(e) => setBcVal(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && generateBarcode()}
-                className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-              />
-            </div>
-            <div className="md:col-span-3">
-              <label className="text-xs text-slate-400 block mb-1">Стандарт</label>
-              <select
-                value={bcKind}
-                onChange={(e) => setBcKind(e.target.value)}
-                className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-              >
-                <option value="code128">Code 128 (Универсальный)</option>
-                <option value="ean13">EAN-13 (12–13 цифр)</option>
-              </select>
-            </div>
-            <div className="md:col-span-4">
-              <button
-                type="button"
-                onClick={generateBarcode}
-                disabled={busy}
-                className="w-full py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-sm font-semibold transition"
-              >
-                Создать штрихкод PNG
-              </button>
-            </div>
-          </div>
-          {bcResult && (
-            <div className="mt-4 space-y-3 p-3 rounded-xl bg-slate-950 border border-white/10">
-              <div className="p-2 rounded-lg bg-white inline-block max-w-full overflow-hidden">
-                <img src={bcResult.image_data_url} alt="Barcode" className="max-h-28 w-auto max-w-full object-contain" />
-              </div>
-              <FileActionRow
-                downloadUrl={bcResult.download_url}
-                dataUrl={bcResult.image_data_url}
-                filename="barcode.png"
-                label="Скачать штрихкод PNG"
-                onToast={onToast}
-              />
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* v2: QR Image Scanner */}
-        {qrSubTab === 'scanner' && (
-          <div className="rounded-2xl border border-sky-400/25 bg-slate-900/75 p-4 sm:p-5 space-y-3.5 min-w-0">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                📷 Сканер и Расшифровка QR по Картинке
-              </h4>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-400/30">
-                OpenCV Multi-Pass
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Загрузите скриншот или фото QR-кода (даже инвертированного или цветного), либо проверьте сгенерированный QR в 1 клик.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-2 min-w-0">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] || null;
-                  setQrScanFile(f);
-                  if (f) runQrDecode(f);
-                }}
-                className="flex-1 min-w-0 max-w-full overflow-hidden text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-sky-500/20 file:text-sky-200 hover:file:bg-sky-500/30"
-              />
-              <button
-                type="button"
-                onClick={() => runQrDecode(null)}
-                disabled={busy}
-                className="px-4 py-2.5 rounded-xl bg-sky-500 text-slate-950 font-semibold text-xs shrink-0 hover:bg-sky-400 transition"
-              >
-                🔍 Считать QR
-              </button>
-            </div>
-            {qrScanResult && (
-              <div className="p-3.5 rounded-xl bg-slate-950/90 border border-white/10 space-y-2 text-xs">
-                {qrScanResult.found ? (
-                  <>
-                    <div className="flex items-center justify-between text-emerald-300 font-semibold">
-                      <span>✅ Распознано ({qrScanResult.content_type})</span>
-                      <span className="text-slate-400">{qrScanResult.image_size}</span>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-slate-900 font-mono text-white break-all">
-                      {qrScanResult.primary}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => copyText(qrScanResult.primary, onToast)}
-                        className="px-3 py-1.5 rounded-lg bg-sky-500/20 text-sky-200 border border-sky-400/30"
-                      >
-                        Скопировать содержимое
-                      </button>
-                      {qrScanResult.primary.startsWith('http') && (
-                        <button
-                          type="button"
-                          onClick={() => openExternalLink(qrScanResult.primary)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
-                        >
-                          Открыть ссылку ↗
-                        </button>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-amber-300">{qrScanResult.message}</div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* URL Shortener, Lengthener & Tracker Cleaner */}
-        {qrSubTab === 'links' && (
-          <div className="rounded-2xl border border-purple-400/25 bg-slate-900/75 p-4 sm:p-5 space-y-3.5 min-w-0">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold text-white">🔗 Укоротитель, Удлинитель & Анти-UTM Ссылок</h4>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-400/30">
-                /s/ + /long/
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Срезает следящие метки (utm_*, fbclid, yclid), создаёт рабочую короткую ссылку и сверхдлинную ссылку-редирект.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                value={linkInput}
-                onChange={(e) => setLinkInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runUrlTransform()}
-                placeholder="https://example.com/..."
-                className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-white/10 px-3 py-2.5 text-xs sm:text-sm text-white"
-              />
-              <button
-                type="button"
-                onClick={runUrlTransform}
-                disabled={busy}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-slate-950 font-semibold text-xs shrink-0"
-              >
-                ⚡ Преобразовать
-              </button>
-            </div>
-            {linkBundle && (
-              <div className="space-y-2 text-xs p-3.5 rounded-xl bg-slate-950/90 border border-white/10 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-emerald-300 font-medium">🧹 Без UTM ({linkBundle.cleaned_info.removed_trackers.length} удалено):</span>
-                  <button type="button" onClick={() => copyText(linkBundle.cleaned_info.cleaned_url, onToast)} className="text-sky-300 hover:underline shrink-0">Копировать</button>
-                </div>
-                <div className="font-mono text-slate-200 break-all">{linkBundle.cleaned_info.cleaned_url}</div>
-
-                <div className="pt-1 flex items-center justify-between gap-2">
-                  <span className="text-sky-300 font-medium">Короткая ссылка:</span>
-                  <button type="button" onClick={() => copyText(linkBundle.short_url, onToast)} className="text-sky-300 hover:underline shrink-0">Копировать</button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openExternalLink(linkBundle.short_url)}
-                  className="block text-left font-mono text-sky-200 hover:underline break-all"
-                >
-                  {linkBundle.short_url}
-                </button>
-
-                <div className="pt-1 flex items-center justify-between gap-2">
-                  <span className="text-pink-300 font-medium">Длинная ссылка:</span>
-                  <button type="button" onClick={() => copyText(linkBundle.long_url, onToast)} className="text-pink-300 hover:underline shrink-0">Копировать</button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openExternalLink(linkBundle.long_url)}
-                  className="block text-left font-mono text-[11px] text-pink-200/90 hover:underline break-all line-clamp-2"
-                >
-                  {linkBundle.long_url}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <QrStudioPro
+        activeTool={activeTool}
+        onSelectTool={onSelectTool}
+        favorites={favorites}
+        onToggleFav={onToggleFav}
+        onSync={onSync}
+        onToast={onToast}
+      />
     );
   }
 
@@ -899,7 +492,29 @@ export const VisualMediaHub: React.FC<Props> = ({
   // =========================================================================
   if (activeCategory === 'image') {
     return (
-      <div className="space-y-5 min-w-0">
+      <div className="space-y-4 min-w-0">
+        <div className="flex flex-wrap gap-1.5 rounded-2xl border border-white/10 bg-slate-900/80 p-2">
+          {[
+            { id: 'stego', tool: 'stego_lab', label: '🕵️ Стеганография PNG' },
+            { id: 'code', tool: 'code_card', label: '💻 Карточка Кода' },
+            { id: 'exif', tool: 'exif_clean', label: '🧼 EXIF & Палитра' },
+            { id: 'transform', tool: 'img_transform', label: '🎭 Стикер WEBP & Эффекты' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                setImgSubTab(t.id as any);
+                onSelectTool(t.tool);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                imgSubTab === t.id ? 'bg-sky-500 text-slate-950' : 'text-slate-300 hover:bg-white/5'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
         {imgSubTab === 'stego' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Hide Secret */}
@@ -1237,7 +852,29 @@ export const VisualMediaHub: React.FC<Props> = ({
   // HUB 3: PDF FORGE
   // =========================================================================
   return (
-    <div className="space-y-5 min-w-0">
+    <div className="space-y-4 min-w-0">
+      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-white/10 bg-slate-900/80 p-2">
+        {[
+          { id: 'create', tool: 'text_to_pdf', label: '📑 Текст → PDF' },
+          { id: 'photos', tool: 'img_to_pdf', label: '🗂️ Фото → PDF' },
+          { id: 'inspect', tool: 'pdf_inspect', label: '🔎 Инспектор PDF' },
+          { id: 'protect', tool: 'pdf_protect', label: '🔐 Нарезка / Пароль PDF' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => {
+              setPdfSubTab(t.id as any);
+              onSelectTool(t.tool);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+              pdfSubTab === t.id ? 'bg-rose-500 text-slate-950' : 'text-slate-300 hover:bg-white/5'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
       {pdfSubTab === 'photos' && (
         <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
           <div className="text-sm font-semibold text-white">🗂️ Объединение фотографий в один PDF-файл</div>
