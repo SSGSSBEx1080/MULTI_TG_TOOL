@@ -56,6 +56,7 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
   const [wikiSection, setWikiSection] = useState<'all' | 'jojo' | 'concepts' | 'prog'>('all');
   const [wikiQuery, setWikiQuery] = useState('');
   const [wikiData, setWikiData] = useState<any>({ jojo_stands: [], concepts: [], prog_langs: [] });
+  const [wikiPhotos, setWikiPhotos] = useState<Array<{ title: string; extract: string; thumb: string; url: string }>>([]);
   const [standUser, setStandUser] = useState('');
   const [rolledStand, setRolledStand] = useState<any>(null);
 
@@ -98,6 +99,30 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
     apiGet(`/api/v2/knowledge/wiki?section=${wikiSection}&q=${encodeURIComponent(wikiQuery)}`)
       .then(setWikiData)
       .catch(() => {});
+
+    const searchPhrase = wikiQuery.trim() || 'Космос квантовая физика архитектура живопись';
+    const timer = window.setTimeout(() => {
+      fetch(
+        `https://ru.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
+          searchPhrase
+        )}&gsrlimit=6&prop=pageimages|extracts&exintro=1&explaintext=1&exchars=240&pithumbsize=560&format=json&origin=*`
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const pages = Object.values((d?.query?.pages || {}) as Record<string, any>);
+          const illustrated = pages
+            .filter((p) => p?.thumbnail?.source && p?.extract)
+            .map((p) => ({
+              title: String(p.title),
+              extract: String(p.extract),
+              thumb: String(p.thumbnail.source),
+              url: `https://ru.wikipedia.org/wiki/${encodeURIComponent(String(p.title).replace(/ /g, '_'))}`,
+            }));
+          setWikiPhotos(illustrated);
+        })
+        .catch(() => {});
+    }, 240);
+    return () => window.clearTimeout(timer);
   }, [subTab, wikiSection, wikiQuery]);
 
   useEffect(() => {
@@ -517,7 +542,37 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
               />
             </div>
 
-            <div className="space-y-5 max-h-[560px] overflow-y-auto pr-1">
+            <div className="space-y-5 max-h-[680px] overflow-y-auto pr-1">
+              {wikiPhotos.length > 0 && (
+                <div className="space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                    🖼️ Иллюстрированные статьи Энциклопедии (Wikipedia)
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {wikiPhotos.map((art) => (
+                      <a
+                        key={art.title}
+                        href={art.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-xl bg-slate-950/90 border border-white/10 hover:border-amber-400/45 overflow-hidden flex flex-col transition group"
+                      >
+                        <img
+                          src={art.thumb}
+                          alt={art.title}
+                          loading="lazy"
+                          className="w-full h-36 object-cover group-hover:scale-[1.03] transition"
+                        />
+                        <div className="p-3 space-y-1 text-xs">
+                          <div className="font-bold text-white group-hover:text-amber-200">{art.title}</div>
+                          <p className="text-slate-300 line-clamp-3 leading-relaxed">{art.extract}</p>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {wikiData.jojo_stands?.length > 0 && (
                 <div className="space-y-2.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-purple-300">🃏 Энциклопедия Стендов JoJo's Bizarre Adventure</h4>

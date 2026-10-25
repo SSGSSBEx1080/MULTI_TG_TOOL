@@ -15,6 +15,7 @@ from backend.bot.handlers import (
     tools_interactive,
     v2_bot_handlers,
     v3_bot_handlers,
+    v6_bot_handlers,
 )
 from backend.bot.middlewares import UserContextMiddleware
 from backend.bot.simulator_session import SimulatorSession
@@ -24,6 +25,8 @@ logger = logging.getLogger("multi_tg_tool.bot")
 
 BOT_COMMANDS = [
     BotCommand(command="start", description="Главное меню"),
+    BotCommand(command="ai", description="ИИ-Ассистент с выходом в Интернет"),
+    BotCommand(command="stands", description="Все Стенды JoJo (Части 3–9)"),
     BotCommand(command="earth", description="3D Земля и веб-камеры мира"),
     BotCommand(command="chess", description="Шахматная академия и ИИ"),
     BotCommand(command="spy", description="Игра «Шпион» для компании"),
@@ -76,6 +79,7 @@ class BotRuntimeManager:
         dp.inline_query.middleware(mw)
 
         dp.include_router(navigation.router)
+        dp.include_router(v6_bot_handlers.router)
         dp.include_router(v3_bot_handlers.router)
         dp.include_router(v2_bot_handlers.router)
         dp.include_router(tools_interactive.router)

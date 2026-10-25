@@ -116,8 +116,8 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
   const [geoMode, setGeoMode] = useState<'tesseract' | 'gyro' | 'icosa' | 'torus'>('tesseract');
   const [autoSpin, setAutoSpin] = useState(true);
 
-  const rotRef = useRef({ rx: 0.32, ry: 0.58, vx: 0, vy: 0.008, t4d: 0 });
-  const dragRef = useRef({ down: false, x: 0, y: 0, moved: false });
+  const rotRef = useRef({ rx: 0.32, ry: 0.58, vx: 0, vy: 0.0018, t4d: 0 });
+  const dragRef = useRef({ down: false, x: 0, y: 0, moved: false, hovered: false });
   const hitNodesRef = useRef<{ id: string; sx: number; sy: number; r: number; z: number }[]>([]);
 
   const meshes = useMemo(
@@ -162,16 +162,17 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
 
       if (!dragRef.current.down) {
         if (autoSpin) {
-          st.ry += 0.0075;
-          st.t4d += 0.015;
+          const speedMult = dragRef.current.hovered ? 0.18 : 1.0;
+          st.ry += 0.0018 * speedMult;
+          st.t4d += 0.0042 * speedMult;
         }
         st.rx += st.vx;
         st.ry += st.vy;
-        st.vx *= 0.92;
-        st.vy *= 0.92;
+        st.vx *= 0.9;
+        st.vy *= 0.9;
         st.rx = Math.max(-1.35, Math.min(1.35, st.rx));
       } else {
-        st.t4d += 0.007;
+        st.t4d += 0.0025;
       }
 
       ctx.clearRect(0, 0, W, H);
@@ -387,7 +388,7 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
         ctx.textBaseline = 'middle';
         ctx.fillText(s.cat.emoji, s.pp.sx, s.pp.sy + 0.5);
 
-        hits.push({ id: s.cat.id, sx: s.pp.sx, sy: s.pp.sy, r: nodeR + 6, z: s.wp.z });
+        hits.push({ id: s.cat.id, sx: s.pp.sx, sy: s.pp.sy, r: nodeR + 10, z: s.wp.z });
       }
       hitNodesRef.current = hits;
 
@@ -400,20 +401,20 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    dragRef.current = { down: true, x: e.clientX, y: e.clientY, moved: false };
+    dragRef.current = { ...dragRef.current, down: true, x: e.clientX, y: e.clientY, moved: false };
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!dragRef.current.down) return;
     const dx = e.clientX - dragRef.current.x;
     const dy = e.clientY - dragRef.current.y;
-    if (Math.abs(dx) + Math.abs(dy) > 4) dragRef.current.moved = true;
+    if (Math.abs(dx) + Math.abs(dy) > 5) dragRef.current.moved = true;
     dragRef.current.x = e.clientX;
     dragRef.current.y = e.clientY;
-    rotRef.current.ry += dx * 0.011;
-    rotRef.current.rx = Math.max(-1.35, Math.min(1.35, rotRef.current.rx + dy * 0.011));
-    rotRef.current.vy = dx * 0.0025;
-    rotRef.current.vx = dy * 0.0025;
+    rotRef.current.ry += dx * 0.0085;
+    rotRef.current.rx = Math.max(-1.35, Math.min(1.35, rotRef.current.rx + dy * 0.0085));
+    rotRef.current.vy = dx * 0.0012;
+    rotRef.current.vx = dy * 0.0012;
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -476,11 +477,18 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
       <canvas
         ref={canvasRef}
         style={{ height: compact ? 184 : 208 }}
+        onPointerEnter={() => {
+          dragRef.current.hovered = true;
+        }}
+        onPointerLeave={() => {
+          dragRef.current.hovered = false;
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={() => {
           dragRef.current.down = false;
+          dragRef.current.hovered = false;
         }}
         className="w-full rounded-xl bg-[#050813] cursor-grab active:cursor-grabbing touch-none block border border-white/[0.05]"
       />

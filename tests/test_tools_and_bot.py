@@ -232,8 +232,8 @@ async def test_fastapi_and_bot_simulator_end_to_end(tmp_path, monkeypatch) -> No
         assert r.status_code == 200
         cat_res = await client.get("/api/tools/catalog")
         categories = cat_res.json()["categories"]
-        assert len(categories) == 20
-        assert sum(len(c["tools"]) for c in categories) == 103
+        assert len(categories) == 28
+        assert sum(len(c["tools"]) for c in categories) == 141
 
         # 2. Verify NO fake/demo users exist in Leaderboard initially
         top_initial = await client.get("/api/v2/social/leaderboard?sort_by=xp")
@@ -983,8 +983,8 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
     from PIL import ImageOps
     from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
 
-    assert len(TOOL_CATEGORIES) == 20
-    assert len(TOOLS_BY_ID) >= 103
+    assert len(TOOL_CATEGORIES) == 28
+    assert len(TOOLS_BY_ID) == 141
 
     await db.init()
     await bot_manager.init_simulator()
@@ -1070,6 +1070,76 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             # Optional demo fallback when file upload is omitted
             assert (await client.post("/api/tools/image/exif")).status_code == 200
             assert (await client.post("/api/tools/pdf/inspect")).status_code == 200
+
+            # 4b. Mega-Expansion v6: 28 Categories, 141 Tools, JoJo Parts 3-9, 18+ DBs, Female Breast Calc, PC Builder, Science & 2026-10-25 Stats
+            assert len(TOOL_CATEGORIES) >= 28
+            assert len(TOOLS_BY_ID) >= 141
+            assert "карандаш" not in TOOLS_BY_ID["pencil_calc"]["title"].lower()
+            assert "карандаш" not in TOOLS_BY_ID["pencil_calc"]["desc"].lower()
+
+            breast_r = await client.post(
+                "/api/v6/party/breast-calc",
+                json={"height_cm": 168, "underbust_cm": 74, "matcha_latte_per_week": 6},
+            )
+            assert breast_r.status_code == 200
+            assert "eu_size" in breast_r.json() and breast_r.json()["single_volume_ml"] > 80
+
+            cbt_r = await client.post(
+                "/api/v6/ai/cbt",
+                json={"situation": "Экзамен", "automatic_thought": "Я точно всё провалю навсегда", "intensity_before": 82},
+            )
+            assert cbt_r.status_code == 200 and len(cbt_r.json()["distortions"]) >= 1
+
+            ai_r = await client.post("/api/v6/ai/chat", json={"message": "Что такое фотосинтез", "use_web": False})
+            assert ai_r.status_code == 200 and ai_r.json()["answer"]
+
+            for part_num in range(3, 10):
+                jr = await client.get(f"/api/v6/jojo/stands?part={part_num}")
+                assert jr.status_code == 200 and jr.json()["matched"] >= 2, f"Missing JoJo Part {part_num} Stands"
+            assert (await client.post("/api/v6/jojo/awaken", json={"name": "Jotaro"})).status_code == 200
+
+            act_r = await client.get("/api/v6/adult/actresses?cup=D")
+            assert act_r.status_code == 200 and act_r.json()["matched"] >= 3
+            ht_r = await client.get("/api/v6/adult/hentai-tags?q=vanilla")
+            assert ht_r.status_code == 200 and ht_r.json()["matched"] >= 1
+
+            assert (await client.get("/api/v6/pc/catalog")).status_code == 200
+            pc_ok = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r7_9800x3d", "mb_id": "b650_aorus", "ram_id": "ddr5_32_6000"})
+            assert pc_ok.status_code == 200 and pc_ok.json()["compatible"] is True
+            pc_bad = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r7_9800x3d", "mb_id": "b760m_d4", "ram_id": "ddr5_32_6000"})
+            assert pc_bad.status_code == 200 and pc_bad.json()["compatible"] is False
+
+            assert (await client.get("/api/v6/cars/catalog?q=Porsche")).json()["matched"] >= 1
+            assert (await client.get("/api/v6/materials/catalog")).status_code == 200
+            assert (await client.get("/api/v6/style/looksmax")).status_code == 200
+            assert len((await client.get("/api/v6/gaming/wikis")).json()["games"]) >= 5
+            assert (await client.post("/api/v6/nealfun/craft", json={"item_a": "Вода", "item_b": "Огонь"})).json()["result"] == "Пар"
+            assert len((await client.get("/api/v6/nealfun/billionaire")).json()["items"]) >= 12
+            assert (await client.post("/api/v6/route/plan", json={"origin": "Москва", "destination": "Казань"})).json()["route_distance_km"] > 600
+            conv_csv = await client.post(
+                "/api/v6/files/convert",
+                files={"file": ("items.json", b'[{"a": 1, "b": 2}]', "application/json")},
+                data={"target_format": "csv"},
+            )
+            assert conv_csv.status_code == 200 and b"a,b" in conv_csv.content
+
+            assert len((await client.get("/api/v6/science/solar-system")).json()["bodies"]) >= 10
+            ecl = (await client.get("/api/v6/science/eclipses-comets")).json()
+            assert "2026-10-25" in ecl["reference_utc"] and len(ecl["events"]) >= 4
+            assert (await client.get("/api/v6/science/cell-atom-quarks")).status_code == 200
+            irr = (await client.get("/api/v6/math/irrational?constant=pi&digits=1200&search=14159")).json()
+            assert irr["found_at_decimal_place"] == 1 and len(irr["fractional_digits"]) == 1200
+            bab = (await client.post("/api/v6/babel/search", json={"phrase": "библиотека вечности"})).json()
+            assert "библиотека вечности" in bab["text"]
+            bab_b = (await client.get(f"/api/v6/babel/browse?hex_id={bab['hex_id']}&wall={bab['wall']}&shelf={bab['shelf']}&volume={bab['volume']}&page={bab['page']}")).json()
+            assert "библиотека вечности" in bab_b["text"]
+
+            gl = (await client.get("/api/v6/culture/genres-lore")).json()
+            assert "music" in gl["genres"] and len(gl["lore"]) >= 3
+            estats = (await client.get("/api/v6/stats/earth-2026?x_metric=penis_length_cm&y_metric=penis_girth_cm")).json()
+            assert estats["as_of_date"] == "25.10.2026" and estats["pearson_r"] > 0.5
+            assert len((await client.get("/api/v6/tests/iq-eq")).json()["iq_questions"]) >= 8
+            assert len((await client.get("/api/v2/knowledge/webcams?q=")).json()["items"]) >= 18
 
             # 5. Verify EVERY registered category & tool opens cleanly in the Telegram Bot Simulator!
             start_r = await client.post("/api/sim/send-text", json={"text": "/start"})

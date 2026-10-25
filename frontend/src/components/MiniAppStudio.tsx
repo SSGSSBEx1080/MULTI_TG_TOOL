@@ -64,6 +64,45 @@ const TournamentBracketStudio = lazy(() =>
 const MinesweeperProStudio = lazy(() =>
   import('./tools/SubToolsExpansionV5').then((m) => ({ default: m.MinesweeperProStudio }))
 );
+const AiAssistantHub = lazy(() =>
+  import('./tools/AiAssistantHub').then((m) => ({ default: m.AiAssistantHub }))
+);
+const EmbeddedAiHelperBar = lazy(() =>
+  import('./tools/AiAssistantHub').then((m) => ({ default: m.EmbeddedAiHelperBar }))
+);
+const JojoAndAdult18Hub = lazy(() =>
+  import('./tools/JojoAndAdult18Hub').then((m) => ({ default: m.JojoAndAdult18Hub }))
+);
+const BreastSizeCalcStudio = lazy(() =>
+  import('./tools/JojoAndAdult18Hub').then((m) => ({ default: m.BreastSizeCalcStudio }))
+);
+const NealFunSuiteHub = lazy(() =>
+  import('./tools/NealFunSuiteHub').then((m) => ({ default: m.NealFunSuiteHub }))
+);
+const PcMaterialsStyleHub = lazy(() =>
+  import('./tools/PcMaterialsStyleHub').then((m) => ({ default: m.PcMaterialsStyleHub }))
+);
+const CarSpecsStudio = lazy(() =>
+  import('./tools/PcMaterialsStyleHub').then((m) => ({ default: m.CarSpecsStudio }))
+);
+const RoutePlannerStudio = lazy(() =>
+  import('./tools/PcMaterialsStyleHub').then((m) => ({ default: m.RoutePlannerStudio }))
+);
+const ColorMatchingProStudio = lazy(() =>
+  import('./tools/PcMaterialsStyleHub').then((m) => ({ default: m.ColorMatchingProStudio }))
+);
+const GamingWikisHub = lazy(() =>
+  import('./tools/GamingWikisHub').then((m) => ({ default: m.GamingWikisHub }))
+);
+const SportsPhysicsSimHub = lazy(() =>
+  import('./tools/SportsPhysicsSimHub').then((m) => ({ default: m.SportsPhysicsSimHub }))
+);
+const CosmosMicroMathHub = lazy(() =>
+  import('./tools/CosmosMicroMathHub').then((m) => ({ default: m.CosmosMicroMathHub }))
+);
+const CultureStatsBuildersHub = lazy(() =>
+  import('./tools/CultureStatsBuildersHub').then((m) => ({ default: m.CultureStatsBuildersHub }))
+);
 
 interface Props {
   isNativeTma?: boolean;
@@ -357,6 +396,98 @@ export const MiniAppStudio: React.FC<Props> = ({
   };
 
   const renderActiveHubInner = () => {
+    // Standalone v6 tool overrides inside existing categories
+    if (activeTool === 'breast_size_calc') {
+      return <BreastSizeCalcStudio onSync={onRefreshWorkspace} onToast={onToast} />;
+    }
+    if (activeTool === 'car_specs_catalog') {
+      return <CarSpecsStudio onToast={onToast} />;
+    }
+    if (activeTool === 'route_planner_calc') {
+      return <RoutePlannerStudio onSync={onRefreshWorkspace} onToast={onToast} />;
+    }
+    if (activeTool === 'color_matching_studio') {
+      return <ColorMatchingProStudio onToast={onToast} />;
+    }
+
+    // 8 Mega-Expansion v6 Categories
+    if (activeCategory === 'ai_assistant') {
+      return (
+        <AiAssistantHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('ai_assistant', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'jojo_adult_encyc') {
+      return (
+        <JojoAndAdult18Hub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('jojo_adult_encyc', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'neal_fun_lab') {
+      return (
+        <NealFunSuiteHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('neal_fun_lab', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'pc_materials_style') {
+      return (
+        <PcMaterialsStyleHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('pc_materials_style', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+    if (activeCategory === 'gaming_wikis') {
+      return (
+        <GamingWikisHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('gaming_wikis', t)}
+        />
+      );
+    }
+    if (activeCategory === 'sports_physics_3d') {
+      return (
+        <SportsPhysicsSimHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('sports_physics_3d', t)}
+          onSync={onRefreshWorkspace}
+        />
+      );
+    }
+    if (activeCategory === 'cosmos_micro_math') {
+      return (
+        <CosmosMicroMathHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('cosmos_micro_math', t)}
+          onSync={onRefreshWorkspace}
+        />
+      );
+    }
+    if (activeCategory === 'tests_builders_lore') {
+      return (
+        <CultureStatsBuildersHub
+          activeTool={activeTool}
+          onSelectTool={(t) => onSelectTool('tests_builders_lore', t)}
+          onSync={onRefreshWorkspace}
+          onToast={onToast}
+        />
+      );
+    }
+
     if (activeCategory === 'horoscope') {
       return (
         <HoroscopeHub
@@ -534,7 +665,16 @@ export const MiniAppStudio: React.FC<Props> = ({
         </div>
       }
     >
-      {renderActiveHubInner()}
+      <div className="space-y-4">
+        {renderActiveHubInner()}
+        {activeCategory !== 'ai_assistant' && (
+          <EmbeddedAiHelperBar
+            pageTitle={currentToolObj?.title || currentCat?.title || 'MULTI_TG_TOOL'}
+            onOpenFullAi={() => onSelectTool('ai_assistant', 'ai_web_chat')}
+            onToast={onToast}
+          />
+        )}
+      </div>
     </Suspense>
   );
 
