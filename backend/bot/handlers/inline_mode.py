@@ -39,7 +39,7 @@ async def handle_inline_query(inline_query: InlineQuery) -> None:
 
         results = [
             _article("quick_pass", "🔐 Надёжный пароль (20 симв.)", pw, f"🔐 Сгенерирован пароль:\n<code>{esc(pw)}</code>"),
-            _article("quick_coin", f"🪙 Подбросить монетку: {coin}", "Случайный жребий", f"🪙 Монетка NEXUS: <b>{coin}</b>"),
+            _article("quick_coin", f"🪙 Подбросить монетку: {coin}", "Случайный жребий", f"🪙 Монетка: <b>{coin}</b>"),
             _article("quick_d20", f"🎲 Бросок d20: выпало {d20['total']}", "RPG кубик 1–20", f"🎲 Бросок 1d20: <b>{d20['total']}</b>"),
             _article("quick_uuid", "⚙️ Новый UUID v4", uid_v4, f"⚙️ UUID v4: <code>{uid_v4}</code>"),
         ]

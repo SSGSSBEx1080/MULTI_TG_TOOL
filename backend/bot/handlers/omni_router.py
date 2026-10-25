@@ -184,14 +184,17 @@ async def handle_smart_omni_text(message: Message) -> None:
         return
 
     if kind == "url_payload":
+        import asyncio
         from backend.tools.qr_studio import generate_styled_qr
         from aiogram.types import BufferedInputFile
 
-        png = generate_styled_qr(raw, theme="cyber", shape="rounded", badge_text="NX", caption=raw[:42])
+        png = await asyncio.to_thread(
+            generate_styled_qr, raw, theme="cyber", shape="rounded", badge_text="MT", caption=raw[:42]
+        )
         await db.record_tool_use(uid, "qr_studio", "qr", "omni", raw[:40])
         await message.answer_photo(
             BufferedInputFile(png, filename="smart_qr.png"),
-            caption=f"⚡ <b>Smart Omni-Input:</b> ссылка автоматически превращена в неоновый QR!\n<code>{esc(raw[:100])}</code>",
+            caption=f"⚡ <b>QR-код по ссылке:</b>\n<code>{esc(raw[:100])}</code>",
             parse_mode="HTML",
             reply_markup=builder.as_markup(),
         )

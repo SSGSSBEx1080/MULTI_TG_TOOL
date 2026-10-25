@@ -34,16 +34,16 @@ export const CyberDevHub: React.FC<Props> = ({
   const [pwDigits, setPwDigits] = useState(true);
   const [pwResult, setPwResult] = useState<any>(null);
 
-  const [aesInput, setAesInput] = useState('Коды запуска: ALPHA-900-NEXUS');
+  const [aesInput, setAesInput] = useState('Секретный текст для шифрования AES-256');
   const [aesPwd, setAesPwd] = useState('MyVaultKey2026');
   const [aesOutput, setAesOutput] = useState('');
 
-  const [hashInput, setHashInput] = useState('NEXUS Telegram Multi-Tool');
+  const [hashInput, setHashInput] = useState('MULTI_TG_TOOL');
   const [hmacKey, setHmacKey] = useState('');
   const [hashRes, setHashRes] = useState<any>(null);
 
-  const [jwtPayload, setJwtPayload] = useState('{\n  "sub": "777000",\n  "username": "nexus_architect",\n  "scope": "pro"\n}');
-  const [jwtSecret, setJwtSecret] = useState('nexus_super_hmac_secret_key_2026_32b');
+  const [jwtPayload, setJwtPayload] = useState('{\n  "sub": "1001",\n  "username": "tg_user",\n  "scope": "app"\n}');
+  const [jwtSecret, setJwtSecret] = useState('multi_tg_tool_hmac_secret_key_2026_32b');
   const [jwtToken, setJwtToken] = useState('');
   const [jwtDecoded, setJwtDecoded] = useState<any>(null);
 
@@ -53,16 +53,16 @@ export const CyberDevHub: React.FC<Props> = ({
   // --- Dev Swiss State ---
   const [devTab, setDevTab] = useState<'json' | 'regex' | 'codec' | 'cron'>('json');
   const [dataRaw, setDataRaw] = useState(
-    '{\n  "bot": "NEXUS",\n  "framework": "aiogram 3.31",\n  "features": ["QR", "Stego", "PDF", "MiniApp"],\n  "active": true\n}'
+    '{\n  "bot": "MULTI_TG_TOOL",\n  "framework": "aiogram 3",\n  "features": ["QR", "Stego", "PDF", "MiniApp"],\n  "active": true\n}'
   );
   const [targetFmt, setTargetFmt] = useState('yaml');
   const [dataOut, setDataOut] = useState<any>(null);
 
   const [rgxPattern, setRgxPattern] = useState('([a-zA-Z0-9._-]+)@([a-zA-Z0-9.-]+)');
-  const [rgxText, setRgxText] = useState('Контакты команды: architect@nexus.io, bot_support@telegram.org и admin@cyber.dev');
+  const [rgxText, setRgxText] = useState('Контакты: dev@example.org, support@telegram.org и info@app.dev');
   const [rgxRes, setRgxRes] = useState<any>(null);
 
-  const [codecText, setCodecText] = useState('Привет, NEXUS 2026!');
+  const [codecText, setCodecText] = useState('Привет, MULTI_TG_TOOL!');
   const [codecName, setCodecName] = useState('base64');
   const [codecDir, setCodecDir] = useState<'encode' | 'decode'>('encode');
   const [codecOut, setCodecOut] = useState('');

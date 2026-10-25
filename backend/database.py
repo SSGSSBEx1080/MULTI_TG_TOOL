@@ -112,7 +112,9 @@ class Database:
             self._conn = None
 
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = await aiosqlite.connect(self.db_path, timeout=10.0)
+        conn_worker = aiosqlite.connect(self.db_path, timeout=10.0)
+        conn_worker.daemon = True
+        conn = await conn_worker
         conn.row_factory = aiosqlite.Row
         # Network-PVC safe SQLite tuning (Amvera /data CephFS/NFS):
         # TRUNCATE avoids -shm mmap stalls and repeated file creation/deletion while keeping fast commits.

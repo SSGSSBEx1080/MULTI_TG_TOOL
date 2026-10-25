@@ -4,17 +4,15 @@ from typing import Any
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from backend.config import WEBAPP_URL
+from backend.config import DEFAULT_PUBLIC_WEBAPP_URL, WEBAPP_URL
 from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
 
 
 def _webapp_button(text: str = "📱 Открыть приложение", tab: str = "") -> InlineKeyboardButton:
-    base = WEBAPP_URL.rstrip("/") if WEBAPP_URL.startswith("https://") else ""
-    if base:
-        url = f"{base}/?tma=1" + (f"&tool={tab}" if tab else "")
-        return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
-    sim_url = f"/?mode=miniapp" + (f"&tool={tab}" if tab else "")
-    return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=f"https://nexus-tma.local{sim_url}"))
+    raw_base = WEBAPP_URL.strip().rstrip("/")
+    base = raw_base if raw_base.startswith("https://") else DEFAULT_PUBLIC_WEBAPP_URL
+    url = f"{base}/?tma=1" + (f"&tool={tab}" if tab else "")
+    return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
 
 
 def webapp_button(text: str = "📱 Открыть приложение", tab: str = "") -> InlineKeyboardButton:

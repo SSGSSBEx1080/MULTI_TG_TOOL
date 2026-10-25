@@ -85,6 +85,8 @@ export const App: React.FC = () => {
       const tg = getTelegramWebApp();
       tg?.ready?.();
       tg?.expand?.();
+      tg?.setHeaderColor?.('#080c16');
+      tg?.setBackgroundColor?.('#080c16');
     } catch {
       // ignore
     }
@@ -93,16 +95,49 @@ export const App: React.FC = () => {
         const cats: ToolCategory[] = res.categories || [];
         setCategories(cats);
         if (cats.length > 0) {
-          const targetCat = cats.find((c) => c.id === (initialToolParam || activeCategory)) || cats[0];
-          setActiveCategory(targetCat.id);
-          if (targetCat.tools[0]) {
-            setActiveTool(targetCat.tools[0].id);
+          const param = initialToolParam || activeCategory;
+          const byCat = cats.find((c) => c.id === param);
+          if (byCat) {
+            setActiveCategory(byCat.id);
+            if (byCat.tools[0]) setActiveTool(byCat.tools[0].id);
+            return;
           }
+          for (const cat of cats) {
+            const matchedTool = cat.tools.find((t) => t.id === param);
+            if (matchedTool) {
+              setActiveCategory(cat.id);
+              setActiveTool(matchedTool.id);
+              return;
+            }
+          }
+          setActiveCategory(cats[0].id);
+          if (cats[0].tools[0]) setActiveTool(cats[0].tools[0].id);
         }
       })
       .catch(() => {});
     loadWorkspace();
   }, [loadWorkspace]);
+
+  // Wire native Telegram WebApp BackButton on mobile drill-down
+  useEffect(() => {
+    try {
+      const tg = getTelegramWebApp();
+      const backBtn = tg?.BackButton;
+      if (!backBtn) return;
+      const onBack = () => setMobileDrillOpen(false);
+      if (mobileDrillOpen && window.innerWidth < 1024) {
+        backBtn.show?.();
+        backBtn.onClick?.(onBack);
+        return () => {
+          backBtn.offClick?.(onBack);
+        };
+      } else {
+        backBtn.hide?.();
+      }
+    } catch {
+      // ignore outside Telegram
+    }
+  }, [mobileDrillOpen]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -150,11 +185,21 @@ export const App: React.FC = () => {
 
   const handleOpenMiniAppFromSim = (tab?: string) => {
     if (tab) {
-      const found = categories.find((c) => c.id === tab);
-      if (found) {
-        setActiveCategory(found.id);
-        if (found.tools[0]) setActiveTool(found.tools[0].id);
+      const foundCat = categories.find((c) => c.id === tab);
+      if (foundCat) {
+        setActiveCategory(foundCat.id);
+        if (foundCat.tools[0]) setActiveTool(foundCat.tools[0].id);
         setMobileDrillOpen(true);
+      } else {
+        for (const cat of categories) {
+          const foundTool = cat.tools.find((t) => t.id === tab);
+          if (foundTool) {
+            setActiveCategory(cat.id);
+            setActiveTool(foundTool.id);
+            setMobileDrillOpen(true);
+            break;
+          }
+        }
       }
     }
     if (viewMode === 'bot') {

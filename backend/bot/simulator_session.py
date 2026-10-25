@@ -78,8 +78,8 @@ class SimulatorSession(BaseSession):
         self.bot_user = User(
             id=123456789,
             is_bot=True,
-            first_name="NEXUS • Мультитул",
-            username="nexus_multitool_bot",
+            first_name="MULTI_TG_TOOL",
+            username="multi_tg_bot",
         )
         # chat_id -> list of serialized chat message dicts
         self.chats: dict[int, list[dict[str, Any]]] = {}

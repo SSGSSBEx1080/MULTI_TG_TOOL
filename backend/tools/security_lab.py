@@ -265,13 +265,13 @@ def sign_jwt(
     claims = {"iat": now, **payload}
     if expires_minutes > 0 and "exp" not in claims:
         claims["exp"] = now + expires_minutes * 60
-    return jwt.encode(claims, secret or "nexus-secret", algorithm=algorithm)
+    return jwt.encode(claims, secret or "multi-tg-tool-default-hmac-sha256-key", algorithm=algorithm)
 
 
 def generate_totp_info(
     secret: str = "",
-    account: str = "user@nexus.app",
-    issuer: str = "NEXUS",
+    account: str = "user@multi_tg_tool",
+    issuer: str = "MULTI_TG_TOOL",
 ) -> dict[str, Any]:
     clean = re.sub(r"\s+", "", (secret or "")).upper()
     if not clean:

@@ -201,7 +201,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
         age: newBibAge,
         city: newBibCity,
         vibe: newBibVibe,
-        bio: newBibBio || 'Участник NEXUS Studio',
+        bio: newBibBio || 'Участник MULTI_TG_TOOL',
         avatar_style: '⚡',
       });
       setBibintoProfiles(r.profiles || []);
@@ -411,7 +411,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-950/90 border border-white/10 text-xs text-slate-200 italic">
-                  «{selectedProfile.bio || 'Исследователь мульти-инструментов NEXUS'}»
+                  «{selectedProfile.bio || 'Участник MULTI_TG_TOOL'}»
                 </div>
 
                 {/* Stats Matrix including Profile Visits */}
@@ -562,7 +562,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
         <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-bold text-white">💎 Bibinto NEXUS — Оцени Анкету и Вайб от 1 до 10</h3>
+              <h3 className="text-base font-bold text-white">💎 Оценка анкет от 1 до 10</h3>
               <p className="text-xs text-slate-400">Ставьте честные баллы от 1 до 10 и добавляйте собственную карточку в рейтинг!</p>
             </div>
             <button

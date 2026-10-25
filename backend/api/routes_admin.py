@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import hmac
 from typing import Any
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.bot.factory import bot_manager
-from backend.config import BASE_DIR, BOT_TOKEN
+from backend.config import ADMIN_SECRET, BASE_DIR, BOT_TOKEN
 from backend.database import db
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -37,11 +38,17 @@ class TokenUpdateReq(BaseModel):
 
 
 @router.post("/bot-token")
-async def update_bot_token(req: TokenUpdateReq) -> dict[str, Any]:
+async def update_bot_token(req: TokenUpdateReq, request: Request) -> dict[str, Any]:
+    provided_secret = (request.headers.get("X-Admin-Secret") or "").strip()
+    if not ADMIN_SECRET or not hmac.compare_digest(provided_secret, ADMIN_SECRET):
+        raise HTTPException(
+            status_code=403,
+            detail="Управление токеном бота защищено и доступно только через переменные окружения сервера.",
+        )
+
     clean = (req.bot_token or "").strip()
     await db.set_setting("bot_token", clean)
 
-    # Also update local .env safely if desired for restarts
     env_file = BASE_DIR / ".env"
     lines: list[str] = []
     if env_file.exists():

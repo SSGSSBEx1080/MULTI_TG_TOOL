@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 import secrets
 from collections import OrderedDict
 from typing import Any
@@ -11,6 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 # Short-key media store so callback_data stays strictly < 64 bytes (Telegram Bot API limit)
 _MEDIA_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 MAX_MEDIA_CACHE = 80
+MAX_TG_TEXT_LEN = 4050
 
 
 def store_media_ref(file_id: str, filename: str = "", raw_bytes: bytes | None = None) -> str:
@@ -48,31 +50,51 @@ def esc(text: Any) -> str:
     return html.escape(str(text))
 
 
+def _clamp_tg_html(text: str) -> str:
+    if len(text) <= MAX_TG_TEXT_LEN:
+        return text
+    # Strip HTML if needed when truncating to avoid broken tags
+    plain = re.sub(r"<[^>]+>", "", text)
+    return html.escape(plain[: MAX_TG_TEXT_LEN - 20]) + "\n…"
+
+
 async def render_hud(
     target: Message | CallbackQuery,
     text: str,
     reply_markup: InlineKeyboardMarkup | None = None,
 ) -> Message:
+    safe_text = _clamp_tg_html(text)
     if isinstance(target, CallbackQuery):
         msg = target.message
         if isinstance(msg, Message) and msg.text is not None:
             try:
                 edited = await msg.edit_text(
-                    text=text,
+                    text=safe_text,
                     parse_mode="HTML",
                     reply_markup=reply_markup,
                     disable_web_page_preview=True,
                 )
-                await target.answer()
+                try:
+                    await target.answer()
+                except Exception:
+                    pass
                 if isinstance(edited, Message):
                     return edited
                 return msg
-            except Exception:
-                pass
-        await target.answer()
+            except Exception as exc:
+                if "message is not modified" in str(exc).lower():
+                    try:
+                        await target.answer()
+                    except Exception:
+                        pass
+                    return msg
+        try:
+            await target.answer()
+        except Exception:
+            pass
         if isinstance(msg, Message):
             return await msg.answer(
-                text=text,
+                text=safe_text,
                 parse_mode="HTML",
                 reply_markup=reply_markup,
                 disable_web_page_preview=True,
@@ -80,7 +102,7 @@ async def render_hud(
         raise RuntimeError("CallbackQuery without accessible message")
 
     return await target.answer(
-        text=text,
+        text=safe_text,
         parse_mode="HTML",
         reply_markup=reply_markup,
         disable_web_page_preview=True,

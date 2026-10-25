@@ -679,8 +679,8 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSelectTool, onSy
         {[
           { id: 'wolf', tool: 'arcade_wolf', label: '🐺 Волк ловит яйца (Ну, погоди!)' },
           { id: 'doodle', tool: 'arcade_doodle', label: '🚀 Doodle Cyber Jump' },
-          { id: 'tetris', tool: 'arcade_tetris', label: '🧱 Неоновый Тетрис' },
-          { id: 'clicker', tool: 'arcade_clicker', label: '⚡ NEXUS Кибер-Кликер' },
+          { id: 'tetris', tool: 'arcade_tetris', label: '🧱 Тетрис' },
+          { id: 'clicker', tool: 'arcade_clicker', label: '⚡ Кликер' },
         ].map((g) => (
           <button
             key={g.id}

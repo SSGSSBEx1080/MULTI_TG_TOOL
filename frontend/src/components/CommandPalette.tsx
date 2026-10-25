@@ -99,7 +99,7 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, categories, onS
         <div className="px-4 py-2.5 bg-slate-950/70 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
           <span className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-            Мгновенная навигация по мультитулу NEXUS
+            Быстрый поиск по разделам MULTI_TG_TOOL
           </span>
           <span>ESC — закрыть</span>
         </div>

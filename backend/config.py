@@ -35,12 +35,15 @@ if not DATABASE_PATH.is_absolute():
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
 
+DEFAULT_PUBLIC_WEBAPP_URL = "https://multi-tool-upload-maxxer-14.waw0.amvera.tech"
+
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-WEBAPP_URL = os.getenv("WEBAPP_URL", "").strip()
+WEBAPP_URL = os.getenv("WEBAPP_URL", "").strip() or DEFAULT_PUBLIC_WEBAPP_URL
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "").strip()
 
 # Simulated synthetic token used exclusively for the local SimulatorSession Bot instance
-SIMULATOR_BOT_TOKEN = "123456789:AAH_NEXUS_SIMULATOR_VIRTUAL_TOKEN_X9"
-DEFAULT_DEMO_USER_ID = 777000
+SIMULATOR_BOT_TOKEN = "123456789:AAH_MULTI_TG_TOOL_SIMULATOR_VIRTUAL_TOKEN"
+DEFAULT_DEMO_USER_ID = 900_000_000_001
 
 
 def _font_path(filename: str) -> str:
