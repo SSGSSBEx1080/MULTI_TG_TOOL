@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Dices, Flame, GlassWater, Lightbulb, Ruler, Search, Volume2 } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
+import { PartyGlass3D } from '../three/Interactive3DScenes';
 
 interface Props {
   activeTool: string;
@@ -293,6 +294,10 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
           </div>
 
           <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/75 p-5 flex flex-col justify-between space-y-4">
+            <PartyGlass3D
+              fillRatio={Math.max(0.08, Math.min(1, targetLevel / 40))}
+              label={`Уровень ${targetLevel}/40`}
+            />
             {alkoRes ? (
               <>
                 <div className="space-y-3">

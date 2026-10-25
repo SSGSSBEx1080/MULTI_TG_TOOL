@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Copy, Sparkles } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
+import { ZodiacCelestial3D } from '../three/Interactive3DScenes';
 
 interface Props {
   activeTool: string;
@@ -144,6 +145,33 @@ export const HoroscopeHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync
           </button>
         ))}
       </div>
+
+      {/* Interactive 3D Celestial Ecliptic Sphere */}
+      <ZodiacCelestial3D
+        selectedSign={
+          subTab === 'birth'
+            ? birthRes?.sign?.id || selectedSign
+            : subTab === 'compat'
+              ? compatRes?.person1?.sign?.id || sign1
+              : selectedSign
+        }
+        secondSign={
+          subTab === 'compat' ? compatRes?.person2?.sign?.id || sign2 : undefined
+        }
+        compatPct={subTab === 'compat' ? compatRes?.overall_pct : undefined}
+        onSelectSign={(id) => {
+          if (subTab === 'compat') {
+            setCompatMode('signs');
+            setSign1(id);
+          } else {
+            setSelectedSign(id);
+            if (subTab !== 'horoscope') {
+              setSubTab('horoscope');
+              onSelectTool?.('daily_horoscope');
+            }
+          }
+        }}
+      />
 
       {/* 1. HOROSCOPE */}
       {subTab === 'horoscope' && (

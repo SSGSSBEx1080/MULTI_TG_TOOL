@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Trophy } from 'lucide-react';
 import { apiGet, apiPost } from '../../lib/api';
+import { createIcosahedron, cross3, hexToRgb, project3D, rotateEuler, scale3, shadeBlinnPhong, sub3 } from '../../lib/engine3d';
 
 interface Props {
   activeTool: string;
@@ -383,6 +384,12 @@ const DoodleJumpGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
       });
     }
 
+    const stars3D = Array.from({ length: 34 }, (_, i) => ({
+      x: (i * 53) % W,
+      y: (i * 89) % H,
+      z: (i % 3) + 1,
+    }));
+
     const tick = () => {
       px += moveDir.current * 4.8;
       if (px < 0) px = W;
@@ -404,6 +411,9 @@ const DoodleJumpGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
         py = H * 0.45;
         bestHeight += Math.round(shift);
         setScore(bestHeight);
+        stars3D.forEach((s) => {
+          s.y = (s.y + shift * (0.18 * s.z)) % H;
+        });
         platforms.forEach((p) => {
           p.y += shift;
           if (p.y > H) {
@@ -429,14 +439,33 @@ const DoodleJumpGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
         ctx.fillStyle = '#090e1a';
         ctx.fillRect(0, 0, W, H);
 
+        // 3D Multi-depth Parallax Starfield
+        stars3D.forEach((s) => {
+          ctx.fillStyle = `rgba(186,230,253,${0.15 * s.z})`;
+          ctx.fillRect(s.x, s.y, s.z, s.z);
+        });
+
+        // 3D Extruded Platforms
         platforms.forEach((p) => {
-          ctx.fillStyle = p.boost ? '#f43f5e' : p.vx !== 0 ? '#38bdf8' : '#22c55e';
+          const topCol = p.boost ? '#f43f5e' : p.vx !== 0 ? '#38bdf8' : '#22c55e';
+          const sideCol = p.boost ? '#9f1239' : p.vx !== 0 ? '#0369a1' : '#15803d';
+          ctx.fillStyle = sideCol;
           ctx.beginPath();
-          ctx.roundRect(p.x, p.y, p.w, 10, 5);
+          ctx.roundRect(p.x + 2, p.y + 4, p.w, 10, 4);
+          ctx.fill();
+
+          ctx.fillStyle = topCol;
+          ctx.beginPath();
+          ctx.roundRect(p.x, p.y, p.w, 9, 4);
           ctx.fill();
         });
 
-        ctx.fillStyle = '#a855f7';
+        // 3D Shaded Sphere Jumper
+        const sphereGrad = ctx.createRadialGradient(px - 4, py - 5, 2, px, py, 14);
+        sphereGrad.addColorStop(0, '#f3e8ff');
+        sphereGrad.addColorStop(0.4, '#a855f7');
+        sphereGrad.addColorStop(1, '#4c1d95');
+        ctx.fillStyle = sphereGrad;
         ctx.beginPath();
         ctx.arc(px, py, 13, 0, Math.PI * 2);
         ctx.fill();
@@ -522,11 +551,52 @@ const SHAPES = [
   { m: [[1, 1, 0], [0, 1, 1]], c: '#f43f5e' },
 ];
 
+const drawVoxelBlock = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  hex: string,
+  is3D: boolean
+) => {
+  if (!is3D) {
+    ctx.fillStyle = hex;
+    ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
+    return;
+  }
+  const [r, g, b] = hexToRgb(hex);
+  const d = 4;
+  // Front face
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.fillRect(x + 1, y + 1, size - 3, size - 3);
+  // Top face (lit)
+  ctx.fillStyle = `rgb(${Math.min(255, r + 55)},${Math.min(255, g + 55)},${Math.min(255, b + 55)})`;
+  ctx.beginPath();
+  ctx.moveTo(x + 1, y + 1);
+  ctx.lineTo(x + 1 + d, y + 1 - d);
+  ctx.lineTo(x + size - 2 + d, y + 1 - d);
+  ctx.lineTo(x + size - 2, y + 1);
+  ctx.closePath();
+  ctx.fill();
+  // Right side face (shaded)
+  ctx.fillStyle = `rgb(${Math.max(0, r - 55)},${Math.max(0, g - 55)},${Math.max(0, b - 55)})`;
+  ctx.beginPath();
+  ctx.moveTo(x + size - 2, y + 1);
+  ctx.lineTo(x + size - 2 + d, y + 1 - d);
+  ctx.lineTo(x + size - 2 + d, y + size - 2 - d);
+  ctx.lineTo(x + size - 2, y + size - 2);
+  ctx.closePath();
+  ctx.fill();
+};
+
 const NeonTetrisGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveScore }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [running, setRunning] = useState(false);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
+  const [mode3D, setMode3D] = useState(true);
+  const mode3DRef = useRef(true);
+  mode3DRef.current = mode3D;
   const ctrlRef = useRef<{ move: (dx: number) => void; rotate: () => void; drop: () => void }>({
     move: () => {},
     rotate: () => {},
@@ -539,32 +609,45 @@ const NeonTetrisGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
     setRunning(true);
   };
 
-  // Draw initial grid preview
+  // Draw initial 3D grid preview
   useEffect(() => {
     if (running) return;
     const cvs = canvasRef.current;
     const ctx = cvs?.getContext('2d');
     if (!cvs || !ctx) return;
     ctx.fillStyle = '#090d18';
-    ctx.fillRect(0, 0, 200, 400);
+    ctx.fillRect(0, 0, 210, 408);
+    const ox = 4;
+    const oy = 8;
     for (let r = 0; r < 20; r++) {
       for (let c = 0; c < 10; c++) {
         ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-        ctx.strokeRect(c * 20, r * 20, 20, 20);
+        ctx.strokeRect(ox + c * 20, oy + r * 20, 20, 20);
       }
     }
+    // Sample decorative 3D blocks on idle screen
+    [
+      [3, 18, '#38bdf8'],
+      [4, 18, '#38bdf8'],
+      [5, 18, '#a855f7'],
+      [4, 17, '#a855f7'],
+    ].forEach(([c, r, col]) =>
+      drawVoxelBlock(ctx, ox + Number(c) * 20, oy + Number(r) * 20, 20, String(col), mode3D)
+    );
     ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(gameOver ? `Счёт: ${score}` : 'Нажмите для старта', 100, 195);
+    ctx.fillText(gameOver ? `Счёт: ${score}` : 'Нажмите для старта', 105, 195);
     ctx.textAlign = 'start';
-  }, [running, gameOver, score]);
+  }, [running, gameOver, score, mode3D]);
 
   useEffect(() => {
     if (!running) return;
     const COLS = 10;
     const ROWS = 20;
     const CELL = 20;
+    const OX = 4;
+    const OY = 8;
     const board: (string | null)[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
     let curScore = 0;
 
@@ -592,24 +675,36 @@ const NeonTetrisGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
       const ctx = cvs?.getContext('2d');
       if (!cvs || !ctx) return;
       ctx.fillStyle = '#090d18';
-      ctx.fillRect(0, 0, COLS * CELL, ROWS * CELL);
+      ctx.fillRect(0, 0, cvs.width, cvs.height);
 
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-          ctx.strokeRect(c * CELL, r * CELL, CELL, CELL);
+          ctx.strokeRect(OX + c * CELL, OY + r * CELL, CELL, CELL);
           if (board[r][c]) {
-            ctx.fillStyle = board[r][c]!;
-            ctx.fillRect(c * CELL + 1, r * CELL + 1, CELL - 2, CELL - 2);
+            drawVoxelBlock(ctx, OX + c * CELL, OY + r * CELL, CELL, board[r][c]!, mode3DRef.current);
           }
         }
+      }
+
+      // Ghost drop preview
+      let ghostY = piece.y;
+      while (!collides(piece.m, piece.x, ghostY + 1)) ghostY++;
+      if (ghostY > piece.y) {
+        piece.m.forEach((row, r) =>
+          row.forEach((v, c) => {
+            if (v) {
+              ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+              ctx.strokeRect(OX + (piece.x + c) * CELL + 2, OY + (ghostY + r) * CELL + 2, CELL - 4, CELL - 4);
+            }
+          })
+        );
       }
 
       piece.m.forEach((row, r) =>
         row.forEach((v, c) => {
           if (v) {
-            ctx.fillStyle = piece.c;
-            ctx.fillRect((piece.x + c) * CELL + 1, (piece.y + r) * CELL + 1, CELL - 2, CELL - 2);
+            drawVoxelBlock(ctx, OX + (piece.x + c) * CELL, OY + (piece.y + r) * CELL, CELL, piece.c, mode3DRef.current);
           }
         })
       );
@@ -696,24 +791,35 @@ const NeonTetrisGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
 
   return (
     <div className="flex flex-col items-center space-y-3 min-w-0">
-      <div className="flex items-center justify-between w-full max-w-[260px] gap-2">
+      <div className="flex items-center justify-between w-full max-w-[280px] gap-1.5">
         <span className="text-xs font-mono text-sky-300 font-bold">СЧЁТ: {score}</span>
-        <button
-          type="button"
-          onClick={startTetris}
-          className="px-3.5 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold text-xs shrink-0"
-        >
-          🧱 {running ? 'Рестарт' : 'Играть в Тетрис'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setMode3D((m) => !m)}
+            className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${
+              mode3D ? 'bg-indigo-500/30 border-indigo-400 text-indigo-200' : 'bg-white/5 border-white/10 text-slate-400'
+            }`}
+          >
+            {mode3D ? '🧊 3D' : '2D'}
+          </button>
+          <button
+            type="button"
+            onClick={startTetris}
+            className="px-3 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold text-xs shrink-0"
+          >
+            🧱 {running ? 'Рестарт' : 'Старт'}
+          </button>
+        </div>
       </div>
       <canvas
         ref={canvasRef}
-        width={200}
-        height={400}
+        width={210}
+        height={408}
         onClick={() => {
           if (!running) startTetris();
         }}
-        className="w-full max-w-[210px] h-auto rounded-xl border border-sky-400/35 bg-[#090d18] cursor-pointer select-none touch-none"
+        className="w-full max-w-[215px] h-auto rounded-xl border border-sky-400/35 bg-[#090d18] cursor-pointer select-none touch-none"
       />
       {gameOver && <div className="text-xs text-amber-300 font-semibold">Стакан полон! Счёт: <b>{score}</b> 🏆</div>}
       <div className="grid grid-cols-4 gap-2 w-full max-w-[280px] select-none">
@@ -751,18 +857,102 @@ const NeonTetrisGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSave
 };
 
 // ============================================================================
-// 4. ENERGY CLICKER
+// 4. 3D QUANTUM CRYSTAL CLICKER
 // ============================================================================
 const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSaveScore }) => {
   const [energy, setEnergy] = useState(0);
   const [clickPower, setClickPower] = useState(1);
   const [autoPerSec, setAutoPerSec] = useState(0);
+  const crystalCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const crystalAnimRef = useRef({ rx: 0.4, ry: 0.6, spinBoost: 0, pulse: 0 });
+  const icoMesh = useMemo(() => createIcosahedron(1.25), []);
 
   useEffect(() => {
     if (autoPerSec <= 0) return;
     const t = setInterval(() => setEnergy((e) => e + autoPerSec), 1000);
     return () => clearInterval(t);
   }, [autoPerSec]);
+
+  useEffect(() => {
+    let raf = 0;
+    const rgb: [number, number, number] = [16, 185, 129];
+
+    const renderCrystal = () => {
+      const cvs = crystalCanvasRef.current;
+      const ctx = cvs?.getContext('2d');
+      if (!cvs || !ctx) return;
+      const W = cvs.width;
+      const H = cvs.height;
+      const st = crystalAnimRef.current;
+
+      st.ry += 0.014 + st.spinBoost;
+      st.rx += 0.006 + st.spinBoost * 0.4;
+      st.spinBoost *= 0.9;
+      st.pulse *= 0.88;
+
+      ctx.clearRect(0, 0, W, H);
+
+      if (st.pulse > 0.02) {
+        ctx.beginPath();
+        ctx.arc(W / 2, H / 2, 58 + (1 - st.pulse) * 28, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(52,211,153,${st.pulse * 0.75})`;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      const scaleFactor = 1 + st.pulse * 0.14;
+      const transformed = icoMesh.vertices.map((vt) =>
+        scale3(rotateEuler(vt, st.rx, st.ry), scaleFactor)
+      );
+      const projected = transformed.map((vt) => project3D(vt, W, H, 195, 4.0));
+
+      const faces = icoMesh.faces
+        .map((f) => {
+          const center = {
+            x: (transformed[f[0]].x + transformed[f[1]].x + transformed[f[2]].x) / 3,
+            y: (transformed[f[0]].y + transformed[f[1]].y + transformed[f[2]].y) / 3,
+            z: (transformed[f[0]].z + transformed[f[1]].z + transformed[f[2]].z) / 3,
+          };
+          let normal = cross3(
+            sub3(transformed[f[1]], transformed[f[0]]),
+            sub3(transformed[f[2]], transformed[f[0]])
+          );
+          if (normal.x * center.x + normal.y * center.y + normal.z * center.z < 0) {
+            normal = scale3(normal, -1);
+          }
+          return { f, center, normal };
+        })
+        .sort((a, b) => a.center.z - b.center.z);
+
+      for (const item of faces) {
+        const p0 = projected[item.f[0]];
+        const p1 = projected[item.f[1]];
+        const p2 = projected[item.f[2]];
+        if (!p0.visible || !p1.visible || !p2.visible) continue;
+        ctx.beginPath();
+        ctx.moveTo(p0.sx, p0.sy);
+        ctx.lineTo(p1.sx, p1.sy);
+        ctx.lineTo(p2.sx, p2.sy);
+        ctx.closePath();
+        ctx.fillStyle = shadeBlinnPhong(item.normal, item.center, rgb, undefined, 0.9);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(167,243,208,0.45)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      raf = requestAnimationFrame(renderCrystal);
+    };
+
+    raf = requestAnimationFrame(renderCrystal);
+    return () => cancelAnimationFrame(raf);
+  }, [icoMesh]);
+
+  const handleCrystalTap = () => {
+    setEnergy((e) => e + clickPower);
+    crystalAnimRef.current.spinBoost = Math.min(0.22, crystalAnimRef.current.spinBoost + 0.08);
+    crystalAnimRef.current.pulse = 1.0;
+  };
 
   const upgrades = [
     { name: '⚡ Двойной свитч мыши (+2 за клик)', cost: 25, buy: () => setClickPower((p) => p + 2) },
@@ -780,7 +970,7 @@ const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSa
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-center min-w-0">
-      <div className="flex flex-col items-center justify-center p-5 sm:p-6 rounded-2xl bg-slate-950/90 border border-emerald-400/30 space-y-4 select-none">
+      <div className="flex flex-col items-center justify-center p-5 sm:p-6 rounded-2xl bg-slate-950/90 border border-emerald-400/30 space-y-3 select-none">
         <div className="text-xs text-emerald-300 uppercase tracking-wider">Накоплено энергии</div>
         <div className="text-3xl sm:text-4xl font-black font-mono text-white">
           {energy.toLocaleString('ru-RU')} ⚡
@@ -788,14 +978,15 @@ const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSa
         <div className="text-xs text-slate-400 text-center">
           Клик: <b className="text-white">+{clickPower}</b> • Авто: <b className="text-emerald-300">+{autoPerSec}/сек</b>
         </div>
-        <button
-          type="button"
-          onPointerDown={() => setEnergy((e) => e + clickPower)}
-          className="w-32 h-32 sm:w-36 sm:h-36 rounded-full bg-gradient-to-br from-emerald-400 via-sky-500 to-purple-600 shadow-2xl shadow-emerald-500/30 active:scale-95 transition flex flex-col items-center justify-center text-slate-950 font-black touch-manipulation select-none"
-        >
-          <span className="text-4xl">⚡</span>
-          <span className="text-xs mt-1">ТАПАЙ!</span>
-        </button>
+        <canvas
+          ref={crystalCanvasRef}
+          width={176}
+          height={176}
+          onPointerDown={handleCrystalTap}
+          className="w-40 h-40 cursor-pointer active:scale-95 transition touch-manipulation select-none"
+          title="Тапайте по 3D-кристаллу!"
+        />
+        <div className="text-[11px] text-emerald-300/80 font-semibold">Тапайте по 3D-кристаллу</div>
         <button
           type="button"
           disabled={energy <= 0}

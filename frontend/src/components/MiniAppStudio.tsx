@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Search, Star, X } from 'lucide-react';
+import { ArrowLeft, Box, Search, Star, X } from 'lucide-react';
 import {
   HabitItem,
   NoteItem,
@@ -9,6 +9,11 @@ import {
   apiPost,
   copyText,
 } from '../lib/api';
+import { Tilt3DCard } from './three/Tilt3DCard';
+
+const CorePolyhedron3D = lazy(() =>
+  import('./three/Interactive3DScenes').then((m) => ({ default: m.CorePolyhedron3D }))
+);
 
 const VisualMediaHub = lazy(() => import('./tools/VisualMediaHub').then((m) => ({ default: m.VisualMediaHub })));
 const CyberDevHub = lazy(() => import('./tools/CyberDevHub').then((m) => ({ default: m.CyberDevHub })));
@@ -68,6 +73,7 @@ export const MiniAppStudio: React.FC<Props> = ({
   const [quickInput, setQuickInput] = useState('');
   const [quickRes, setQuickRes] = useState<{ kind: string; title: string; output: string } | null>(null);
   const [quickBusy, setQuickBusy] = useState(false);
+  const [showMobile3D, setShowMobile3D] = useState(true);
   const topAnchorRef = useRef<HTMLDivElement>(null);
 
   const currentCat = categories.find((c) => c.id === activeCategory) || categories[0];
@@ -262,6 +268,16 @@ export const MiniAppStudio: React.FC<Props> = ({
             </div>
           )}
 
+          {categories.length > 0 && (
+            <Suspense fallback={<div className="h-[235px] rounded-2xl bg-slate-950/60 border border-white/5 animate-pulse" />}>
+              <CorePolyhedron3D
+                categories={categories}
+                activeCategory={activeCategory}
+                onSelectCategory={onSelectCategory}
+              />
+            </Suspense>
+          )}
+
           <div className="space-y-1">
             <div className="px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Разделы ({categories.length})
@@ -418,12 +434,26 @@ export const MiniAppStudio: React.FC<Props> = ({
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={onOpenPalette}
-                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 flex items-center gap-1.5 shrink-0"
-                >
-                  <Search className="w-3.5 h-3.5 text-indigo-400" /> Поиск
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowMobile3D((s) => !s)}
+                    className={`px-2.5 py-2 rounded-xl border text-xs flex items-center gap-1 transition ${
+                      showMobile3D
+                        ? 'bg-indigo-500/20 border-indigo-400/50 text-indigo-200'
+                        : 'bg-white/5 border-white/10 text-slate-300'
+                    }`}
+                    title="Переключить 3D-навигатор"
+                  >
+                    <Box className="w-3.5 h-3.5" /> 3D
+                  </button>
+                  <button
+                    onClick={onOpenPalette}
+                    className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 flex items-center gap-1.5"
+                  >
+                    <Search className="w-3.5 h-3.5 text-indigo-400" /> Поиск
+                  </button>
+                </div>
               </div>
 
               {/* Instant Converter / Calc Bar */}
@@ -483,13 +513,27 @@ export const MiniAppStudio: React.FC<Props> = ({
               </div>
             )}
 
-            {/* 2-Column Category Grid */}
+            {/* Interactive 3D / 4D Orbital Navigator */}
+            {showMobile3D && categories.length > 0 && (
+              <Suspense fallback={<div className="h-[215px] rounded-2xl bg-slate-950/60 border border-white/5 animate-pulse" />}>
+                <CorePolyhedron3D
+                  categories={categories}
+                  activeCategory={activeCategory}
+                  onSelectCategory={onSelectCategory}
+                  compact
+                />
+              </Suspense>
+            )}
+
+            {/* 2-Column Category Grid with 3D Specular Tilt */}
             <div className="grid grid-cols-2 gap-2.5">
               {categories.map((cat) => (
-                <button
+                <Tilt3DCard
                   key={cat.id}
+                  accentColor={cat.color || '#6366f1'}
+                  maxTilt={9}
                   onClick={() => onSelectCategory(cat.id)}
-                  className="p-3.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 active:scale-[0.99] border border-white/10 text-left transition flex flex-col justify-between min-h-[104px]"
+                  className="p-3.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 active:scale-[0.99] border border-white/10 text-left transition flex flex-col justify-between min-h-[104px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between w-full">
                     <span className="text-2xl">{cat.emoji}</span>
@@ -503,7 +547,7 @@ export const MiniAppStudio: React.FC<Props> = ({
                       {cat.short}
                     </div>
                   </div>
-                </button>
+                </Tilt3DCard>
               ))}
             </div>
           </>

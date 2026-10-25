@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { HabitItem, NoteItem, TodoItem, apiDelete, apiPost, copyText } from '../../lib/api';
+import { HabitRing3D, NetworkTopology3D, PolyhedralDice3D } from '../three/Interactive3DScenes';
 
 interface Props {
   activeCategory: string;
@@ -561,6 +562,7 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
             <div className="flex items-center gap-2 text-indigo-300 font-semibold text-sm">
               <Network className="w-4 h-4" /> Сетевой Калькулятор IPv4 / IPv6 CIDR
             </div>
+            <NetworkTopology3D cidr={cidr} usableHosts={subRes?.usable_hosts} />
             <div className="flex gap-2">
               <input
                 value={cidr}
@@ -900,11 +902,20 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
               ))}
             </div>
             {rndMode === 'dice' ? (
-              <input
-                value={diceExpr}
-                onChange={(e) => setDiceExpr(e.target.value)}
-                className="w-full sm:w-64 rounded-xl bg-slate-950 border border-white/10 px-3.5 py-2 font-mono text-sm text-white"
-              />
+              <div className="space-y-3">
+                <PolyhedralDice3D
+                  onRollResult={(sides, val) => {
+                    setDiceExpr(`1d${sides}`);
+                    setRndRes({ mode: 'dice', expression: `1d${sides}`, rolls: [val], total: val });
+                  }}
+                />
+                <input
+                  value={diceExpr}
+                  onChange={(e) => setDiceExpr(e.target.value)}
+                  placeholder="2d6+3, 1d20, 4d8..."
+                  className="w-full sm:w-64 rounded-xl bg-slate-950 border border-white/10 px-3.5 py-2 font-mono text-sm text-white"
+                />
+              </div>
             ) : (
               <div className="space-y-2">
                 <textarea
@@ -1101,6 +1112,12 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
       {/* 1. HABIT TRACKER */}
       {wsTab === 'habits' && (
         <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-4">
+          {habits.length > 0 && (
+            <HabitRing3D
+              doneCount={habits.filter((h) => h.done_today).length}
+              totalCount={habits.length}
+            />
+          )}
           <div className="space-y-2.5 p-3.5 rounded-xl bg-slate-950/70 border border-white/10">
             <div className="text-xs font-medium text-slate-300">Новая привычка</div>
             <div className="flex flex-wrap gap-1.5">

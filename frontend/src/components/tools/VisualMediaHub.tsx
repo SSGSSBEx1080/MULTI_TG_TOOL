@@ -22,6 +22,7 @@ import {
   sendGeneratedToTelegramChat,
   triggerFileDownload,
 } from '../../lib/api';
+import { HoloQr3DShowcase } from '../three/Tilt3DCard';
 
 const FileActionRow: React.FC<{
   downloadUrl?: string;
@@ -102,6 +103,7 @@ export const VisualMediaHub: React.FC<Props> = ({
   const [vcardPhone, setVcardPhone] = useState('+7 999 000-00-00');
   const [vcardTg, setVcardTg] = useState('@QLSCENR');
   const [qrResult, setQrResult] = useState<any>(null);
+  const [qrView3D, setQrView3D] = useState<boolean>(true);
 
   const [bcVal, setBcVal] = useState('MT-2026-001');
   const [bcKind, setBcKind] = useState('code128');
@@ -630,17 +632,50 @@ export const VisualMediaHub: React.FC<Props> = ({
             </button>
           </div>
 
-          {/* Live QR Canvas Preview */}
-          <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/70 p-5 flex flex-col items-center justify-between">
+          {/* Live QR Canvas Preview (2D + Interactive 3D Hologram) */}
+          <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5 flex flex-col items-center justify-between min-w-0">
             {qrResult ? (
               <>
-                <div className="p-3 rounded-2xl bg-slate-950/80 border border-white/10 shadow-xl">
-                  <img
-                    src={qrResult.image_data_url}
-                    alt="Styled QR"
-                    className="max-h-72 w-auto rounded-xl object-contain"
-                  />
+                <div className="w-full flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs font-semibold text-slate-300">Предпросмотр QR</span>
+                  <div className="flex rounded-lg bg-slate-950 border border-white/10 p-0.5 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setQrView3D(true)}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                        qrView3D ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🧊 3D Сцена
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrView3D(false)}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                        !qrView3D ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🖼 2D PNG
+                    </button>
+                  </div>
                 </div>
+
+                {qrView3D ? (
+                  <HoloQr3DShowcase
+                    imageDataUrl={qrResult.image_data_url}
+                    badgeText={qrBadge}
+                    caption={qrCaption}
+                  />
+                ) : (
+                  <div className="p-3 rounded-2xl bg-slate-950/80 border border-white/10 shadow-xl">
+                    <img
+                      src={qrResult.image_data_url}
+                      alt="Styled QR"
+                      className="max-h-72 w-auto rounded-xl object-contain"
+                    />
+                  </div>
+                )}
+
                 <div className="w-full mt-4 space-y-2">
                   <div className="p-2.5 rounded-xl bg-slate-950/70 border border-white/10 text-xs text-slate-300">
                     <span className="text-sky-400 font-semibold">{qrResult.inspection?.type}:</span>{' '}
