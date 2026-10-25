@@ -119,7 +119,7 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
   const handleInlineButton = async (msgId: number, btn: InlineBtn) => {
     triggerHaptic('light');
     if (btn.web_app_url) {
-      const m = btn.web_app_url.match(/tool=([a-z_]+)/);
+      const m = btn.web_app_url.match(/tool=([a-z0-9_]+)/i);
       onOpenMiniAppTool(m ? m[1] : undefined);
       onToast('Открыт раздел в приложении');
       return;

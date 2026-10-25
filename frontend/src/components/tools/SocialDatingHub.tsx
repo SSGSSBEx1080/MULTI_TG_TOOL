@@ -36,12 +36,28 @@ const toolToSocialTab = (tool: string): 'top' | 'altushka' | 'bibinto' | 'turing
 const GAME_LABELS: Record<string, string> = {
   arcade_wolf: '🐺 Ну, погоди!',
   wolf: '🐺 Ну, погоди!',
+  wolf_eggs: '🐺 Ну, погоди!',
   arcade_doodle: '🚀 Doodle Jump',
   doodle: '🚀 Doodle Jump',
+  doodle_jump: '🚀 Doodle Jump',
   arcade_tetris: '🧱 Тетрис',
   tetris: '🧱 Тетрис',
   arcade_clicker: '⚡ Кликер',
   clicker: '⚡ Кликер',
+  chess_ai: '♟️ Шахматы ИИ',
+  chess_puzzles: '🧩 Шахматные задачи',
+  reaction_cps_lab: '⚡ Реакция / CPS',
+  aim_trainer_3d: '🎯 Аим-тренажёр',
+  schulte_stroop: '🔢 Таблицы Шульте',
+  nonogram_15: '🧩 Кроссворд / Пятнашки',
+  turing_game: '🤖 Человек или ИИ',
+};
+
+const PERSONA_AVATARS: Record<string, string> = {
+  ksyusha: '/art/persona_ksyusha.gif',
+  alisa: '/art/persona_alisa.gif',
+  milana: '/art/persona_milana.gif',
+  rita: '/art/persona_rita.gif',
 };
 
 export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
@@ -511,11 +527,23 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
                       : 'bg-slate-950/80 border-white/10 hover:bg-slate-950'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-bold text-xs sm:text-sm text-white truncate">{p.emoji} {p.name}, {p.age}</span>
-                    <span className="text-[10px] text-rose-300 shrink-0">Онлайн</span>
+                  <div className="flex items-center gap-2.5">
+                    {PERSONA_AVATARS[p.id] && (
+                      <img
+                        src={PERSONA_AVATARS[p.id]}
+                        alt={p.name}
+                        loading="lazy"
+                        className="w-10 h-10 rounded-full border border-rose-400/50 object-cover shrink-0"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-xs sm:text-sm text-white truncate">{p.emoji} {p.name}, {p.age}</span>
+                        <span className="text-[10px] text-rose-300 shrink-0">Онлайн</span>
+                      </div>
+                      <div className="text-[11px] text-purple-300 mt-0.5 truncate">{p.archetype}</div>
+                    </div>
                   </div>
-                  <div className="text-[11px] text-purple-300 mt-0.5 truncate">{p.archetype}</div>
                   <div className="hidden lg:block text-[11px] text-slate-400 mt-1 line-clamp-2">{p.style}</div>
                 </button>
               ))}
@@ -526,8 +554,17 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
             {/* Affection Bar */}
             <div className="p-3.5 rounded-xl bg-slate-950 border border-white/10 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="font-bold text-white">
-                  {activePersona.emoji} {activePersona.name} ({activePersona.age} лет) — <span className="text-rose-300">{statusTitle}</span>
+                <div className="flex items-center gap-2.5 font-bold text-white">
+                  {PERSONA_AVATARS[activePersona.id] && (
+                    <img
+                      src={PERSONA_AVATARS[activePersona.id]}
+                      alt={activePersona.name}
+                      className="w-9 h-9 rounded-full border border-rose-400/60 object-cover shrink-0"
+                    />
+                  )}
+                  <span>
+                    {activePersona.emoji} {activePersona.name} ({activePersona.age} лет) — <span className="text-rose-300">{statusTitle}</span>
+                  </span>
                 </div>
                 <span className="font-mono font-bold text-rose-400">❤️ Симпатия: {affection} / 100</span>
               </div>

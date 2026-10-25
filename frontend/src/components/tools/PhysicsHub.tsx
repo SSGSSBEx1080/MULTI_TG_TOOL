@@ -40,16 +40,19 @@ const TOOL_MAP: Record<string, string> = {
 
 const CALC_TO_TOOL: Record<string, string> = {
   kinematics_uniform: 'phys_kinematics',
+  kinematics_accel: 'phys_kinematics',
+  free_fall: 'phys_kinematics',
   newton_force: 'phys_force',
   work_power_eff: 'phys_power',
   ohm_electric: 'phys_electric',
   heat_boiling: 'phys_heat',
+  energy_pressure: 'phys_heat',
 };
 
 export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
   const [calculators, setCalculators] = useState<PhysCalc[]>([]);
   const [materials, setMaterials] = useState<{ id: string; label: string; c: number }[]>([]);
-  const [selectedCalcId, setSelectedCalcId] = useState<string>('kinematics_uniform');
+  const [selectedCalcId, setSelectedCalcId] = useState<string>(() => TOOL_MAP[activeTool] || 'kinematics_uniform');
   const [targetVar, setTargetVar] = useState<string>('t');
   const [values, setValues] = useState<Record<string, string>>({});
   const [result, setResult] = useState<any>(null);
@@ -67,7 +70,7 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, 
   useEffect(() => {
     const mapped = TOOL_MAP[activeTool];
     if (mapped) {
-      setSelectedCalcId(mapped);
+      setSelectedCalcId((prev) => (CALC_TO_TOOL[prev] === activeTool ? prev : mapped));
     }
   }, [activeTool]);
 

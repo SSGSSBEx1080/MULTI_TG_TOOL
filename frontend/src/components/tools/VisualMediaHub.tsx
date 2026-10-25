@@ -90,8 +90,15 @@ export const VisualMediaHub: React.FC<Props> = ({
   onToast,
 }) => {
   // --- QR & Barcode State ---
-  const [qrSubTab, setQrSubTab] = useState<'designer' | 'barcode' | 'scanner' | 'links'>('designer');
-  const [qrMode, setQrMode] = useState<'text' | 'wifi' | 'vcard'>('text');
+  const [qrSubTab, setQrSubTab] = useState<'designer' | 'barcode' | 'scanner' | 'links'>(() => {
+    if (activeTool === 'barcode_gen') return 'barcode';
+    if (activeTool === 'qr_decoder' || activeTool === 'qr_scanner') return 'scanner';
+    if (activeTool === 'url_transformer') return 'links';
+    return 'designer';
+  });
+  const [qrMode, setQrMode] = useState<'text' | 'wifi' | 'vcard'>(() =>
+    activeTool === 'wifi_qr' ? 'wifi' : 'text'
+  );
   const [qrData, setQrData] = useState('https://t.me/multi_tg_bot');
   const [qrTheme, setQrTheme] = useState('cyber');
   const [qrShape, setQrShape] = useState('rounded');
@@ -110,7 +117,12 @@ export const VisualMediaHub: React.FC<Props> = ({
   const [bcResult, setBcResult] = useState<any>(null);
 
   // --- Image, Stego & Code Card State ---
-  const [imgSubTab, setImgSubTab] = useState<'stego' | 'code' | 'exif' | 'transform'>('stego');
+  const [imgSubTab, setImgSubTab] = useState<'stego' | 'code' | 'exif' | 'transform'>(() => {
+    if (activeTool === 'code_card') return 'code';
+    if (activeTool === 'exif_clean') return 'exif';
+    if (activeTool === 'img_transform') return 'transform';
+    return 'stego';
+  });
   const [stegoSecret, setStegoSecret] = useState('Скрытое сообщение в PNG-контейнере');
   const [stegoPassword, setStegoPassword] = useState('omega2026');
   const [stegoCover, setStegoCover] = useState<File | null>(null);
@@ -134,7 +146,12 @@ export const VisualMediaHub: React.FC<Props> = ({
   const [transformRes, setTransformRes] = useState<any>(null);
 
   // --- PDF State ---
-  const [pdfSubTab, setPdfSubTab] = useState<'create' | 'photos' | 'inspect'>('create');
+  const [pdfSubTab, setPdfSubTab] = useState<'create' | 'photos' | 'inspect' | 'protect'>(() => {
+    if (activeTool === 'img_to_pdf') return 'photos';
+    if (activeTool === 'pdf_inspect') return 'inspect';
+    if (activeTool === 'pdf_protect') return 'protect';
+    return 'create';
+  });
   const [pdfTitle, setPdfTitle] = useState('Документ');
   const [pdfBody, setPdfBody] = useState(
     `# Заголовок документа\nОсновной текст документа с поддержкой кириллицы.\n\n## Пункты\n- Первый пункт\n- Второй пункт\n- Третий пункт`
@@ -199,19 +216,16 @@ export const VisualMediaHub: React.FC<Props> = ({
   useEffect(() => {
     if (activeTool === 'barcode_gen') {
       setQrSubTab('barcode');
-    } else if (activeTool === 'qr_scanner') {
+    } else if (activeTool === 'qr_decoder' || activeTool === 'qr_scanner') {
       setQrSubTab('scanner');
     } else if (activeTool === 'url_transformer') {
       setQrSubTab('links');
     } else if (activeTool === 'wifi_qr') {
       setQrSubTab('designer');
       setQrMode('wifi');
-    } else if (activeTool === 'vcard_qr') {
-      setQrSubTab('designer');
-      setQrMode('vcard');
     } else if (activeTool === 'qr_studio') {
       setQrSubTab('designer');
-      setQrMode('text');
+      setQrMode((prev) => (prev === 'vcard' ? 'vcard' : 'text'));
     }
 
     if (activeTool === 'stego_lab') setImgSubTab('stego');
@@ -221,7 +235,8 @@ export const VisualMediaHub: React.FC<Props> = ({
 
     if (activeTool === 'text_to_pdf') setPdfSubTab('create');
     else if (activeTool === 'img_to_pdf') setPdfSubTab('photos');
-    else if (activeTool === 'pdf_inspect' || activeTool === 'pdf_protect') setPdfSubTab('inspect');
+    else if (activeTool === 'pdf_inspect') setPdfSubTab('inspect');
+    else if (activeTool === 'pdf_protect') setPdfSubTab('protect');
   }, [activeTool]);
 
   // Initial auto-preview for QR & Code Card
@@ -473,17 +488,6 @@ export const VisualMediaHub: React.FC<Props> = ({
                     Дизайнер Градиентных QR-кодов
                   </h3>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onToggleFav(activeTool || 'qr_studio')}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition shrink-0 ${
-                    isFav
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
-                      : 'bg-white/5 text-slate-400 border-white/10'
-                  }`}
-                >
-                  {isFav ? '★ В избранном' : '☆ В избранное'}
-                </button>
               </div>
 
               {/* Mode Switch */}
@@ -491,7 +495,7 @@ export const VisualMediaHub: React.FC<Props> = ({
                 {[
                   { id: 'text', tool: 'qr_studio', label: '🔗 Ссылка / Текст' },
                   { id: 'wifi', tool: 'wifi_qr', label: '📶 Wi-Fi сеть' },
-                  { id: 'vcard', tool: 'vcard_qr', label: '🪪 Визитка vCard' },
+                  { id: 'vcard', tool: 'qr_studio', label: '🪪 Визитка vCard' },
                 ].map((t) => (
                   <button
                     key={t.id}
@@ -1323,90 +1327,119 @@ export const VisualMediaHub: React.FC<Props> = ({
       )}
 
       {pdfSubTab === 'inspect' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-3.5">
+        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-white">🔎 Чтение текста и метаданных PDF</h4>
-            <p className="text-xs text-slate-400">
-              Загрузите свой PDF или нажмите кнопку сразу для теста на демо-документе:
-            </p>
-            <input
-              type="file"
-              accept=".pdf,application/pdf"
-              onChange={(e) => setPdfUpload(e.target.files?.[0] || null)}
-              className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-rose-500/20 file:text-rose-200"
-            />
             <button
-              onClick={runPdfInspect}
-              className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold"
+              type="button"
+              onClick={() => onSelectTool('pdf_protect')}
+              className="text-xs px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-400/30 text-rose-200 hover:bg-rose-500/25 transition"
             >
-              Извлечь текстовый слой и структуру
+              🔐 К защите паролем / делению →
             </button>
-            {pdfInspectRes && (
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-white/10 space-y-2 text-xs">
-                <div className="flex justify-between text-slate-300">
-                  <span>Страниц: <b>{pdfInspectRes.page_count}</b></span>
-                  <span>Размер: <b>{pdfInspectRes.size_kb} КБ</b></span>
-                  <span>Шифр: <b>{pdfInspectRes.is_encrypted ? 'Да 🔒' : 'Нет'}</b></span>
-                </div>
-                <pre className="max-h-48 overflow-y-auto p-2.5 rounded-lg bg-slate-900 text-slate-200 whitespace-pre-wrap">
-                  {pdfInspectRes.extracted_text || '(Зашифрован или без текста)'}
-                </pre>
-              </div>
-            )}
           </div>
+          <p className="text-xs text-slate-400">
+            Загрузите свой PDF или нажмите кнопку сразу для теста на демо-документе:
+          </p>
+          <input
+            type="file"
+            accept=".pdf,application/pdf"
+            onChange={(e) => setPdfUpload(e.target.files?.[0] || null)}
+            className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-rose-500/20 file:text-rose-200"
+          />
+          <button
+            type="button"
+            onClick={runPdfInspect}
+            className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold"
+          >
+            Извлечь текстовый слой и структуру
+          </button>
+          {pdfInspectRes && (
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-white/10 space-y-2 text-xs">
+              <div className="flex justify-between text-slate-300">
+                <span>Страниц: <b>{pdfInspectRes.page_count}</b></span>
+                <span>Размер: <b>{pdfInspectRes.size_kb} КБ</b></span>
+                <span>Шифр: <b>{pdfInspectRes.is_encrypted ? 'Да 🔒' : 'Нет'}</b></span>
+              </div>
+              <pre className="max-h-60 overflow-y-auto p-2.5 rounded-lg bg-slate-900 text-slate-200 whitespace-pre-wrap">
+                {pdfInspectRes.extracted_text || '(Зашифрован или без текста)'}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
 
-          <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-3.5">
+      {pdfSubTab === 'protect' && (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-white flex items-center gap-2">
               <Lock className="w-4 h-4 text-rose-400" /> Шифрование AES-256, Вырезка страниц & Поворот
             </h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Диапазон страниц (напр. 1-2)</label>
-                <input
-                  value={pdfPagesSpec}
-                  onChange={(e) => setPdfPagesSpec(e.target.value)}
-                  placeholder="Все страницы"
-                  className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Поворот страниц</label>
-                <select
-                  value={pdfRotate}
-                  onChange={(e) => setPdfRotate(Number(e.target.value))}
-                  className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-                >
-                  <option value={0}>0° (Без поворота)</option>
-                  <option value={90}>90° по часовой</option>
-                  <option value={180}>180°</option>
-                  <option value={270}>270°</option>
-                </select>
-              </div>
+            <button
+              type="button"
+              onClick={() => onSelectTool('pdf_inspect')}
+              className="text-xs px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition"
+            >
+              🔎 Чтение текста PDF
+            </button>
+          </div>
+          <p className="text-xs text-slate-400">
+            Загрузите PDF-файл (или оставьте пустым для проверки на демо-документе):
+          </p>
+          <input
+            type="file"
+            accept=".pdf,application/pdf"
+            onChange={(e) => setPdfUpload(e.target.files?.[0] || null)}
+            className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-rose-500/20 file:text-rose-200"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Диапазон страниц (напр. 1-2)</label>
+              <input
+                value={pdfPagesSpec}
+                onChange={(e) => setPdfPagesSpec(e.target.value)}
+                placeholder="Все страницы"
+                className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+              />
             </div>
             <div>
-              <label className="text-xs text-slate-400 block mb-1">Пароль защиты AES-256</label>
-              <input
-                value={pdfPwd}
-                onChange={(e) => setPdfPwd(e.target.value)}
-                placeholder="Укажите пароль для шифрования PDF…"
-                className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-              />
+              <label className="text-xs text-slate-400 block mb-1">Поворот страниц</label>
+              <select
+                value={pdfRotate}
+                onChange={(e) => setPdfRotate(Number(e.target.value))}
+                className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+              >
+                <option value={0}>0° (Без поворота)</option>
+                <option value={90}>90° по часовой</option>
+                <option value={180}>180°</option>
+                <option value={270}>270°</option>
+              </select>
             </div>
-            <button
-              onClick={runPdfTransform}
-              className="w-full py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-semibold text-sm transition"
-            >
-              🔒 Применить защиту и сохранить PDF
-            </button>
-            {pdfTransRes && (
-              <FileActionRow
-                downloadUrl={pdfTransRes.download_url}
-                filename="protected.pdf"
-                label={`Скачать PDF (${pdfTransRes.meta.output_size_kb} КБ)`}
-                onToast={onToast}
-              />
-            )}
           </div>
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Пароль защиты AES-256</label>
+            <input
+              value={pdfPwd}
+              onChange={(e) => setPdfPwd(e.target.value)}
+              placeholder="Укажите пароль для шифрования PDF…"
+              className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={runPdfTransform}
+            className="w-full py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-semibold text-sm transition"
+          >
+            🔒 Применить защиту и сохранить PDF
+          </button>
+          {pdfTransRes && (
+            <FileActionRow
+              downloadUrl={pdfTransRes.download_url}
+              filename="protected.pdf"
+              label={`Скачать PDF (${pdfTransRes.meta.output_size_kb} КБ)`}
+              onToast={onToast}
+            />
+          )}
         </div>
       )}
     </div>

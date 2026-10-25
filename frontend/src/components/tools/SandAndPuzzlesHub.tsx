@@ -261,7 +261,7 @@ export const SandPhysicsSandbox: React.FC<{ onToast: (m: string) => void }> = ({
             Вода превращает лаву в камень, огонь сжигает дерево и взрывает порох, кислота прожигает стены, а растения пьют воду
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => setPaused((p) => !p)}
@@ -296,6 +296,13 @@ export const SandPhysicsSandbox: React.FC<{ onToast: (m: string) => void }> = ({
           </button>
         </div>
       </div>
+
+      <img
+        src="/art/sand_reactions.gif"
+        alt="Схема реакций стихий в песочнице"
+        loading="lazy"
+        className="w-full max-h-28 object-contain rounded-xl border border-amber-500/25 bg-[#090d18]"
+      />
 
       <div className="flex flex-wrap gap-1.5">
         {MATERIALS.map((m) => (

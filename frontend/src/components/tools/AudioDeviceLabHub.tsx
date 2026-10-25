@@ -41,6 +41,7 @@ const SpeakerCleanerView: React.FC<{ onToast: (m: string) => void }> = ({ onToas
   const stopFnRef = useRef<(() => void) | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const [mobSpeakerTab, setMobSpeakerTab] = useState<'eject' | 'headphones'>('eject');
   const [mode, setMode] = useState<'water165' | 'dust_sweep' | 'sub_bass'>('water165');
   const [playing, setPlaying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(30);
@@ -257,18 +258,52 @@ const SpeakerCleanerView: React.FC<{ onToast: (m: string) => void }> = ({ onToas
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      <div className="lg:col-span-7 rounded-2xl border border-cyan-500/30 bg-slate-900/80 p-4 sm:p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-              <Waves className="w-4 h-4 text-cyan-400" /> Очистка динамика от воды и пыли (165 Гц)
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Резонансная стоячая волна выталкивает капли воды из сетки разговорного и основного динамика
-            </p>
+    <div className="space-y-3">
+      {/* Mobile above-the-fold switch between Speaker Eject & Headphones L/R check */}
+      <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/10 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobSpeakerTab('eject')}
+          className={`py-2 px-2 rounded-lg text-xs font-bold transition ${
+            mobSpeakerTab === 'eject' ? 'bg-cyan-500 text-slate-950' : 'text-slate-300'
+          }`}
+        >
+          💦 Очистка 165 Гц
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobSpeakerTab('headphones')}
+          className={`py-2 px-2 rounded-lg text-xs font-bold transition ${
+            mobSpeakerTab === 'headphones' ? 'bg-sky-500 text-slate-950' : 'text-slate-300'
+          }`}
+        >
+          🎧 Наушники L/R и Фаза
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div
+          className={`lg:col-span-7 rounded-2xl border border-cyan-500/30 bg-slate-900/80 p-4 sm:p-5 space-y-4 ${
+            mobSpeakerTab === 'eject' ? 'block' : 'hidden lg:block'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                <Waves className="w-4 h-4 text-cyan-400" /> Очистка динамика от воды и пыли (165 Гц)
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Резонансная стоячая волна выталкивает капли воды из сетки разговорного и основного динамика
+              </p>
+            </div>
           </div>
-        </div>
+
+          <img
+            src="/art/speaker_eject.gif"
+            alt="Акустическая очистка динамика 165 Гц"
+            loading="lazy"
+            className="w-full max-h-32 object-contain rounded-xl border border-cyan-500/25 bg-[#070b18]"
+          />
 
         <div className="grid grid-cols-3 gap-2">
           {[
@@ -315,7 +350,11 @@ const SpeakerCleanerView: React.FC<{ onToast: (m: string) => void }> = ({ onToas
         </button>
       </div>
 
-      <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-4">
+      <div
+        className={`lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-4 ${
+          mobSpeakerTab === 'headphones' ? 'block' : 'hidden lg:block'
+        }`}
+      >
         <div>
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-sky-400" /> Проверка наушников и стереоканалов
@@ -353,6 +392,7 @@ const SpeakerCleanerView: React.FC<{ onToast: (m: string) => void }> = ({ onToas
           <div>• Если «Левый канал» слышен в обоих наушниках — в настройках телефона/ПК включён режим «Моно-аудио».</div>
           <div>• После падения телефона в воду запустите 2–3 цикла на 165 Гц экраном вниз и промокните решётку сухой салфеткой.</div>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -582,6 +622,13 @@ const BinauralAndNoiseView: React.FC<{ onToast: (m: string) => void }> = ({ onTo
           </button>
         </div>
       </div>
+
+      <img
+        src="/art/binaural_sync.gif"
+        alt="Схема бинауральной синхронизации полушарий"
+        loading="lazy"
+        className="w-full max-h-32 object-contain rounded-xl border border-indigo-500/25 bg-[#080a1a]"
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {BRAINWAVE_PRESETS.map((p) => {
@@ -1249,6 +1296,7 @@ const PIXEL_PATTERNS = [
 ];
 
 const DeviceScreenMouseGamepadView: React.FC<{ onToast: (m: string) => void }> = ({ onToast }) => {
+  const [mobDevTab, setMobDevTab] = useState<'screen' | 'mouse' | 'gamepad'>('screen');
   const [measuredHz, setMeasuredHz] = useState<number>(60);
   const [jitterMs, setJitterMs] = useState<number>(0);
   const [pixelIdx, setPixelIdx] = useState<number | null>(null);
@@ -1345,9 +1393,33 @@ const DeviceScreenMouseGamepadView: React.FC<{ onToast: (m: string) => void }> =
         </div>
       )}
 
+      {/* Mobile quick switch so Screen, Mouse & Gamepad are all above the fold */}
+      <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/10 lg:hidden">
+        {[
+          { id: 'screen', label: '🖥️ Экран Hz' },
+          { id: 'mouse', label: '🖱️ Мышь' },
+          { id: 'gamepad', label: '🎮 Геймпад' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setMobDevTab(t.id as any)}
+            className={`py-2 px-1.5 rounded-lg text-xs font-bold transition truncate ${
+              mobDevTab === t.id ? 'bg-cyan-500 text-slate-950' : 'text-slate-300'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Display Hz + Dead Pixels */}
-        <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-3">
+        <div
+          className={`lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-3 ${
+            mobDevTab === 'screen' ? 'block' : 'hidden lg:block'
+          }`}
+        >
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <Monitor className="w-4 h-4 text-cyan-400" /> Экран: Герцовка и Битые пиксели
           </div>
@@ -1389,7 +1461,9 @@ const DeviceScreenMouseGamepadView: React.FC<{ onToast: (m: string) => void }> =
           }}
           onContextMenu={(e) => e.preventDefault()}
           onWheel={() => setWheelCount((w) => w + 1)}
-          className="lg:col-span-4 rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-3 select-none"
+          className={`lg:col-span-4 rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-3 select-none ${
+            mobDevTab === 'mouse' ? 'block' : 'hidden lg:block'
+          }`}
         >
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <Mouse className="w-4 h-4 text-indigo-400" /> Тест мыши и дабл-клика
@@ -1427,7 +1501,11 @@ const DeviceScreenMouseGamepadView: React.FC<{ onToast: (m: string) => void }> =
         </div>
 
         {/* Gamepad & Stick Drift */}
-        <div className="lg:col-span-3 rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-3">
+        <div
+          className={`lg:col-span-3 rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-3 ${
+            mobDevTab === 'gamepad' ? 'block' : 'hidden lg:block'
+          }`}
+        >
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <Gamepad2 className="w-4 h-4 text-emerald-400" /> Геймпад и Дрифт
           </div>

@@ -144,6 +144,13 @@ export const LieDetectorPartyView: React.FC<{ onToast: (m: string) => void }> = 
           </button>
         </div>
 
+        <img
+          src="/art/polygraph_scan.gif"
+          alt="Осциллограмма полиграфа"
+          loading="lazy"
+          className="w-full max-h-28 object-contain rounded-xl border border-emerald-500/25 bg-[#060c12]"
+        />
+
         {showHostSecret && (
           <div className="p-3 rounded-xl bg-slate-950 border border-amber-400/35 text-left space-y-2 text-xs">
             <div className="text-amber-300 font-semibold">
@@ -275,6 +282,7 @@ const MAGIC_20_ANSWERS = [
 
 export const FortuneWheel8BallBubbleView: React.FC = () => {
   const wheelCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [mobPartyTab, setMobPartyTab] = useState<'wheel' | 'ball' | 'bubble'>('wheel');
   const [options, setOptions] = useState<string[]>([
     'Пицца', 'Роллы и суши', 'Бургеры', 'Шаурма', 'Паста', 'Готовим дома',
   ]);
@@ -354,9 +362,34 @@ export const FortuneWheel8BallBubbleView: React.FC = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      {/* Fortune Wheel */}
-      <div className="lg:col-span-7 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-3">
+    <div className="space-y-3">
+      {/* Mobile switch so Wheel, Magic 8-Ball & Bubble Wrap are all above the fold */}
+      <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/10 lg:hidden">
+        {[
+          { id: 'wheel', label: '🎡 Колесо' },
+          { id: 'ball', label: '🎱 Шар 8' },
+          { id: 'bubble', label: '🫧 Пупырка' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setMobPartyTab(t.id as any)}
+            className={`py-2 px-1.5 rounded-lg text-xs font-bold transition truncate ${
+              mobPartyTab === t.id ? 'bg-amber-500 text-slate-950' : 'text-slate-300'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Fortune Wheel */}
+        <div
+          className={`lg:col-span-7 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-3 ${
+            mobPartyTab === 'wheel' ? 'block' : 'hidden lg:block'
+          }`}
+        >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-white">🎡 Колесо Фортуны</h3>
           {winner && (
@@ -421,7 +454,11 @@ export const FortuneWheel8BallBubbleView: React.FC = () => {
 
       {/* Magic 8 Ball + Bubble Wrap */}
       <div className="lg:col-span-5 space-y-4">
-        <div className="rounded-2xl border border-indigo-500/30 bg-slate-900/80 p-4 text-center space-y-3">
+        <div
+          className={`rounded-2xl border border-indigo-500/30 bg-slate-900/80 p-4 text-center space-y-3 ${
+            mobPartyTab === 'ball' ? 'block' : 'hidden lg:block'
+          }`}
+        >
           <div className="text-xs font-bold text-white flex items-center justify-center gap-1.5">
             <Sparkles className="w-4 h-4 text-indigo-400" /> Магический Шар 8 (20 граней ответа)
           </div>
@@ -439,7 +476,11 @@ export const FortuneWheel8BallBubbleView: React.FC = () => {
           </button>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-2.5">
+        <div
+          className={`rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-2.5 ${
+            mobPartyTab === 'bubble' ? 'block' : 'hidden lg:block'
+          }`}
+        >
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold text-white">🫧 Пузырчатая плёнка (Антистресс)</span>
             <button
@@ -473,6 +514,7 @@ export const FortuneWheel8BallBubbleView: React.FC = () => {
             ))}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
