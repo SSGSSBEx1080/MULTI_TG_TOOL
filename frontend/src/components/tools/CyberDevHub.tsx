@@ -85,15 +85,19 @@ export const CyberDevHub: React.FC<Props> = ({
   }, [activeTool]);
 
   const genPasswords = async () => {
-    const res = await apiPost('/api/tools/security/passwords', {
-      length: pwLen,
-      count: 6,
-      mode: pwMode,
-      use_symbols: pwSymbols,
-      use_digits: pwDigits,
-    });
-    setPwResult(res);
-    onSync();
+    try {
+      const res = await apiPost('/api/tools/security/passwords', {
+        length: pwLen,
+        count: 6,
+        mode: pwMode,
+        use_symbols: pwSymbols,
+        use_digits: pwDigits,
+      });
+      setPwResult(res);
+      onSync();
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка генерации');
+    }
   };
 
   useEffect(() => {

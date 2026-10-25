@@ -8,11 +8,66 @@ import {
   Lock,
   Palette,
   QrCode,
+  Send,
   Shield,
   Sparkles,
   Upload,
 } from 'lucide-react';
-import { apiForm, apiPost, copyText } from '../../lib/api';
+import {
+  apiForm,
+  apiPost,
+  copyText,
+  isInsideTelegram,
+  openExternalLink,
+  sendGeneratedToTelegramChat,
+  triggerFileDownload,
+} from '../../lib/api';
+
+const FileActionRow: React.FC<{
+  downloadUrl?: string;
+  dataUrl?: string;
+  filename: string;
+  label?: string;
+  onToast: (msg: string) => void;
+}> = ({ downloadUrl, dataUrl, filename, label = 'Скачать файл', onToast }) => {
+  const inTg = isInsideTelegram();
+  const [sending, setSending] = useState(false);
+
+  return (
+    <div className="flex flex-wrap gap-2 w-full">
+      <button
+        type="button"
+        onClick={() => {
+          triggerFileDownload(downloadUrl, filename, dataUrl);
+          onToast(`Загрузка: ${filename}`);
+        }}
+        className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium flex items-center justify-center gap-1.5 border border-white/10 transition"
+      >
+        <Download className="w-3.5 h-3.5 text-sky-400" /> {label}
+      </button>
+      {inTg && (
+        <button
+          type="button"
+          disabled={sending}
+          onClick={async () => {
+            setSending(true);
+            try {
+              await sendGeneratedToTelegramChat(downloadUrl, filename, dataUrl);
+              onToast('Файл отправлен вам в чат с ботом');
+            } catch (e: any) {
+              onToast(e.message || 'Не удалось отправить в чат');
+            } finally {
+              setSending(false);
+            }
+          }}
+          className="py-2 px-3 rounded-xl bg-sky-600/25 hover:bg-sky-600/40 text-sky-200 text-xs font-medium flex items-center justify-center gap-1.5 border border-sky-400/30 transition disabled:opacity-50"
+        >
+          <Send className="w-3.5 h-3.5" /> {sending ? 'Отправка...' : 'В чат ТГ'}
+        </button>
+      )}
+    </div>
+  );
+};
 
 interface Props {
   activeCategory: string;
@@ -76,12 +131,14 @@ export const VisualMediaHub: React.FC<Props> = ({
   const [transformRes, setTransformRes] = useState<any>(null);
 
   // --- PDF State ---
-  const [pdfSubTab, setPdfSubTab] = useState<'create' | 'inspect'>('create');
-  const [pdfTitle, setPdfTitle] = useState('Архитектурный отчёт NEXUS');
+  const [pdfSubTab, setPdfSubTab] = useState<'create' | 'photos' | 'inspect'>('create');
+  const [pdfTitle, setPdfTitle] = useState('Документ');
   const [pdfBody, setPdfBody] = useState(
-    `# Сводка проекта NEXUS\nМногофункциональная экосистема в Telegram (Бот + Mini App).\n\n## Ключевые возможности\n- Градиентные QR-коды и штрихкоды Code128/EAN13\n- Крипто-стеганография LSB с защитой AES-256-GCM\n- Очистка EXIF, палитра доминантных цветов и Telegram-стикеры 512px\n- Полная поддержка кириллицы при генерации PDF документов`
+    `# Заголовок документа\nОсновной текст документа с поддержкой кириллицы.\n\n## Пункты\n- Первый пункт\n- Второй пункт\n- Третий пункт`
   );
   const [pdfCreated, setPdfCreated] = useState<any>(null);
+  const [imgPdfFiles, setImgPdfFiles] = useState<File[]>([]);
+  const [imgPdfRes, setImgPdfRes] = useState<any>(null);
   const [pdfUpload, setPdfUpload] = useState<File | null>(null);
   const [pdfInspectRes, setPdfInspectRes] = useState<any>(null);
   const [pdfPagesSpec, setPdfPagesSpec] = useState('');
@@ -147,6 +204,7 @@ export const VisualMediaHub: React.FC<Props> = ({
     else if (activeTool === 'img_transform') setImgSubTab('transform');
 
     if (activeTool === 'text_to_pdf') setPdfSubTab('create');
+    else if (activeTool === 'img_to_pdf') setPdfSubTab('photos');
     else if (activeTool === 'pdf_inspect' || activeTool === 'pdf_protect') setPdfSubTab('inspect');
   }, [activeTool]);
 
@@ -564,13 +622,13 @@ export const VisualMediaHub: React.FC<Props> = ({
                     <span className="text-sky-400 font-semibold">{qrResult.inspection?.type}:</span>{' '}
                     <code className="text-slate-200 break-all">{qrResult.payload.slice(0, 95)}</code>
                   </div>
-                  <a
-                    href={qrResult.download_url}
-                    download="nexus_styled_qr.png"
-                    className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium flex items-center justify-center gap-2 border border-white/10 transition"
-                  >
-                    <Download className="w-4 h-4 text-sky-400" /> Скачать PNG в высоком разрешении
-                  </a>
+                  <FileActionRow
+                    downloadUrl={qrResult.download_url}
+                    dataUrl={qrResult.image_data_url}
+                    filename="qr_code.png"
+                    label="Скачать PNG"
+                    onToast={onToast}
+                  />
                 </div>
               </>
             ) : (
@@ -612,15 +670,17 @@ export const VisualMediaHub: React.FC<Props> = ({
             </div>
           </div>
           {bcResult && (
-            <div className="mt-4 flex flex-wrap items-center gap-4 p-3 rounded-xl bg-white">
-              <img src={bcResult.image_data_url} alt="Barcode" className="max-h-28 object-contain" />
-              <a
-                href={bcResult.download_url}
-                download="barcode.png"
-                className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium flex items-center gap-1.5"
-              >
-                <Download className="w-3.5 h-3.5" /> Скачать PNG
-              </a>
+            <div className="mt-4 space-y-3 p-3 rounded-xl bg-slate-950 border border-white/10">
+              <div className="p-2 rounded-lg bg-white inline-block">
+                <img src={bcResult.image_data_url} alt="Barcode" className="max-h-28 object-contain" />
+              </div>
+              <FileActionRow
+                downloadUrl={bcResult.download_url}
+                dataUrl={bcResult.image_data_url}
+                filename="barcode.png"
+                label="Скачать штрихкод PNG"
+                onToast={onToast}
+              />
             </div>
           )}
         </div>
@@ -678,14 +738,13 @@ export const VisualMediaHub: React.FC<Props> = ({
                         Скопировать содержимое
                       </button>
                       {qrScanResult.primary.startsWith('http') && (
-                        <a
-                          href={qrScanResult.primary}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openExternalLink(qrScanResult.primary)}
                           className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
                         >
                           Открыть ссылку ↗
-                        </a>
+                        </button>
                       )}
                     </div>
                   </>
@@ -731,20 +790,28 @@ export const VisualMediaHub: React.FC<Props> = ({
                 <div className="font-mono text-slate-200 truncate">{linkBundle.cleaned_info.cleaned_url}</div>
 
                 <div className="pt-1 flex items-center justify-between gap-2">
-                  <span className="text-sky-300 font-medium">⚡ Короткая ссылка:</span>
+                  <span className="text-sky-300 font-medium">Короткая ссылка:</span>
                   <button onClick={() => copyText(linkBundle.short_url, onToast)} className="text-sky-300 hover:underline">Копировать</button>
                 </div>
-                <a href={linkBundle.short_path} target="_blank" rel="noreferrer" className="block font-mono text-sky-200 hover:underline break-all">
+                <button
+                  type="button"
+                  onClick={() => openExternalLink(linkBundle.short_url)}
+                  className="block text-left font-mono text-sky-200 hover:underline break-all"
+                >
                   {linkBundle.short_url}
-                </a>
+                </button>
 
                 <div className="pt-1 flex items-center justify-between gap-2">
-                  <span className="text-pink-300 font-medium">🐍 Гипер-длинная ссылка:</span>
+                  <span className="text-pink-300 font-medium">Длинная ссылка:</span>
                   <button onClick={() => copyText(linkBundle.long_url, onToast)} className="text-pink-300 hover:underline">Копировать</button>
                 </div>
-                <a href={linkBundle.long_path} target="_blank" rel="noreferrer" className="block font-mono text-[11px] text-pink-200/90 hover:underline break-all line-clamp-2">
+                <button
+                  type="button"
+                  onClick={() => openExternalLink(linkBundle.long_url)}
+                  className="block text-left font-mono text-[11px] text-pink-200/90 hover:underline break-all line-clamp-2"
+                >
                   {linkBundle.long_url}
-                </a>
+                </button>
               </div>
             )}
           </div>
@@ -841,17 +908,17 @@ export const VisualMediaHub: React.FC<Props> = ({
                     <span>Ёмкость занята: {stegoEncoded.meta.usage_pct}%</span>
                     <span>{stegoEncoded.meta.width}×{stegoEncoded.meta.height} PNG</span>
                   </div>
-                  <div className="flex gap-2">
-                    <a
-                      href={stegoEncoded.download_url}
-                      download="nexus_stego_carrier.png"
-                      className="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-center text-xs text-white font-medium"
-                    >
-                      ⬇️ Скачать Lossless PNG
-                    </a>
+                  <div className="space-y-2">
+                    <FileActionRow
+                      downloadUrl={stegoEncoded.download_url}
+                      dataUrl={stegoEncoded.image_data_url}
+                      filename="stego_carrier.png"
+                      label="Скачать PNG"
+                      onToast={onToast}
+                    />
                     <button
                       onClick={verifyGeneratedStego}
-                      className="flex-1 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-xs text-emerald-200 font-medium"
+                      className="w-full py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-xs text-emerald-200 font-medium"
                     >
                       🔓 Проверить расшифровку →
                     </button>
@@ -969,13 +1036,15 @@ export const VisualMediaHub: React.FC<Props> = ({
                     alt="Code Card"
                     className="max-h-80 w-auto rounded-xl shadow-2xl object-contain"
                   />
-                  <a
-                    href={codeCardRes.download_url}
-                    download="nexus_code_card.png"
-                    className="mt-4 w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium flex items-center justify-center gap-2"
-                  >
-                    <Download className="w-4 h-4 text-sky-400" /> Скачать PNG карточку
-                  </a>
+                  <div className="mt-4 w-full">
+                    <FileActionRow
+                      downloadUrl={codeCardRes.download_url}
+                      dataUrl={codeCardRes.image_data_url}
+                      filename="code_card.png"
+                      label="Скачать PNG карточку"
+                      onToast={onToast}
+                    />
+                  </div>
                 </>
               ) : (
                 <div className="py-20 text-sm text-slate-400">Рендеринг…</div>
@@ -1047,15 +1116,15 @@ export const VisualMediaHub: React.FC<Props> = ({
                         </div>
                       </div>
                     </div>
-                    <div className="p-4 rounded-xl bg-slate-950/80 border border-white/10 flex flex-col items-center justify-between">
+                    <div className="p-4 rounded-xl bg-slate-950/80 border border-white/10 flex flex-col items-center justify-between gap-3">
                       <img src={exifRes.clean_image_data_url} alt="Clean" className="max-h-44 rounded-lg object-contain" />
-                      <a
-                        href={exifRes.download_url}
-                        download="clean_no_exif.png"
-                        className="mt-3 w-full py-2 rounded-lg bg-emerald-500/20 text-emerald-200 text-center text-xs font-medium border border-emerald-400/30"
-                      >
-                        ⬇️ Скачать чистый безопасный файл
-                      </a>
+                      <FileActionRow
+                        downloadUrl={exifRes.download_url}
+                        dataUrl={exifRes.clean_image_data_url}
+                        filename="clean_no_exif.png"
+                        label="Скачать очищенное фото"
+                        onToast={onToast}
+                      />
                     </div>
                   </div>
                 )}
@@ -1093,16 +1162,16 @@ export const VisualMediaHub: React.FC<Props> = ({
                 {transformRes && (
                   <div className="p-4 rounded-xl bg-slate-950/80 border border-white/10 flex flex-col sm:flex-row items-center gap-5">
                     <img src={transformRes.image_data_url} alt="Transformed" className="max-h-48 rounded-xl object-contain" />
-                    <div className="space-y-2 text-xs text-slate-300">
+                    <div className="space-y-2 text-xs text-slate-300 flex-1">
                       <div>Формат: <b className="text-sky-300">{transformRes.meta.format}</b> ({transformRes.meta.dimensions})</div>
                       <div>Размер: {transformRes.meta.before_kb} КБ → <b className="text-emerald-300">{transformRes.meta.after_kb} КБ</b></div>
-                      <a
-                        href={transformRes.download_url}
-                        download={`nexus_${transformAction}.${transformRes.meta.format.toLowerCase()}`}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-medium mt-2"
-                      >
-                        <Download className="w-4 h-4 text-sky-400" /> Скачать результат
-                      </a>
+                      <FileActionRow
+                        downloadUrl={transformRes.download_url}
+                        dataUrl={transformRes.image_data_url}
+                        filename={`image_${transformAction}.${transformRes.meta.format.toLowerCase()}`}
+                        label="Скачать результат"
+                        onToast={onToast}
+                      />
                     </div>
                   </div>
                 )}
@@ -1119,30 +1188,89 @@ export const VisualMediaHub: React.FC<Props> = ({
   // =========================================================================
   return (
     <div className="space-y-5">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setPdfSubTab('create')}
-          className={`px-4 py-2 rounded-xl text-xs font-medium border ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
             pdfSubTab === 'create'
               ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
               : 'bg-slate-900/60 border-white/10 text-slate-300'
           }`}
         >
-          📑 Вёрстка Текста → PDF (Кириллица)
+          📑 Текст в PDF
+        </button>
+        <button
+          onClick={() => setPdfSubTab('photos')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
+            pdfSubTab === 'photos'
+              ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
+              : 'bg-slate-900/60 border-white/10 text-slate-300'
+          }`}
+        >
+          🗂️ Фото в PDF
         </button>
         <button
           onClick={() => setPdfSubTab('inspect')}
-          className={`px-4 py-2 rounded-xl text-xs font-medium border ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-medium border ${
             pdfSubTab === 'inspect'
               ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
               : 'bg-slate-900/60 border-white/10 text-slate-300'
           }`}
         >
-          🔒 Извлечение Текста, Сплит и AES-256 Защита
+          🔒 Чтение, поворот и пароль PDF
         </button>
       </div>
 
-      {pdfSubTab === 'create' ? (
+      {pdfSubTab === 'photos' && (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
+          <div className="text-sm font-semibold text-white">🗂️ Объединение фотографий в один PDF-файл</div>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => setImgPdfFiles(Array.from(e.target.files || []))}
+            className="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-rose-500/20 file:text-rose-200"
+          />
+          {imgPdfFiles.length > 0 && (
+            <div className="text-xs text-slate-400">Выбрано изображений: {imgPdfFiles.length}</div>
+          )}
+          <button
+            disabled={busy}
+            onClick={async () => {
+              if (!imgPdfFiles.length) {
+                onToast('Выберите хотя бы одно изображение');
+                return;
+              }
+              setBusy(true);
+              try {
+                const fd = new FormData();
+                imgPdfFiles.forEach((f) => fd.append('files', f));
+                const r = await apiForm('/api/tools/pdf/from-images', fd);
+                setImgPdfRes(r);
+                onSync();
+                onToast('PDF из изображений готов');
+              } catch (e: any) {
+                onToast(e.message || 'Ошибка создания PDF');
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition disabled:opacity-50"
+          >
+            Собрать PDF из фото
+          </button>
+          {imgPdfRes && (
+            <FileActionRow
+              downloadUrl={imgPdfRes.download_url}
+              filename="photos.pdf"
+              label={`Скачать PDF (${imgPdfRes.pages} стр., ${imgPdfRes.size_kb} КБ)`}
+              onToast={onToast}
+            />
+          )}
+        </div>
+      )}
+
+      {pdfSubTab === 'create' && (
         <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-3.5">
           <div className="flex items-center gap-2 text-rose-300 font-semibold text-sm">
             <FileText className="w-4 h-4" /> Генератор PDF Документов с полной поддержкой Кириллицы
@@ -1168,19 +1296,20 @@ export const VisualMediaHub: React.FC<Props> = ({
               <Sparkles className="w-4 h-4 inline mr-1.5" /> Собрать PDF документ
             </button>
             {pdfCreated && (
-              <a
-                href={pdfCreated.download_url}
-                target="_blank"
-                rel="noreferrer"
-                download="nexus_document.pdf"
-                className="px-4 py-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-semibold flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" /> Открыть / Скачать готовый PDF ({pdfCreated.size_kb} КБ)
-              </a>
+              <div className="w-full sm:w-auto flex-1">
+                <FileActionRow
+                  downloadUrl={pdfCreated.download_url}
+                  filename="document.pdf"
+                  label={`Скачать PDF (${pdfCreated.size_kb} КБ)`}
+                  onToast={onToast}
+                />
+              </div>
             )}
           </div>
         </div>
-      ) : (
+      )}
+
+      {pdfSubTab === 'inspect' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-3.5">
             <h4 className="text-sm font-semibold text-white">🔎 Чтение текста и метаданных PDF</h4>
@@ -1257,13 +1386,12 @@ export const VisualMediaHub: React.FC<Props> = ({
               🔒 Применить защиту и сохранить PDF
             </button>
             {pdfTransRes && (
-              <a
-                href={pdfTransRes.download_url}
-                download="protected_nexus.pdf"
-                className="block w-full py-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-center text-xs font-semibold"
-              >
-                ⬇️ Скачать защищённый PDF ({pdfTransRes.meta.output_size_kb} КБ)
-              </a>
+              <FileActionRow
+                downloadUrl={pdfTransRes.download_url}
+                filename="protected.pdf"
+                label={`Скачать PDF (${pdfTransRes.meta.output_size_kb} КБ)`}
+                onToast={onToast}
+              />
             )}
           </div>
         </div>

@@ -443,23 +443,25 @@ async def cb_open_arcade_bot(call: CallbackQuery) -> None:
 @router.callback_query(F.data == "tool:open:leaderboard_hub")
 async def cb_leaderboard_bot(event: Message | CallbackQuery) -> None:
     users = await db.get_leaderboard(sort_by="xp", limit=8)
-    lines = "\n".join(
-        f"<b>#{u['position']}</b> {esc(u.get('avatar_emoji') or '⚡')} <b>{esc(u['first_name'])}</b> — "
-        f"<code>{u['xp']} XP</code> • 🎮 <code>{u['best_game_score']}</code> • 👁 <code>{u['profile_views']}</code> заходов"
-        for u in users
-    )
+    if not users:
+        lines = "В рейтинге отображаются только реальные пользователи Telegram. Откройте любой инструмент в живом боте, чтобы занять место в таблице."
+    else:
+        lines = "\n".join(
+            f"<b>#{u['position']}</b> {esc(u.get('avatar_emoji') or '👤')} <b>{esc(u['first_name'])}</b> — "
+            f"<code>{u['xp']} XP</code> • игр: <code>{u['best_game_score']}</code> • визитов: <code>{u['profile_views']}</code>"
+            for u in users
+        )
     b = InlineKeyboardBuilder()
     for u in users[:4]:
         b.row(InlineKeyboardButton(
-            text=f"👤 Открыть профиль: {u['first_name']} (👁 {u['profile_views']})",
+            text=f"👤 {u['first_name']} (визитов: {u['profile_views']})",
             callback_data=f"v2:prof:{u['user_id']}",
         ))
-    b.row(webapp_button("🏆 Полный Топ по всем параметрам в Mini App", tab="social"))
+    b.row(webapp_button("📱 Полный рейтинг в приложении", tab="social"))
     b.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:home"))
     await render_hud(
         event,
-        f"<b>🏆 Глобальный Рейтинг Игроков NEXUS</b>\n"
-        f"<blockquote>Нажмите на игрока, чтобы зайти в его профиль (+1 к счётчику визитов 👁)!</blockquote>\n\n{lines}",
+        f"<b>🏆 Топ пользователей</b>\n\n{lines}",
         reply_markup=b.as_markup(),
     )
 
@@ -470,18 +472,19 @@ async def cb_view_user_profile(call: CallbackQuery) -> None:
     prof = await db.get_public_profile(target_user_id=target_id, viewer_id=call.from_user.id)
     b = InlineKeyboardBuilder()
     b.row(
-        InlineKeyboardButton(text=f"🔥 Кинуть Респект ({prof['respects']})", callback_data=f"v2:resp:{target_id}"),
-        InlineKeyboardButton(text="⬅️ Назад к Топу", callback_data="tool:open:leaderboard_hub"),
+        InlineKeyboardButton(text=f"👍 Респект ({prof['respects']})", callback_data=f"v2:resp:{target_id}"),
+        InlineKeyboardButton(text="⬅️ Назад к рейтингу", callback_data="tool:open:leaderboard_hub"),
     )
+    uname_part = f" (@{esc(prof['username'])})" if prof.get("username") else ""
     await render_hud(
         call,
-        f"<b>{esc(prof.get('avatar_emoji') or '⚡')} Профиль игрока: {esc(prof['first_name'])}</b> (@{esc(prof.get('username') or 'user')})\n"
-        f"<blockquote>{esc(prof.get('bio') or 'Участник экосистемы NEXUS')}</blockquote>\n\n"
-        f"🏅 Ранг: <b>{esc(prof['rank_title'])}</b> ({progress_bar(prof['progress_pct'])})\n"
-        f"✨ Опыт: <b>{prof['xp']} XP</b> • Запусков инструментов: <b>{prof['tools_used']}</b>\n"
-        f"🎮 Лучший рекорд в аркаде: <b>{prof['best_game_score']}</b>\n"
-        f"👁 <b>Заходов на профиль: {prof['profile_views']}</b> (уникальных гостей: {prof['unique_visitors']})\n"
-        f"🔥 Респектов от игроков: <b>{prof['respects']}</b>",
+        f"<b>{esc(prof.get('avatar_emoji') or '👤')} {esc(prof['first_name'])}</b>{uname_part}\n"
+        + (f"<blockquote>{esc(prof['bio'])}</blockquote>\n" if prof.get("bio") else "\n")
+        + f"• Уровень: <b>{esc(prof['rank_title'])}</b> ({progress_bar(prof['progress_pct'])})\n"
+        f"• Опыт: <b>{prof['xp']} XP</b> • Запусков: <b>{prof['tools_used']}</b>\n"
+        f"• Лучший счёт в играх: <b>{prof['best_game_score']}</b>\n"
+        f"• Просмотров профиля: <b>{prof['profile_views']}</b> (уникальных: {prof['unique_visitors']})\n"
+        f"• Респектов: <b>{prof['respects']}</b>",
         reply_markup=b.as_markup(),
     )
 

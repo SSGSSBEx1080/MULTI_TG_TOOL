@@ -14,7 +14,7 @@ import {
   UserCheck,
   Youtube,
 } from 'lucide-react';
-import { apiGet, apiPost, copyText } from '../../lib/api';
+import { apiGet, apiPost, copyText, openExternalLink } from '../../lib/api';
 
 interface Props {
   activeTool: string;
@@ -319,38 +319,44 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
             </div>
 
             <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
-              {leaders.map((u) => (
-                <button
-                  key={u.user_id}
-                  onClick={() => openUserProfile(u.user_id)}
-                  className={`w-full p-3 rounded-xl border text-left transition flex items-center justify-between gap-3 ${
-                    selectedProfile?.user_id === u.user_id
-                      ? 'bg-sky-500/15 border-sky-400/50'
-                      : 'bg-slate-950/90 border-white/10 hover:border-amber-400/40'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center font-mono text-xs font-bold text-amber-300 shrink-0">
-                      #{u.position}
-                    </div>
-                    <div className="text-xl shrink-0">{u.avatar_emoji || '⚡'}</div>
-                    <div className="min-w-0">
-                      <div className="text-xs sm:text-sm font-bold text-white truncate">
-                        {u.first_name} <span className="text-slate-500 font-normal">@{u.username}</span>
+              {leaders.length === 0 ? (
+                <div className="p-6 rounded-xl bg-slate-950/80 border border-white/10 text-center text-xs text-slate-400">
+                  В рейтинге отображаются только реальные пользователи Telegram. Откройте любой инструмент в Telegram, чтобы появиться в списке.
+                </div>
+              ) : (
+                leaders.map((u) => (
+                  <button
+                    key={u.user_id}
+                    onClick={() => openUserProfile(u.user_id)}
+                    className={`w-full p-3 rounded-xl border text-left transition flex items-center justify-between gap-3 ${
+                      selectedProfile?.user_id === u.user_id
+                        ? 'bg-sky-500/15 border-sky-400/50'
+                        : 'bg-slate-950/90 border-white/10 hover:border-amber-400/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center font-mono text-xs font-bold text-amber-300 shrink-0">
+                        #{u.position}
                       </div>
-                      <div className="text-[11px] text-slate-400 truncate">{u.rank_title}</div>
+                      <div className="text-xl shrink-0">{u.avatar_emoji || '👤'}</div>
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-bold text-white truncate">
+                          {u.first_name} {u.username ? <span className="text-slate-500 font-normal">@{u.username}</span> : null}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">{u.rank_title}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs font-mono shrink-0">
-                    <span className="text-sky-300" title="Опыт XP">{u.xp} XP</span>
-                    <span className="text-emerald-300 hidden sm:inline" title="Рекорд в аркаде">🎮 {u.best_game_score}</span>
-                    <span className="text-purple-300 flex items-center gap-1" title="Заходов на профиль">
-                      <Eye className="w-3.5 h-3.5" /> {u.profile_views}
-                    </span>
-                    <span className="text-orange-300" title="Респекты">🔥 {u.respects}</span>
-                  </div>
-                </button>
-              ))}
+                    <div className="flex items-center gap-3 text-xs font-mono shrink-0">
+                      <span className="text-sky-300" title="Опыт XP">{u.xp} XP</span>
+                      <span className="text-emerald-300 hidden sm:inline" title="Рекорд в играх">🎮 {u.best_game_score}</span>
+                      <span className="text-purple-300 flex items-center gap-1" title="Просмотры профиля">
+                        <Eye className="w-3.5 h-3.5" /> {u.profile_views}
+                      </span>
+                      <span className="text-orange-300" title="Респекты">👍 {u.respects}</span>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
 
@@ -708,12 +714,11 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
 
           <div className="space-y-2.5">
             {(authorInfo.links || []).map((lnk: any, i: number) => (
-              <a
+              <button
                 key={i}
-                href={lnk.url}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full p-3.5 rounded-2xl bg-black/60 hover:bg-black/80 border border-white/10 hover:border-amber-400/50 flex items-center justify-between transition group"
+                type="button"
+                onClick={() => openExternalLink(lnk.url)}
+                className="w-full p-3.5 rounded-2xl bg-black/60 hover:bg-black/80 border border-white/10 hover:border-amber-400/50 flex items-center justify-between transition group text-left"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-xl shrink-0">{lnk.emoji || '🔗'}</span>
@@ -723,7 +728,7 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
                   </div>
                 </div>
                 <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-amber-300 shrink-0 ml-2" />
-              </a>
+              </button>
             ))}
           </div>
         </div>

@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+import base64
+from pathlib import Path
 from typing import Any
+from aiogram.types import BufferedInputFile
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
-from backend.config import DEFAULT_DEMO_USER_ID
-from backend.database import db
+from backend.api.tg_auth import resolve_api_user
+from backend.bot.factory import bot_manager
+from backend.config import DATA_DIR, DEFAULT_DEMO_USER_ID, GENERATED_DIR
+from backend.database import FAKE_SEED_USER_IDS, db
+from backend.tools.astrology_and_physics import (
+    PHYSICS_CALCULATORS,
+    SPECIFIC_HEATS,
+    ZODIAC_SIGNS,
+    analyze_birth_date,
+    calculate_compatibility,
+    get_horoscope,
+    solve_physics,
+)
 from backend.tools.knowledge_hub import (
     CONCEPTS_WIKI_DB,
     JOJO_STANDS_DB,
@@ -41,7 +55,149 @@ router = APIRouter(tags=["nexus-v2"])
 
 
 # ==============================================================================
-# 1. Вечеринка, Юмор и Анти-Скука (105+ идей + Лигурия)
+# 0. Гороскоп, Знаки Зодиака, Совместимость и Физика
+# ==============================================================================
+@router.get("/api/v2/astrology/signs")
+async def api_astrology_signs() -> dict[str, Any]:
+    return {"signs": ZODIAC_SIGNS}
+
+
+@router.get("/api/v2/astrology/horoscope")
+async def api_astrology_horoscope(
+    request: Request,
+    sign: str = "aries",
+    period: str = "today",
+    user_id: int = DEFAULT_DEMO_USER_ID,
+) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
+    res = get_horoscope(sign, period=period)
+    await db.record_tool_use(uid, "daily_horoscope", "horoscope", "miniapp", f"{res['sign']['name']}:{period}", xp_gain=5)
+    return res
+
+
+class BirthDateReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    date: str
+
+
+@router.post("/api/v2/astrology/birth")
+async def api_astrology_birth(req: BirthDateReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    try:
+        res = analyze_birth_date(req.date)
+        await db.record_tool_use(uid, "zodiac_info", "horoscope", "miniapp", res["sign"]["name"], xp_gain=6)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class CompatibilityReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    first: str
+    second: str
+    name1: str = ""
+    name2: str = ""
+
+
+@router.post("/api/v2/astrology/compatibility")
+async def api_astrology_compat(req: CompatibilityReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    if not req.first.strip() or not req.second.strip():
+        raise HTTPException(status_code=400, detail="Укажите обе даты рождения или оба знака зодиака")
+    res = calculate_compatibility(req.first, req.second, req.name1, req.name2)
+    await db.record_tool_use(
+        uid,
+        "compat_calc",
+        "horoscope",
+        "miniapp",
+        f"{res['person1']['sign']['name']}+{res['person2']['sign']['name']}={res['overall_pct']}%",
+        xp_gain=8,
+    )
+    return res
+
+
+@router.get("/api/v2/physics/catalog")
+async def api_physics_catalog() -> dict[str, Any]:
+    materials = [{"id": k, "label": v[0], "c": v[1]} for k, v in SPECIFIC_HEATS.items()]
+    return {"calculators": PHYSICS_CALCULATORS, "materials": materials}
+
+
+class PhysicsSolveReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    calc_id: str
+    target_var: str
+    params: dict[str, float]
+
+
+@router.post("/api/v2/physics/solve")
+async def api_physics_solve(req: PhysicsSolveReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    try:
+        res = solve_physics(req.calc_id, req.target_var, req.params)
+        await db.record_tool_use(uid, req.calc_id, "physics", "miniapp", f"{req.target_var}={res['si_value']}", xp_gain=8)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==============================================================================
+# File Download & Send-to-Telegram-Chat Helpers (for Telegram WebView)
+# ==============================================================================
+def _resolve_media_path(download_url: str) -> Path:
+    rel = download_url.strip()
+    if rel.startswith("/media/"):
+        rel = rel[len("/media/") :]
+    target = (DATA_DIR / rel).resolve()
+    if not str(target).startswith(str(DATA_DIR.resolve())) or not target.is_file():
+        raise HTTPException(status_code=404, detail="Файл не найден на сервере")
+    return target
+
+
+@router.get("/api/v2/files/download")
+async def api_download_attachment(url: str, name: str = "file") -> FileResponse:
+    target = _resolve_media_path(url)
+    safe_name = "".join(c for c in name if c.isalnum() or c in ("-", "_", ".")).strip(".") or target.name
+    return FileResponse(path=target, filename=safe_name)
+
+
+class SendFileToChatReq(BaseModel):
+    download_url: str = ""
+    data_url: str = ""
+    filename: str = "result.png"
+    caption: str = ""
+
+
+@router.post("/api/v2/files/send-to-chat")
+async def api_send_file_to_chat(req: SendFileToChatReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, 0)
+    if not uid or uid in FAKE_SEED_USER_IDS or uid >= 900_000_000_000:
+        raise HTTPException(status_code=400, detail="Отправка в чат доступна при открытии внутри Telegram")
+    if not bot_manager.live_bot:
+        raise HTTPException(status_code=400, detail="Бот не подключён к Telegram API")
+
+    raw_bytes: bytes
+    if req.download_url:
+        target = _resolve_media_path(req.download_url)
+        raw_bytes = target.read_bytes()
+    elif req.data_url and "," in req.data_url:
+        raw_bytes = base64.b64decode(req.data_url.split(",", 1)[1])
+    else:
+        raise HTTPException(status_code=400, detail="Нет данных файла")
+
+    safe_name = "".join(c for c in req.filename if c.isalnum() or c in ("-", "_", ".")).strip(".") or "file.bin"
+    try:
+        await bot_manager.live_bot.send_document(
+            chat_id=uid,
+            document=BufferedInputFile(raw_bytes, filename=safe_name),
+            caption=(req.caption or safe_name)[:200],
+        )
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Не удалось отправить файл в чат: {e}")
+
+
+# ==============================================================================
+# 1. Досуг и Развлечения
 # ==============================================================================
 class AlcoholCalcReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
@@ -56,7 +212,8 @@ class AlcoholCalcReq(BaseModel):
 
 
 @router.post("/api/v2/party/alcohol")
-async def api_party_alcohol(req: AlcoholCalcReq) -> dict[str, Any]:
+async def api_party_alcohol(req: AlcoholCalcReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = calculate_vodka_party(
         people_count=req.people_count,
         avg_weight_kg=req.avg_weight_kg,
@@ -67,7 +224,7 @@ async def api_party_alcohol(req: AlcoholCalcReq) -> dict[str, Any]:
         drink_type=req.drink_type,
         reserve_no_run=req.reserve_no_run,
     )
-    await db.record_tool_use(req.user_id, "vodka_calc", "party", "miniapp", f"{req.people_count} чел • ур.{req.target_level}", xp_gain=8)
+    await db.record_tool_use(uid, "vodka_calc", "party", "miniapp", f"{req.people_count} чел", xp_gain=8)
     return res
 
 
@@ -86,7 +243,8 @@ class PencilCalcReq(BaseModel):
 
 
 @router.post("/api/v2/party/pencil")
-async def api_party_pencil(req: PencilCalcReq) -> dict[str, Any]:
+async def api_party_pencil(req: PencilCalcReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = calculate_pencil_index(
         height_cm=req.height_cm,
         shoe_size_eu=req.shoe_size_eu,
@@ -99,20 +257,22 @@ async def api_party_pencil(req: PencilCalcReq) -> dict[str, Any]:
         gym_pushups=req.gym_pushups,
         zodiac_vibe=req.zodiac_vibe,
     )
-    await db.record_tool_use(req.user_id, "pencil_calc", "party", "miniapp", f"{res['estimated_cm']} см", xp_gain=8)
+    await db.record_tool_use(uid, "pencil_calc", "party", "miniapp", f"{res['estimated_cm']} см", xp_gain=8)
     return res
 
 
 @router.get("/api/v2/party/boredom")
 async def api_party_boredom(
+    request: Request,
     category: str = "all",
     include_spicy: bool = False,
     count: int = 6,
     search: str = "",
     user_id: int = DEFAULT_DEMO_USER_ID,
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     res = get_boredom_ideas(category=category, include_spicy=include_spicy, count=count, search=search)
-    await db.record_tool_use(user_id, "boredom_advisor", "party", "miniapp", category, xp_gain=5)
+    await db.record_tool_use(uid, "boredom_advisor", "party", "miniapp", category, xp_gain=5)
     return res
 
 
@@ -126,7 +286,7 @@ async def api_party_liguria() -> dict[str, Any]:
 
 
 # ==============================================================================
-# 2. Умный Конвертер Единиц Измерения (Авто-понимание «6 дюймов»)
+# 2. Конвертер единиц измерения
 # ==============================================================================
 class SmartUnitsReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
@@ -134,17 +294,18 @@ class SmartUnitsReq(BaseModel):
 
 
 @router.post("/api/v2/units/smart")
-async def api_smart_units(req: SmartUnitsReq) -> dict[str, Any]:
+async def api_smart_units(req: SmartUnitsReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = smart_parse_and_convert(req.query)
-        await db.record_tool_use(req.user_id, "smart_units", "calc", "miniapp", req.query[:30], xp_gain=6)
+        await db.record_tool_use(uid, "smart_units", "calc", "miniapp", req.query[:30], xp_gain=6)
         return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 # ==============================================================================
-# 3. Мега-База Знаний (Конституции, Религии, Мульти-Вики, ЕГЭ, Население)
+# 3. Справочники
 # ==============================================================================
 @router.get("/api/v2/knowledge/constitutions")
 async def api_constitutions(q: str = "") -> dict[str, Any]:
@@ -197,9 +358,10 @@ class RollStandReq(BaseModel):
 
 
 @router.post("/api/v2/knowledge/roll-stand")
-async def api_roll_stand(req: RollStandReq) -> dict[str, Any]:
+async def api_roll_stand(req: RollStandReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     stand = roll_random_stand(req.name)
-    await db.record_tool_use(req.user_id, "jojo_stand", "knowledge", "miniapp", stand["name"][:30], xp_gain=6)
+    await db.record_tool_use(uid, "jojo_stand", "knowledge", "miniapp", stand["name"][:30], xp_gain=6)
     return {"stand": stand}
 
 
@@ -210,15 +372,16 @@ async def api_formulas(subject: str = "all", q: str = "") -> dict[str, Any]:
 
 
 @router.get("/api/v2/knowledge/population")
-async def api_population(q: str = "", user_id: int = DEFAULT_DEMO_USER_ID) -> dict[str, Any]:
+async def api_population(request: Request, q: str = "", user_id: int = DEFAULT_DEMO_USER_ID) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     res = query_population(q)
     if q.strip():
-        await db.record_tool_use(user_id, "population_atlas", "knowledge", "miniapp", q[:30], xp_gain=5)
+        await db.record_tool_use(uid, "population_atlas", "knowledge", "miniapp", q[:30], xp_gain=5)
     return res
 
 
 # ==============================================================================
-# 4. Генератор Рифм + Чтение QR по Картинке + Укоротитель / Удлинитель Ссылок
+# 4. Рифмы + Сканер QR + Ссылки
 # ==============================================================================
 class RhymeReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
@@ -226,10 +389,11 @@ class RhymeReq(BaseModel):
 
 
 @router.post("/api/v2/rhyme")
-async def api_rhyme(req: RhymeReq) -> dict[str, Any]:
+async def api_rhyme(req: RhymeReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         res = generate_russian_rhymes(req.word)
-        await db.record_tool_use(req.user_id, "rhyme_generator", "text", "miniapp", res["word"], xp_gain=8)
+        await db.record_tool_use(uid, "rhyme_generator", "text", "miniapp", res["word"], xp_gain=8)
         return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -237,13 +401,15 @@ async def api_rhyme(req: RhymeReq) -> dict[str, Any]:
 
 @router.post("/api/v2/qr/decode")
 async def api_qr_decode(
+    request: Request,
     file: UploadFile = File(...),
     user_id: int = DEFAULT_DEMO_USER_ID,
 ) -> dict[str, Any]:
+    uid = await resolve_api_user(request, user_id)
     try:
         raw = await file.read()
         res = decode_qr_from_bytes(raw)
-        await db.record_tool_use(user_id, "qr_decoder", "visual", "miniapp", "QR Scan", xp_gain=10)
+        await db.record_tool_use(uid, "qr_decoder", "visual", "miniapp", "QR Scan", xp_gain=10)
         return res
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка чтения изображения: {e}")
@@ -256,13 +422,14 @@ class LinkCreateReq(BaseModel):
 
 @router.post("/api/v2/links/create")
 async def api_create_link(req: LinkCreateReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     try:
         cleaned = inspect_and_clean_url(req.url)
-        row = await db.create_link_pair(req.user_id, cleaned["cleaned_url"])
+        row = await db.create_link_pair(uid, cleaned["cleaned_url"])
         base = str(request.base_url).rstrip("/")
         short_url = f"{base}/s/{row['code']}"
-        long_url = f"{base}/long/{row['long_code']}?utm_epic=ultra_mega_nexus_quantum_hyper_redirect_v2_9000&verify=definitely_not_a_rickroll"
-        await db.record_tool_use(req.user_id, "url_transformer", "visual", "miniapp", cleaned["domain"], xp_gain=8)
+        long_url = f"{base}/long/{row['long_code']}"
+        await db.record_tool_use(uid, "url_transformer", "visual", "miniapp", cleaned["domain"], xp_gain=8)
         return {
             **row,
             "short_url": short_url,
@@ -277,7 +444,8 @@ async def api_create_link(req: LinkCreateReq, request: Request) -> dict[str, Any
 
 @router.get("/api/v2/links/list")
 async def api_list_links(request: Request, user_id: int = DEFAULT_DEMO_USER_ID) -> dict[str, Any]:
-    rows = await db.list_user_links(user_id)
+    uid = await resolve_api_user(request, user_id)
+    rows = await db.list_user_links(uid)
     base = str(request.base_url).rstrip("/")
     enriched = [
         {
@@ -307,7 +475,7 @@ async def redirect_long_link(long_code: str):
 
 
 # ==============================================================================
-# 5. Аркада Мини-Игр (Волк ловит яйца, Doodle Jump, Тетрис, Кибер-Кликер)
+# 5. Игры
 # ==============================================================================
 class GameScoreReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
@@ -316,8 +484,9 @@ class GameScoreReq(BaseModel):
 
 
 @router.post("/api/v2/games/score")
-async def api_submit_game_score(req: GameScoreReq) -> dict[str, Any]:
-    res = await db.submit_game_score(req.user_id, req.game_id, req.score)
+async def api_submit_game_score(req: GameScoreReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    res = await db.submit_game_score(uid, req.game_id, req.score)
     highs = await db.get_game_highscores(req.game_id, limit=8)
     return {**res, "highscores": highs}
 
@@ -329,33 +498,39 @@ async def api_get_game_highscores(game_id: str = "all") -> dict[str, Any]:
 
 
 # ==============================================================================
-# 6. Лидерборд по всем параметрам + Профили с счётчиком заходов + Соц-хаб
+# 6. Рейтинг, Профили и Чаты
 # ==============================================================================
 @router.get("/api/v2/social/leaderboard")
 async def api_social_leaderboard(sort_by: str = "xp") -> dict[str, Any]:
-    rows = await db.get_leaderboard(sort_by=sort_by, limit=20)
+    rows = await db.get_leaderboard(sort_by=sort_by, limit=30)
     return {"sort_by": sort_by, "users": rows}
 
 
 @router.get("/api/v2/social/profile/{target_user_id}")
 async def api_social_public_profile(
     target_user_id: int,
-    viewer_id: int = DEFAULT_DEMO_USER_ID,
+    request: Request,
+    viewer_id: int = 0,
 ) -> dict[str, Any]:
-    return await db.get_public_profile(target_user_id=target_user_id, viewer_id=viewer_id)
+    actual_viewer = viewer_id if viewer_id else await resolve_api_user(request, 0)
+    try:
+        return await db.get_public_profile(target_user_id=target_user_id, viewer_id=actual_viewer)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 class ProfileUpdateReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
     bio: str
-    avatar_emoji: str = "⚡"
+    avatar_emoji: str = "👤"
     first_name: str | None = None
 
 
 @router.post("/api/v2/social/profile/update")
-async def api_social_update_profile(req: ProfileUpdateReq) -> dict[str, Any]:
+async def api_social_update_profile(req: ProfileUpdateReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     updated = await db.update_user_profile(
-        user_id=req.user_id,
+        user_id=uid,
         bio=req.bio,
         avatar_emoji=req.avatar_emoji,
         first_name=req.first_name,
@@ -369,12 +544,12 @@ class RespectReq(BaseModel):
 
 
 @router.post("/api/v2/social/respect")
-async def api_social_respect(req: RespectReq) -> dict[str, Any]:
-    profile = await db.give_respect(target_user_id=req.target_user_id, sender_id=req.sender_id)
+async def api_social_respect(req: RespectReq, request: Request) -> dict[str, Any]:
+    sender = await resolve_api_user(request, req.sender_id)
+    profile = await db.give_respect(target_user_id=req.target_user_id, sender_id=sender)
     return {"profile": profile}
 
 
-# --- Анонимный Чат ---
 @router.get("/api/v2/social/anon")
 async def api_get_anon_feed(room: str = "global") -> dict[str, Any]:
     msgs = await db.list_anon_messages(room=room, limit=40)
@@ -388,14 +563,14 @@ class AnonPostReq(BaseModel):
 
 
 @router.post("/api/v2/social/anon")
-async def api_post_anon_msg(req: AnonPostReq) -> dict[str, Any]:
+async def api_post_anon_msg(req: AnonPostReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Пустое сообщение")
-    msgs = await db.post_anon_message(req.user_id, req.text, room=req.room)
+    msgs = await db.post_anon_message(uid, req.text, room=req.room)
     return {"room": req.room, "messages": msgs}
 
 
-# --- Игра «Угадай: Человек или ИИ?» ---
 @router.get("/api/v2/social/turing")
 async def api_get_turing(exclude: str = "") -> dict[str, Any]:
     excl = [int(x) for x in exclude.split(",") if x.strip().isdigit()]
@@ -405,24 +580,24 @@ async def api_get_turing(exclude: str = "") -> dict[str, Any]:
 class TuringGuessReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
     round_id: int
-    guess: str  # "human" | "ai"
+    guess: str
 
 
 @router.post("/api/v2/social/turing")
-async def api_check_turing(req: TuringGuessReq) -> dict[str, Any]:
+async def api_check_turing(req: TuringGuessReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = check_turing_guess(req.round_id, req.guess)
     await db.record_tool_use(
-        req.user_id,
+        uid,
         "turing_game",
         "social",
         "miniapp",
-        "Верно!" if res["correct"] else "Промах",
+        "Верно" if res["correct"] else "Неверно",
         xp_gain=res["xp_reward"],
     )
     return res
 
 
-# --- Bibinto: Оценка внешности и вайба 1..10 ---
 @router.get("/api/v2/social/bibinto")
 async def api_list_bibinto() -> dict[str, Any]:
     profiles = await db.list_dating_profiles()
@@ -436,8 +611,9 @@ class BibintoRateReq(BaseModel):
 
 
 @router.post("/api/v2/social/bibinto/rate")
-async def api_rate_bibinto(req: BibintoRateReq) -> dict[str, Any]:
-    updated = await db.rate_dating_profile(req.profile_id, req.score, req.user_id)
+async def api_rate_bibinto(req: BibintoRateReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    updated = await db.rate_dating_profile(req.profile_id, req.score, uid)
     if not updated:
         raise HTTPException(status_code=404, detail="Анкета не найдена")
     all_profiles = await db.list_dating_profiles()
@@ -451,15 +627,16 @@ class BibintoCreateReq(BaseModel):
     city: str
     vibe: str
     bio: str
-    avatar_style: str = "⚡"
+    avatar_style: str = "👤"
 
 
 @router.post("/api/v2/social/bibinto/create")
-async def api_create_bibinto(req: BibintoCreateReq) -> dict[str, Any]:
+async def api_create_bibinto(req: BibintoCreateReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     if req.age < 18:
-        raise HTTPException(status_code=400, detail="Раздел анкет и дейтинга строго 18+.")
+        raise HTTPException(status_code=400, detail="Раздел анкет строго 18+.")
     profiles = await db.create_dating_profile(
-        user_id=req.user_id,
+        user_id=uid,
         display_name=req.display_name,
         age=req.age,
         city=req.city,
@@ -470,7 +647,6 @@ async def api_create_bibinto(req: BibintoCreateReq) -> dict[str, Any]:
     return {"profiles": profiles}
 
 
-# --- Знакомство и флирт с Милыми Альтушками 18+ ---
 @router.get("/api/v2/social/altushka")
 async def api_altushka_list() -> dict[str, Any]:
     return {"personas": get_altushka_personas()}
@@ -484,15 +660,13 @@ class AltushkaChatReq(BaseModel):
 
 
 @router.post("/api/v2/social/altushka")
-async def api_altushka_chat(req: AltushkaChatReq) -> dict[str, Any]:
+async def api_altushka_chat(req: AltushkaChatReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
     res = altushka_chat_reply(req.persona_id, req.message, req.affection)
-    await db.record_tool_use(req.user_id, "altushka_chat", "social", "miniapp", req.persona_id, xp_gain=6)
+    await db.record_tool_use(uid, "altushka_chat", "social", "miniapp", req.persona_id, xp_gain=6)
     return res
 
 
-# ==============================================================================
-# 7. Витрина Ссылок Автора (QLS СЕНЯ)
-# ==============================================================================
 @router.get("/api/v2/author")
 async def api_get_author() -> dict[str, Any]:
     return await db.get_author_info()

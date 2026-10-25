@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 import secrets
 import time
@@ -10,20 +11,22 @@ import aiosqlite
 from backend.config import DATABASE_PATH, DEFAULT_DEMO_USER_ID
 
 RANKS = [
-    (0, "🌱 Искатель", 50),
-    (50, "⚡ Оператор", 150),
-    (150, "🛠 Инженер", 400),
-    (400, "🧬 Архитектор", 1000),
-    (1000, "🌌 Кибермаг QLS", 3000),
-    (3000, "👑 Абсолют NEXUS", 10000),
+    (0, "🌱 Новичок", 50),
+    (50, "⚡ Участник", 150),
+    (150, "🛠 Практик", 400),
+    (400, "🎯 Специалист", 1000),
+    (1000, "🏆 Мастер", 3000),
+    (3000, "👑 Легенда", 10000),
 ]
+
+FAKE_SEED_USER_IDS = (0, 777000, 880101, 880102, 880103, 880104, 880201, 880202, 880203, 880204)
 
 DEFAULT_AUTHOR_INFO = {
     "title": "QLS • MULTI_TG_TOOL",
     "name": "QLS • MULTI_TG_TOOL",
-    "tagline": "В тени 🕶️",
-    "bio": "Официальные площадки и прямая поддержка проекта.",
-    "donation_note": "Прямая поддержка проекта:",
+    "tagline": "Официальные ссылки",
+    "bio": "Площадки проекта и поддержка.",
+    "donation_note": "Поддержка проекта:",
     "links": [
         {"label": "📺 YouTube", "title": "📺 YouTube", "url": "https://www.youtube.com/@qls8571", "badge": "YouTube", "emoji": "📺"},
         {"label": "🎵 TikTok", "title": "🎵 TikTok", "url": "https://www.tiktok.com/@qls_senya1488", "badge": "TikTok", "emoji": "🎵"},
@@ -31,6 +34,8 @@ DEFAULT_AUTHOR_INFO = {
         {"label": "💎 Поддержать проект (ЮMoney)", "title": "💎 Поддержать проект (ЮMoney)", "url": "https://yoomoney.ru/fundraise/1JT4BDKO99S.260826", "badge": "Донат", "emoji": "💎"},
     ],
 }
+
+WEEKDAY_RU_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
 
 def compute_rank(xp: int) -> dict[str, Any]:
@@ -58,17 +63,15 @@ def compute_rank(xp: int) -> dict[str, Any]:
 def compute_badges(user_row: dict[str, Any]) -> list[str]:
     badges: list[str] = []
     if user_row.get("xp", 0) >= 500:
-        badges.append("🔥 Ветеран")
+        badges.append("🔥 Активный")
     if user_row.get("tools_used", 0) >= 15:
-        badges.append("🛠 Мастер на все руки")
+        badges.append("🛠 Практик")
     if user_row.get("best_game_score", 0) >= 200:
-        badges.append("🕹 Король Аркад")
+        badges.append("🕹 Игрок")
     if user_row.get("profile_views", 0) >= 10:
-        badges.append("🌟 Популярный")
+        badges.append("👁 Известный")
     if user_row.get("respects", 0) >= 5:
-        badges.append("💎 Авторитет")
-    if not badges:
-        badges.append("🌱 Первопроходец")
+        badges.append("👍 Респект")
     return badges
 
 
@@ -87,13 +90,14 @@ class Database:
                     user_id INTEGER PRIMARY KEY,
                     username TEXT DEFAULT '',
                     first_name TEXT DEFAULT 'Пользователь',
-                    bio TEXT DEFAULT 'Исследователь экосистемы NEXUS',
-                    avatar_emoji TEXT DEFAULT '🦊',
+                    bio TEXT DEFAULT '',
+                    avatar_emoji TEXT DEFAULT '👤',
                     xp INTEGER DEFAULT 0,
                     tools_used INTEGER DEFAULT 0,
                     profile_views INTEGER DEFAULT 0,
                     respects INTEGER DEFAULT 0,
                     best_game_score INTEGER DEFAULT 0,
+                    is_real INTEGER DEFAULT 0,
                     created_at REAL NOT NULL,
                     last_active REAL NOT NULL
                 );
@@ -130,6 +134,23 @@ class Database:
                     done INTEGER DEFAULT 0,
                     priority TEXT DEFAULT 'normal',
                     created_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS habits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    icon TEXT DEFAULT '✅',
+                    target_per_week INTEGER DEFAULT 7,
+                    created_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS habit_logs (
+                    habit_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    log_date TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (habit_id, log_date)
                 );
 
                 CREATE TABLE IF NOT EXISTS telemetry (
@@ -179,8 +200,8 @@ class Database:
                     age INTEGER NOT NULL,
                     city TEXT NOT NULL,
                     bio TEXT NOT NULL,
-                    vibe TEXT DEFAULT 'Альт / Гейминг',
-                    avatar_emoji TEXT DEFAULT '🖤',
+                    vibe TEXT DEFAULT '',
+                    avatar_emoji TEXT DEFAULT '👤',
                     rating_sum INTEGER DEFAULT 0,
                     rating_count INTEGER DEFAULT 0,
                     likes_count INTEGER DEFAULT 0,
@@ -188,109 +209,31 @@ class Database:
                 );
                 """
             )
-            # Safe schema migrations if upgrading an earlier nexus.db
             cur = await db.execute("PRAGMA table_info(users)")
             existing_cols = {r[1] for r in await cur.fetchall()}
             migrations = [
-                ("bio", "TEXT DEFAULT 'Исследователь экосистемы NEXUS'"),
-                ("avatar_emoji", "TEXT DEFAULT '🦊'"),
+                ("bio", "TEXT DEFAULT ''"),
+                ("avatar_emoji", "TEXT DEFAULT '👤'"),
                 ("profile_views", "INTEGER DEFAULT 0"),
                 ("respects", "INTEGER DEFAULT 0"),
                 ("best_game_score", "INTEGER DEFAULT 0"),
+                ("is_real", "INTEGER DEFAULT 0"),
             ]
             for col_name, col_def in migrations:
                 if col_name not in existing_cols:
                     await db.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
-            await db.commit()
-        await self._seed_demo_if_needed()
 
-    async def _seed_demo_if_needed(self) -> None:
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            now = time.time()
-
-            # Ensure main demo user
-            cur = await db.execute("SELECT COUNT(*) AS c FROM users")
-            user_cnt = (await cur.fetchone())["c"]
-            if user_cnt < 4:
-                demo_users = [
-                    (DEFAULT_DEMO_USER_ID, "QLSCENR", "QLS", "Архитектор в тени 🕶️", "👑", 620, 42, 28, 19, 840),
-                    (880101, "jotaro_kujo", "Джотаро", "Yare Yare Daze • Мейнер Star Platinum и Тетриса", "⭐", 1240, 87, 64, 41, 1450),
-                    (880102, "alt_ksusha", "Ксюша Альтушка", "Слушаю пост-панк, пью вишнёвый энергос и оцениваю анкеты в Бибинто 🖤", "🦇", 890, 53, 112, 77, 620),
-                    (880103, "dota_theory", "Артур 7к ММР", "Собираю кастомные билды на всех героев кроме Кеза и Рингмастера", "⚔️", 540, 39, 31, 15, 980),
-                    (880104, "phys_ege_100", "Мария Сотка", "Сдала физику и профильный мат на 100, живу в справочнике формул", "🧬", 430, 34, 45, 29, 510),
-                ]
-                for uid, uname, fname, bio, emo, xp, t_used, p_views, resp, g_score in demo_users:
-                    await db.execute(
-                        """
-                        INSERT INTO users (user_id, username, first_name, bio, avatar_emoji, xp, tools_used, profile_views, respects, best_game_score, created_at, last_active)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(user_id) DO UPDATE SET
-                            bio = excluded.bio,
-                            avatar_emoji = excluded.avatar_emoji,
-                            profile_views = MAX(users.profile_views, excluded.profile_views),
-                            respects = MAX(users.respects, excluded.respects),
-                            best_game_score = MAX(users.best_game_score, excluded.best_game_score)
-                        """,
-                        (uid, uname, fname, bio, emo, xp, t_used, p_views, resp, g_score, now - 86400 * 5, now),
-                    )
-
-            # Seed Dating / Bibinto profiles if empty
-            d_cur = await db.execute("SELECT COUNT(*) AS c FROM dating_profiles")
-            if (await d_cur.fetchone())["c"] == 0:
-                bibinto_seed = [
-                    (880102, "Ксюша", 19, "Санкт-Петербург", "Чёрные стрелки, парные аватарки, смотрю Сайки Кусуо и ищу с кем пойти в кооп 🖤", "Альтушка / Аниме", "🦇", 184, 20, 48),
-                    (880201, "Алина", 21, "Москва", "Художница, обожаю мангу «Бродяга» и ночные прогулки с чаем в термосе ✨", "Творчество / Манга", "🎨", 169, 19, 39),
-                    (880202, "Рин", 20, "Екатеринбург", "Пройду за тебя босса в Sekiro, если приготовишь вкусную пасту по рецепту 🍜", "Хардкор Гейминг", "🎮", 192, 21, 61),
-                    (880203, "Даниил", 22, "Новосибирск", "Собираю самовоспроизводящийся 3D-принтер и шарю за все 9 частей ДжоДжо", "Инженерия / JoJo", "🤖", 145, 17, 27),
-                    (880204, "Вика", 19, "Казань", "Готика, винил, котики и мемы в 3 часа ночи. Оценивай честно!", "Готика / Музыка", "🐈‍⬛", 176, 19, 44),
-                ]
-                for uid, name, age, city, bio, vibe, emo, r_sum, r_cnt, likes in bibinto_seed:
-                    await db.execute(
-                        """
-                        INSERT INTO dating_profiles (user_id, display_name, age, city, bio, vibe, avatar_emoji, rating_sum, rating_count, likes_count, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (uid, name, age, city, bio, vibe, emo, r_sum, r_cnt, likes, now - 7200),
-                    )
-
-            # Seed Anon Chat room if empty
-            a_cur = await db.execute("SELECT COUNT(*) AS c FROM anon_messages")
-            if (await a_cur.fetchone())["c"] == 0:
-                seed_msgs = [
-                    ("global", 880102, "🦇 Тёмный Лотос", "Кто-нибудь реально выговаривал всю скороговорку «Лигурия» без сбоя дыхания? 😅"),
-                    ("global", 880103, "⚔️ Фантом #404", "Я дошёл до «четвертьчетверика чечевицы» и сломал язык ахах"),
-                    ("global", 880101, "⭐ Странник", "Добро пожаловать в анонимную частоту NEXUS! Здесь никто не знает твой ID."),
-                ]
-                for idx, (room, sid, alias, txt) in enumerate(seed_msgs):
-                    await db.execute(
-                        "INSERT INTO anon_messages (room, sender_id, alias, text, created_at) VALUES (?, ?, ?, ?, ?)",
-                        (room, sid, alias, txt, now - (3 - idx) * 180),
-                    )
-
-            # Seed Game Scores if empty
-            g_cur = await db.execute("SELECT COUNT(*) AS c FROM game_scores")
-            if (await g_cur.fetchone())["c"] == 0:
-                for uid, gid, sc in [
-                    (880101, "tetris", 1450),
-                    (880103, "wolf_eggs", 980),
-                    (DEFAULT_DEMO_USER_ID, "doodle_jump", 840),
-                    (880102, "clicker", 620),
-                ]:
-                    await db.execute(
-                        "INSERT INTO game_scores (user_id, game_id, score, created_at) VALUES (?, ?, ?, ?)",
-                        (uid, gid, sc, now - 3600),
-                    )
-
-            # Seed Favorites & Notes if empty
-            f_cur = await db.execute("SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?", (DEFAULT_DEMO_USER_ID,))
-            if (await f_cur.fetchone())[0] == 0:
-                for fav in ("vodka_calc", "boredom_buster", "arcade_games", "jojo_wiki", "smart_units", "author_links"):
-                    await db.execute(
-                        "INSERT OR IGNORE INTO favorites (user_id, tool_id, created_at) VALUES (?, ?, ?)",
-                        (DEFAULT_DEMO_USER_ID, fav, now),
-                    )
-
+            # Purge legacy fake/demo accounts from existing databases so only real Telegram users remain
+            placeholders = ",".join("?" for _ in FAKE_SEED_USER_IDS)
+            await db.execute(f"DELETE FROM users WHERE user_id IN ({placeholders})", FAKE_SEED_USER_IDS)
+            await db.execute(f"DELETE FROM game_scores WHERE user_id IN ({placeholders})", FAKE_SEED_USER_IDS)
+            await db.execute(f"DELETE FROM dating_profiles WHERE user_id IN ({placeholders})", FAKE_SEED_USER_IDS)
+            await db.execute(f"DELETE FROM anon_messages WHERE sender_id IN ({placeholders})", FAKE_SEED_USER_IDS)
+            # Mark any previously saved non-fake Telegram users as real
+            await db.execute(
+                f"UPDATE users SET is_real = 1 WHERE user_id > 10000 AND user_id NOT IN ({placeholders}) AND user_id < 900000000000",
+                FAKE_SEED_USER_IDS,
+            )
             await db.commit()
 
     def _enrich_user(self, row: aiosqlite.Row | dict[str, Any]) -> dict[str, Any]:
@@ -303,9 +246,14 @@ class Database:
         return data
 
     async def ensure_user(
-        self, user_id: int, username: str = "", first_name: str = "Пользователь"
+        self,
+        user_id: int,
+        username: str = "",
+        first_name: str = "Пользователь",
+        is_real: bool | None = None,
     ) -> dict[str, Any]:
         now = time.time()
+        real_flag = 1 if is_real else (1 if (is_real is None and user_id > 10000 and user_id not in FAKE_SEED_USER_IDS and user_id < 900000000000) else 0)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
@@ -313,20 +261,31 @@ class Database:
             if row is None:
                 await db.execute(
                     """
-                    INSERT INTO users (user_id, username, first_name, xp, tools_used, created_at, last_active)
-                    VALUES (?, ?, ?, 15, 0, ?, ?)
+                    INSERT INTO users (user_id, username, first_name, bio, avatar_emoji, xp, tools_used, is_real, created_at, last_active)
+                    VALUES (?, ?, ?, '', '👤', 0, 0, ?, ?, ?)
                     """,
-                    (user_id, username or "", first_name or "Пользователь", now, now),
+                    (user_id, username or "", first_name or "Пользователь", real_flag, now, now),
                 )
                 await db.commit()
                 cur = await db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
                 row = await cur.fetchone()
             else:
+                new_uname = username if username else row["username"]
+                new_fname = first_name if (first_name and first_name != "Пользователь") else row["first_name"]
                 await db.execute(
-                    "UPDATE users SET last_active = ? WHERE user_id = ?",
-                    (now, user_id),
+                    """
+                    UPDATE users
+                    SET last_active = ?,
+                        username = ?,
+                        first_name = ?,
+                        is_real = MAX(is_real, ?)
+                    WHERE user_id = ?
+                    """,
+                    (now, new_uname, new_fname, real_flag, user_id),
                 )
                 await db.commit()
+                cur = await db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+                row = await cur.fetchone()
             return self._enrich_user(row)
 
     async def get_public_profile(
@@ -342,7 +301,7 @@ class Database:
             if row is None:
                 raise ValueError("Профиль пользователя не найден")
 
-            if visitor_user_id and visitor_user_id != target_user_id:
+            if visitor_user_id and visitor_user_id != target_user_id and visitor_user_id not in FAKE_SEED_USER_IDS:
                 await db.execute(
                     "UPDATE users SET profile_views = profile_views + 1 WHERE user_id = ?",
                     (target_user_id,),
@@ -390,21 +349,24 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "UPDATE users SET first_name = ?, bio = ?, avatar_emoji = ? WHERE user_id = ?",
-                (first_name.strip()[:40] or "Игрок", bio.strip()[:180], avatar_emoji.strip()[:4] or "🦊", user_id),
+                (first_name.strip()[:40] or "Пользователь", bio.strip()[:180], avatar_emoji.strip()[:4] or "👤", user_id),
             )
             await db.commit()
         return await self.ensure_user(user_id)
 
     async def update_user_profile(
-        self, user_id: int, bio: str, avatar_emoji: str = "⚡", first_name: str | None = None
+        self, user_id: int, bio: str, avatar_emoji: str = "👤", first_name: str | None = None
     ) -> dict[str, Any]:
         cur_u = await self.ensure_user(user_id)
-        fname = first_name.strip() if first_name and first_name.strip() else cur_u.get("first_name", "Игрок")
+        fname = first_name.strip() if first_name and first_name.strip() else cur_u.get("first_name", "Пользователь")
         return await self.update_user_bio(user_id, fname, bio, avatar_emoji)
 
     async def give_respect(
         self, target_user_id: int, from_user_id: int = 0, sender_id: int | None = None
     ) -> dict[str, Any]:
+        actual_sender = sender_id if sender_id is not None else from_user_id
+        if actual_sender and actual_sender == target_user_id:
+            return await self.get_public_profile(target_user_id, visitor_user_id=0)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "UPDATE users SET respects = respects + 1, xp = xp + 15 WHERE user_id = ?",
@@ -413,17 +375,20 @@ class Database:
             await db.commit()
         return await self.get_public_profile(target_user_id, visitor_user_id=0)
 
-    async def get_leaderboard(self, sort_by: str = "xp", limit: int = 25) -> list[dict[str, Any]]:
+    async def get_leaderboard(self, sort_by: str = "xp", limit: int = 30) -> list[dict[str, Any]]:
         order_col = {
-            "xp": "xp DESC",
-            "tools": "tools_used DESC",
-            "games": "best_game_score DESC",
-            "views": "profile_views DESC",
-            "respects": "respects DESC",
+            "xp": "xp DESC, tools_used DESC",
+            "tools": "tools_used DESC, xp DESC",
+            "games": "best_game_score DESC, xp DESC",
+            "views": "profile_views DESC, xp DESC",
+            "respects": "respects DESC, xp DESC",
         }.get(sort_by, "xp DESC")
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cur = await db.execute(f"SELECT * FROM users ORDER BY {order_col} LIMIT ?", (limit,))
+            cur = await db.execute(
+                f"SELECT * FROM users WHERE is_real = 1 ORDER BY {order_col} LIMIT ?",
+                (limit,),
+            )
             rows = await cur.fetchall()
             out = []
             for idx, r in enumerate(rows, start=1):
@@ -439,7 +404,7 @@ class Database:
         category: str,
         source: str = "bot",
         detail: str = "",
-        xp_gain: int = 12,
+        xp_gain: int = 10,
     ) -> dict[str, Any]:
         await self.ensure_user(user_id)
         now = time.time()
@@ -488,7 +453,7 @@ class Database:
                 SELECT g.game_id, MAX(g.score) AS score, u.first_name, u.avatar_emoji, u.user_id
                 FROM game_scores g
                 JOIN users u ON u.user_id = g.user_id
-                WHERE g.game_id = ?
+                WHERE g.game_id = ? AND u.is_real = 1
                 GROUP BY g.user_id
                 ORDER BY score DESC
                 LIMIT 10
@@ -510,6 +475,7 @@ class Database:
                     SELECT g.game_id, MAX(g.score) AS best_score, u.first_name, u.avatar_emoji, u.user_id
                     FROM game_scores g
                     JOIN users u ON u.user_id = g.user_id
+                    WHERE u.is_real = 1
                     GROUP BY g.user_id, g.game_id
                     ORDER BY best_score DESC
                     LIMIT ?
@@ -522,7 +488,7 @@ class Database:
                     SELECT g.game_id, MAX(g.score) AS best_score, u.first_name, u.avatar_emoji, u.user_id
                     FROM game_scores g
                     JOIN users u ON u.user_id = g.user_id
-                    WHERE g.game_id = ?
+                    WHERE g.game_id = ? AND u.is_real = 1
                     GROUP BY g.user_id
                     ORDER BY best_score DESC
                     LIMIT ?
@@ -531,7 +497,152 @@ class Database:
                 )
             return [dict(r) for r in await cur.fetchall()]
 
-    # --- Short & Absurdly Long Links ---
+    # --- Habit Tracker ---
+    async def list_habits(self, user_id: int) -> list[dict[str, Any]]:
+        today = dt.date.today()
+        last_7_dates = [today - dt.timedelta(days=offset) for offset in range(6, -1, -1)]
+        today_iso = today.isoformat()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            h_cur = await db.execute(
+                "SELECT * FROM habits WHERE user_id = ? ORDER BY id ASC",
+                (user_id,),
+            )
+            habits = [dict(r) for r in await h_cur.fetchall()]
+            if not habits:
+                return []
+
+            l_cur = await db.execute(
+                "SELECT habit_id, log_date FROM habit_logs WHERE user_id = ?",
+                (user_id,),
+            )
+            logs_by_habit: dict[int, set[str]] = {}
+            for row in await l_cur.fetchall():
+                logs_by_habit.setdefault(row["habit_id"], set()).add(row["log_date"])
+
+        enriched: list[dict[str, Any]] = []
+        for h in habits:
+            hid = h["id"]
+            done_dates = logs_by_habit.get(hid, set())
+            days_view = []
+            week_done = 0
+            for d in last_7_dates:
+                d_iso = d.isoformat()
+                is_done = d_iso in done_dates
+                if is_done:
+                    week_done += 1
+                days_view.append(
+                    {
+                        "date": d_iso,
+                        "label": WEEKDAY_RU_SHORT[d.weekday()],
+                        "day_num": f"{d.day:02d}.{d.month:02d}",
+                        "done": is_done,
+                        "completed": is_done,
+                        "is_today": d_iso == today_iso,
+                    }
+                )
+
+            # Compute current streak (ending today or yesterday)
+            streak = 0
+            cursor = today if today_iso in done_dates else (today - dt.timedelta(days=1))
+            while cursor.isoformat() in done_dates:
+                streak += 1
+                cursor -= dt.timedelta(days=1)
+
+            # Compute best streak across all logged dates
+            best_streak = 0
+            if done_dates:
+                sorted_dates = sorted(dt.date.fromisoformat(x) for x in done_dates)
+                cur_run = 1
+                best_streak = 1
+                for i in range(1, len(sorted_dates)):
+                    if (sorted_dates[i] - sorted_dates[i - 1]).days == 1:
+                        cur_run += 1
+                        best_streak = max(best_streak, cur_run)
+                    else:
+                        cur_run = 1
+
+            target = max(1, min(7, int(h.get("target_per_week") or 7)))
+            enriched.append(
+                {
+                    **h,
+                    "days": days_view,
+                    "last_7_days": days_view,
+                    "done_today": today_iso in done_dates,
+                    "streak": streak,
+                    "best_streak": best_streak,
+                    "week_done": week_done,
+                    "done_week": week_done,
+                    "week_pct": min(100, round((week_done / target) * 100)),
+                    "total_done": len(done_dates),
+                    "total_completions": len(done_dates),
+                }
+            )
+        return enriched
+
+    async def create_habit(
+        self, user_id: int, title: str, icon: str = "✅", target_per_week: int = 7
+    ) -> list[dict[str, Any]]:
+        clean_title = title.strip()[:60]
+        if not clean_title:
+            raise ValueError("Введите название привычки")
+        await self.ensure_user(user_id)
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT INTO habits (user_id, title, icon, target_per_week, created_at) VALUES (?, ?, ?, ?, ?)",
+                (user_id, clean_title, (icon or "✅").strip()[:4], max(1, min(7, int(target_per_week))), time.time()),
+            )
+            await db.commit()
+        return await self.list_habits(user_id)
+
+    async def toggle_habit_date(
+        self, user_id: int, habit_id: int, log_date: str | None = None
+    ) -> dict[str, Any]:
+        date_iso = (log_date or dt.date.today().isoformat()).strip()
+        dt.date.fromisoformat(date_iso)  # validate YYYY-MM-DD
+        await self.ensure_user(user_id)
+        marked = False
+        async with aiosqlite.connect(self.db_path) as db:
+            h_cur = await db.execute("SELECT 1 FROM habits WHERE id = ? AND user_id = ?", (habit_id, user_id))
+            if not await h_cur.fetchone():
+                raise ValueError("Привычка не найдена")
+            cur = await db.execute(
+                "SELECT 1 FROM habit_logs WHERE habit_id = ? AND log_date = ?",
+                (habit_id, date_iso),
+            )
+            if await cur.fetchone():
+                await db.execute(
+                    "DELETE FROM habit_logs WHERE habit_id = ? AND log_date = ?",
+                    (habit_id, date_iso),
+                )
+                marked = False
+            else:
+                await db.execute(
+                    "INSERT INTO habit_logs (habit_id, user_id, log_date, created_at) VALUES (?, ?, ?, ?)",
+                    (habit_id, user_id, date_iso, time.time()),
+                )
+                await db.execute(
+                    "UPDATE users SET xp = xp + 5, last_active = ? WHERE user_id = ?",
+                    (time.time(), user_id),
+                )
+                marked = True
+            await db.commit()
+        return {
+            "marked": marked,
+            "completed": marked,
+            "date": date_iso,
+            "habits": await self.list_habits(user_id),
+        }
+
+    async def delete_habit(self, user_id: int, habit_id: int) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM habit_logs WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
+            await db.execute("DELETE FROM habits WHERE id = ? AND user_id = ?", (habit_id, user_id))
+            await db.commit()
+        return await self.list_habits(user_id)
+
+    # --- Short & Long Links ---
     async def create_link_pair(
         self, first_arg: str | int, second_arg: str = "", user_id: int = 0
     ) -> dict[str, Any]:
@@ -546,11 +657,7 @@ class Database:
         if not url.startswith(("http://", "https://", "tg://")):
             url = "https://" + url
         code = (custom_code.strip() or secrets.token_urlsafe(4)).replace("/", "").replace(" ", "")[:24]
-        filler = (
-            "sverkhdlinnaya-giper-ssylka-nexus-multitool-chtoby-drug-udivilsya-maksimalno-"
-            + secrets.token_hex(36)
-            + "-konets-marshruta"
-        )
+        filler = "redirect-" + secrets.token_hex(36)
         now = time.time()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -587,7 +694,18 @@ class Database:
             return [dict(r) for r in await cur.fetchall()]
 
     async def list_user_links(self, user_id: int = 0) -> list[dict[str, Any]]:
-        return await self.list_links(12)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            if user_id:
+                cur = await db.execute(
+                    "SELECT * FROM short_links WHERE created_by = ? ORDER BY created_at DESC LIMIT 12",
+                    (user_id,),
+                )
+                rows = [dict(r) for r in await cur.fetchall()]
+                if rows:
+                    return rows
+            cur = await db.execute("SELECT * FROM short_links ORDER BY created_at DESC LIMIT 12")
+            return [dict(r) for r in await cur.fetchall()]
 
     # --- Anonymous Chat ---
     async def post_anon_message(
@@ -597,12 +715,12 @@ class Database:
             sender_id = first_arg
             msg_text = second_arg
             mask_hex = f"{(sender_id * 2654435761) & 0xFFFF:04X}"
-            alias_str = f"🕵️ Фантом #{mask_hex}"
+            alias_str = f"Аноним #{mask_hex}"
             room_str = room or "global"
         else:
             room_str = str(first_arg) or "global"
             sender_id = int(second_arg)
-            alias_str = alias.strip()[:32] or "🕵️ Аноним"
+            alias_str = alias.strip()[:32] or "Аноним"
             msg_text = text
         now = time.time()
         async with aiosqlite.connect(self.db_path) as db:
@@ -627,13 +745,13 @@ class Database:
     async def list_anon_messages(self, room: str = "global", limit: int = 40) -> list[dict[str, Any]]:
         return await self.get_anon_messages(room=room, limit=limit)
 
-    # --- Bibinto / Dating ---
+    # --- Dating Profiles ---
     def _enrich_dating(self, row: aiosqlite.Row | dict[str, Any]) -> dict[str, Any]:
         d = dict(row)
         d["id"] = d.get("id") or d.get("user_id")
         d["avg_rating"] = d.get("avg_score", 0.0)
         d["votes_count"] = d.get("rating_count", 0)
-        d["avatar_style"] = d.get("avatar_emoji", "🔥")
+        d["avatar_style"] = d.get("avatar_emoji", "👤")
         return d
 
     async def list_dating_profiles(self) -> list[dict[str, Any]]:
@@ -656,15 +774,15 @@ class Database:
         age: int,
         city: str,
         bio: str,
-        vibe: str = "Гейминг / Аниме",
-        avatar_emoji: str = "🔥",
+        vibe: str = "",
+        avatar_emoji: str = "👤",
     ) -> dict[str, Any]:
         now = time.time()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 """
                 INSERT INTO dating_profiles (user_id, display_name, age, city, bio, vibe, avatar_emoji, rating_sum, rating_count, likes_count, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 10, 1, 1, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     display_name = excluded.display_name,
                     age = excluded.age,
@@ -673,11 +791,11 @@ class Database:
                     vibe = excluded.vibe,
                     avatar_emoji = excluded.avatar_emoji
                 """,
-                (user_id, display_name.strip()[:32], max(18, min(99, int(age))), city.strip()[:40], bio.strip()[:240], vibe.strip()[:40], avatar_emoji.strip()[:4] or "🔥", now),
+                (user_id, display_name.strip()[:32], max(18, min(99, int(age))), city.strip()[:40], bio.strip()[:240], vibe.strip()[:40], avatar_emoji.strip()[:4] or "👤", now),
             )
             await db.commit()
         profiles = await self.list_dating_profiles()
-        return next((p for p in profiles if p["user_id"] == user_id), profiles[0])
+        return next((p for p in profiles if p["user_id"] == user_id), profiles[0] if profiles else {})
 
     async def create_dating_profile(
         self,
@@ -687,7 +805,7 @@ class Database:
         city: str,
         vibe: str,
         bio: str,
-        avatar_style: str = "⚡",
+        avatar_style: str = "👤",
     ) -> list[dict[str, Any]]:
         await self.upsert_dating_profile(
             user_id=user_id,
@@ -726,7 +844,7 @@ class Database:
         out = dict(info)
         out["title"] = out.get("title") or out.get("name") or "QLS • MULTI_TG_TOOL"
         out["name"] = out["title"]
-        out["donation_note"] = out.get("donation_note") or "Прямая поддержка проекта:"
+        out["donation_note"] = out.get("donation_note") or "Поддержка проекта:"
         norm_links = []
         for lnk in out.get("links", []):
             lbl = lnk.get("label") or lnk.get("title") or "Ссылка"
@@ -752,7 +870,7 @@ class Database:
     async def save_author_info(self, info: dict[str, Any]) -> dict[str, Any]:
         return await self.set_author_info(info)
 
-    # --- Existing Favorites, Notes, Todos, Settings & Analytics ---
+    # --- Favorites, Notes, Todos, Settings & Analytics ---
     async def toggle_favorite(self, user_id: int, tool_id: str) -> bool:
         async with aiosqlite.connect(self.db_path) as db:
             cur = await db.execute(
@@ -885,7 +1003,7 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             u_cur = await db.execute(
-                "SELECT COUNT(*) AS total_users, COALESCE(SUM(tools_used), 0) AS total_runs, COALESCE(SUM(xp), 0) AS total_xp, COALESCE(SUM(profile_views), 0) AS total_views FROM users"
+                "SELECT COUNT(*) AS total_users, COALESCE(SUM(tools_used), 0) AS total_runs, COALESCE(SUM(xp), 0) AS total_xp, COALESCE(SUM(profile_views), 0) AS total_views FROM users WHERE is_real = 1"
             )
             u_stats = dict(await u_cur.fetchone())
 

@@ -10,7 +10,7 @@ import {
   StickyNote,
   Trash2,
 } from 'lucide-react';
-import { NoteItem, TodoItem, apiPost, copyText } from '../../lib/api';
+import { HabitItem, NoteItem, TodoItem, apiDelete, apiPost, copyText } from '../../lib/api';
 
 interface Props {
   activeCategory: string;
@@ -18,6 +18,7 @@ interface Props {
   onSelectTool: (t: string) => void;
   notes: NoteItem[];
   todos: TodoItem[];
+  habits: HabitItem[];
   onRefreshWorkspace: () => void;
   onToast: (msg: string) => void;
 }
@@ -28,6 +29,7 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   onSelectTool,
   notes,
   todos,
+  habits,
   onRefreshWorkspace,
   onToast,
 }) => {
@@ -76,11 +78,22 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   const [rndRes, setRndRes] = useState<any>(null);
 
   // --- Hub 8: Workspace ---
+  const [wsTab, setWsTab] = useState<'habits' | 'todos' | 'notes'>('habits');
+  const [habitTitle, setHabitTitle] = useState('');
+  const [habitIcon, setHabitIcon] = useState('✅');
+  const [habitTarget, setHabitTarget] = useState(7);
+
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [noteTag, setNoteTag] = useState('work');
   const [todoText, setTodoText] = useState('');
   const [todoPriority, setTodoPriority] = useState<'normal' | 'high'>('normal');
+
+  useEffect(() => {
+    if (activeTool === 'habit_tracker') setWsTab('habits');
+    else if (activeTool === 'todo_board') setWsTab('todos');
+    else if (activeTool === 'notes_vault') setWsTab('notes');
+  }, [activeTool]);
 
   useEffect(() => {
     if (activeTool === 'smart_units') setCalcTab('smart_units');
@@ -498,14 +511,16 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
                   monthly_topup: finTopup,
                   people_count: finPeople,
                   tip_pct: finTip,
-                }).then((r) => {
-                  setFinRes(r);
-                  onRefreshWorkspace();
                 })
+                  .then((r) => {
+                    setFinRes(r);
+                    onRefreshWorkspace();
+                  })
+                  .catch((err) => onToast(err.message))
               }
               className="px-6 py-2.5 rounded-xl bg-indigo-500 text-white font-semibold text-xs"
             >
-              Рассчитать финансовую модель
+              Рассчитать
             </button>
 
             {finRes && (
@@ -720,10 +735,12 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
             />
             <button
               onClick={() =>
-                apiPost('/api/tools/text/layout', { text: layoutText }).then((r) => {
-                  setLayoutRes(r);
-                  onRefreshWorkspace();
-                })
+                apiPost('/api/tools/text/layout', { text: layoutText })
+                  .then((r) => {
+                    setLayoutRes(r);
+                    onRefreshWorkspace();
+                  })
+                  .catch((err) => onToast(err.message))
               }
               className="px-5 py-2.5 rounded-xl bg-pink-500 hover:bg-pink-400 text-slate-950 font-semibold text-xs"
             >
@@ -767,10 +784,12 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
               />
               <button
                 onClick={() =>
-                  apiPost('/api/tools/text/fonts', { text: fontInput }).then((r) => {
-                    setFontRes(r);
-                    onRefreshWorkspace();
-                  })
+                  apiPost('/api/tools/text/fonts', { text: fontInput })
+                    .then((r) => {
+                      setFontRes(r);
+                      onRefreshWorkspace();
+                    })
+                    .catch((err) => onToast(err.message))
                 }
                 className="px-5 py-2 rounded-xl bg-pink-500 text-slate-950 font-semibold text-xs"
               >
@@ -814,14 +833,16 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
             </div>
             <button
               onClick={() =>
-                apiPost('/api/tools/text/diff', { text_a: diffA, text_b: diffB }).then((r) => {
-                  setDiffRes(r);
-                  onRefreshWorkspace();
-                })
+                apiPost('/api/tools/text/diff', { text_a: diffA, text_b: diffB })
+                  .then((r) => {
+                    setDiffRes(r);
+                    onRefreshWorkspace();
+                  })
+                  .catch((err) => onToast(err.message))
               }
               className="px-5 py-2 rounded-xl bg-pink-500 text-slate-950 font-semibold text-xs"
             >
-              Выполнить анализ и сравнение Diff
+              Сравнить тексты
             </button>
             {diffRes && (
               <div className="space-y-3">
@@ -939,190 +960,423 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   }
 
   // =========================================================================
-  // HUB 8: SYNCED PERSONAL WORKSPACE (NOTES & TODOS)
+  // HUB 8: WORKSPACE (HABIT TRACKER, TODOS, NOTES)
   // =========================================================================
+  const addHabit = async () => {
+    const clean = habitTitle.trim();
+    if (!clean) {
+      onToast('Введите название привычки');
+      return;
+    }
+    try {
+      await apiPost('/api/workspace/habits', {
+        title: clean,
+        icon: habitIcon,
+        target_per_week: habitTarget,
+      });
+      setHabitTitle('');
+      onRefreshWorkspace();
+      onToast('Привычка добавлена');
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка сохранения');
+    }
+  };
+
+  const toggleHabitDay = async (habitId: number, dateStr?: string) => {
+    try {
+      await apiPost(`/api/workspace/habits/${habitId}/toggle`, { date: dateStr || null });
+      onRefreshWorkspace();
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка отметки');
+    }
+  };
+
+  const removeHabit = async (habitId: number) => {
+    try {
+      await apiDelete(`/api/workspace/habits/${habitId}`);
+      onRefreshWorkspace();
+      onToast('Привычка удалена');
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка удаления');
+    }
+  };
+
   const addNote = async () => {
-    if (!noteContent.trim() && !noteTitle.trim()) return;
-    await apiPost('/api/workspace/notes', {
-      title: noteTitle || 'Быстрая заметка',
-      content: noteContent || noteTitle,
-      tag: noteTag,
-    });
-    setNoteTitle('');
-    setNoteContent('');
-    onRefreshWorkspace();
-    onToast('Заметка сохранена и синхронизирована с Telegram-ботом 📝');
+    if (!noteContent.trim() && !noteTitle.trim()) {
+      onToast('Введите текст заметки');
+      return;
+    }
+    try {
+      await apiPost('/api/workspace/notes', {
+        title: noteTitle || 'Заметка',
+        content: noteContent || noteTitle,
+        tag: noteTag,
+      });
+      setNoteTitle('');
+      setNoteContent('');
+      onRefreshWorkspace();
+      onToast('Заметка сохранена');
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка сохранения заметки');
+    }
   };
 
   const addTodo = async () => {
-    if (!todoText.trim()) return;
-    await apiPost('/api/workspace/todos', {
-      text: todoText,
-      priority: todoPriority,
-    });
-    setTodoText('');
-    onRefreshWorkspace();
+    if (!todoText.trim()) {
+      onToast('Введите текст задачи');
+      return;
+    }
+    try {
+      await apiPost('/api/workspace/todos', {
+        text: todoText,
+        priority: todoPriority,
+      });
+      setTodoText('');
+      onRefreshWorkspace();
+    } catch (e: any) {
+      onToast(e.message || 'Ошибка добавления задачи');
+    }
   };
 
   const doneCount = todos.filter((t) => t.done).length;
   const pct = todos.length ? Math.round((doneCount / todos.length) * 100) : 0;
 
+  const formatShortDay = (iso: string) => {
+    const d = new Date(iso + 'T00:00:00');
+    const names = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    return `${names[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      {/* Notes */}
-      <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-teal-300 font-semibold text-sm">
-            <StickyNote className="w-4 h-4" /> Заметки и Сниппеты ({notes.length})
-          </div>
-          <span className="text-[11px] text-slate-400">Общая БД с /notes в боте</span>
-        </div>
-
-        <div className="space-y-2 p-3 rounded-xl bg-slate-950/70 border border-white/10">
-          <div className="flex gap-2">
-            <input
-              value={noteTitle}
-              onChange={(e) => setNoteTitle(e.target.value)}
-              placeholder="Заголовок заметки…"
-              className="flex-1 rounded-lg bg-slate-900 border border-white/10 px-3 py-1.5 text-xs text-white"
-            />
-            <select
-              value={noteTag}
-              onChange={(e) => setNoteTag(e.target.value)}
-              className="rounded-lg bg-slate-900 border border-white/10 px-2.5 py-1.5 text-xs text-white"
-            >
-              <option value="work">#work</option>
-              <option value="dev">#dev</option>
-              <option value="ideas">#ideas</option>
-            </select>
-          </div>
-          <textarea
-            rows={2}
-            value={noteContent}
-            onChange={(e) => setNoteContent(e.target.value)}
-            placeholder="Текст или код сниппета…"
-            className="w-full rounded-lg bg-slate-900 border border-white/10 p-2.5 text-xs text-white"
-          />
+    <div className="space-y-4">
+      {/* Sub-tabs */}
+      <div className="grid grid-cols-3 gap-1.5 bg-slate-900/80 p-1 rounded-xl border border-white/10">
+        {[
+          { id: 'habits', tool: 'habit_tracker', label: `📅 Привычки (${habits.length})` },
+          { id: 'todos', tool: 'todo_board', label: `☑️ Задачи (${doneCount}/${todos.length})` },
+          { id: 'notes', tool: 'notes_vault', label: `📝 Заметки (${notes.length})` },
+        ].map((t) => (
           <button
-            onClick={addNote}
-            className="w-full py-2 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-semibold text-xs flex items-center justify-center gap-1.5"
+            key={t.id}
+            onClick={() => {
+              setWsTab(t.id as any);
+              onSelectTool(t.tool);
+            }}
+            className={`py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition ${
+              wsTab === t.id
+                ? 'bg-emerald-600 text-white shadow'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
           >
-            <Plus className="w-3.5 h-3.5" /> Сохранить заметку
+            {t.label}
           </button>
-        </div>
-
-        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-          {notes.map((n) => (
-            <div key={n.id} className="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-medium text-xs text-white flex items-center gap-1.5">
-                  {n.pinned === 1 && <span className="text-amber-400">📌</span>}
-                  {n.title}
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300">#{n.tag}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() =>
-                      apiPost(`/api/workspace/notes/${n.id}/pin`, {}).then(onRefreshWorkspace)
-                    }
-                    className="p-1 text-slate-400 hover:text-amber-300"
-                    title="Закрепить"
-                  >
-                    <Pin className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() =>
-                      fetch(`/api/workspace/notes/${n.id}`, { method: 'DELETE' }).then(onRefreshWorkspace)
-                    }
-                    className="p-1 text-slate-400 hover:text-rose-400"
-                    title="Удалить"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              <p className="text-xs text-slate-300 whitespace-pre-wrap">{n.content}</p>
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
 
-      {/* Interactive Todos */}
-      <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-emerald-300 font-semibold text-sm">
-            <CheckSquare className="w-4 h-4" /> Интерактивный Чек-лист ({doneCount}/{todos.length})
-          </div>
-          <span className="text-xs font-mono text-emerald-300">{pct}%</span>
-        </div>
-
-        <div className="h-2 rounded-full bg-slate-950 overflow-hidden border border-white/5">
-          <div
-            className="h-full bg-gradient-to-r from-teal-400 to-emerald-400 transition-all duration-300"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-
-        <div className="flex gap-2">
-          <input
-            value={todoText}
-            onChange={(e) => setTodoText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') addTodo();
-            }}
-            placeholder="Новая задача (синхронно с /todo в боте)…"
-            className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-          />
-          <select
-            value={todoPriority}
-            onChange={(e) => setTodoPriority(e.target.value as any)}
-            className="rounded-xl bg-slate-950 border border-white/10 px-2.5 py-2 text-xs text-white"
-          >
-            <option value="normal">Обычный</option>
-            <option value="high">🔥 Важно</option>
-          </select>
-          <button
-            onClick={addTodo}
-            className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs"
-          >
-            +
-          </button>
-        </div>
-
-        <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-          {todos.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950 border border-white/10"
-            >
-              <button
-                onClick={() =>
-                  apiPost(`/api/workspace/todos/${item.id}/toggle`, {}).then(onRefreshWorkspace)
-                }
-                className="flex items-center gap-2.5 text-left flex-1 min-w-0"
-              >
-                <span className="text-base">{item.done ? '✅' : '⬜'}</span>
-                <span
-                  className={`text-xs truncate ${
-                    item.done ? 'line-through text-slate-500' : 'text-slate-100'
+      {/* 1. HABIT TRACKER */}
+      {wsTab === 'habits' && (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-4">
+          <div className="space-y-2.5 p-3.5 rounded-xl bg-slate-950/70 border border-white/10">
+            <div className="text-xs font-medium text-slate-300">Новая привычка</div>
+            <div className="flex flex-wrap gap-1.5">
+              {['✅', '💪', '📚', '💧', '🏃', '🧘', '💤', '🍎'].map((ic) => (
+                <button
+                  key={ic}
+                  type="button"
+                  onClick={() => setHabitIcon(ic)}
+                  className={`w-8 h-8 rounded-lg border text-sm flex items-center justify-center transition ${
+                    habitIcon === ic
+                      ? 'bg-emerald-600/30 border-emerald-400'
+                      : 'bg-slate-900 border-white/10 hover:border-white/25'
                   }`}
                 >
-                  {item.priority === 'high' && !item.done ? '🔥 ' : ''}
-                  {item.text}
-                </span>
-              </button>
-              <button
-                onClick={() =>
-                  fetch(`/api/workspace/todos/${item.id}`, { method: 'DELETE' }).then(onRefreshWorkspace)
-                }
-                className="p-1 text-slate-500 hover:text-rose-400"
+                  {ic}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                value={habitTitle}
+                onChange={(e) => setHabitTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addHabit();
+                }}
+                placeholder="Например: Чтение 20 минут, Зарядка, Вода 2 л"
+                className="flex-1 rounded-xl bg-slate-900 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-400"
+              />
+              <select
+                value={habitTarget}
+                onChange={(e) => setHabitTarget(Number(e.target.value))}
+                className="rounded-xl bg-slate-900 border border-white/10 px-3 py-2 text-xs text-white"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <option value={7}>Цель: каждый день (7/нед)</option>
+                <option value={5}>Цель: 5 раз в неделю</option>
+                <option value={3}>Цель: 3 раза в неделю</option>
+              </select>
+              <button
+                onClick={addHabit}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> Добавить
               </button>
             </div>
-          ))}
+          </div>
+
+          {habits.length === 0 ? (
+            <div className="p-6 text-center text-sm text-slate-400">
+              Список привычек пуст. Добавьте первую привычку выше, чтобы отмечать дни выполнения.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {habits.map((h) => (
+                <div key={h.id} className="p-3.5 rounded-xl bg-slate-950/80 border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <button
+                        onClick={() => toggleHabitDay(h.id)}
+                        className={`w-8 h-8 rounded-lg border flex items-center justify-center text-sm shrink-0 transition ${
+                          h.done_today
+                            ? 'bg-emerald-600 border-emerald-400 text-white'
+                            : 'bg-slate-900 border-white/15 text-slate-400 hover:border-emerald-400'
+                        }`}
+                        title="Отметить сегодня"
+                      >
+                        {h.done_today ? '✓' : h.icon}
+                      </button>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-white truncate">
+                          {h.icon} {h.title}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          За 7 дн.: <b className="text-slate-200">{h.done_week}/{h.target_per_week}</b>
+                          {' • '}Серия: <b className="text-emerald-400">{h.streak} дн.</b>
+                          {' • '}Всего: {h.total_completions}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeHabit(h.id)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-white/5"
+                      title="Удалить привычку"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* 7-day interactive grid */}
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {h.last_7_days.map((cell) => (
+                      <button
+                        key={cell.date}
+                        onClick={() => toggleHabitDay(h.id, cell.date)}
+                        className={`py-1.5 px-1 rounded-lg border text-center transition ${
+                          cell.completed
+                            ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200 font-semibold'
+                            : 'bg-slate-900 border-white/5 text-slate-400 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="text-[10px] leading-tight">{formatShortDay(cell.date)}</div>
+                        <div className="text-xs mt-0.5">{cell.completed ? '✓' : '·'}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* 2. TODOS */}
+      {wsTab === 'todos' && (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-emerald-300 font-semibold text-sm">
+              <CheckSquare className="w-4 h-4" /> Список дел ({doneCount}/{todos.length})
+            </div>
+            <div className="flex items-center gap-3">
+              {doneCount > 0 && (
+                <button
+                  onClick={() =>
+                    apiPost('/api/workspace/todos/clear-done', {})
+                      .then(onRefreshWorkspace)
+                      .catch((e) => onToast(e.message))
+                  }
+                  className="text-xs text-slate-400 hover:text-rose-300"
+                >
+                  Очистить выполненные
+                </button>
+              )}
+              <span className="text-xs font-mono text-emerald-300">{pct}%</span>
+            </div>
+          </div>
+
+          <div className="h-2 rounded-full bg-slate-950 overflow-hidden border border-white/5">
+            <div
+              className="h-full bg-emerald-500 transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              value={todoText}
+              onChange={(e) => setTodoText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') addTodo();
+              }}
+              placeholder="Новая задача..."
+              className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
+            />
+            <select
+              value={todoPriority}
+              onChange={(e) => setTodoPriority(e.target.value as any)}
+              className="rounded-xl bg-slate-950 border border-white/10 px-2.5 py-2 text-xs text-white"
+            >
+              <option value="normal">Обычная</option>
+              <option value="high">Важная</option>
+            </select>
+            <button
+              onClick={addTodo}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            {todos.length === 0 ? (
+              <div className="p-4 text-center text-xs text-slate-400">Список задач пуст</div>
+            ) : (
+              todos.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950 border border-white/10"
+                >
+                  <button
+                    onClick={() =>
+                      apiPost(`/api/workspace/todos/${item.id}/toggle`, {})
+                        .then(onRefreshWorkspace)
+                        .catch((e) => onToast(e.message))
+                    }
+                    className="flex items-center gap-2.5 text-left flex-1 min-w-0"
+                  >
+                    <span className="text-base">{item.done ? '✅' : '⬜'}</span>
+                    <span
+                      className={`text-sm truncate ${
+                        item.done ? 'line-through text-slate-500' : 'text-slate-100'
+                      }`}
+                    >
+                      {item.priority === 'high' && !item.done ? '❗ ' : ''}
+                      {item.text}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      apiDelete(`/api/workspace/todos/${item.id}`)
+                        .then(onRefreshWorkspace)
+                        .catch((e) => onToast(e.message))
+                    }
+                    className="p-1.5 text-slate-500 hover:text-rose-400"
+                    title="Удалить"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 3. NOTES */}
+      {wsTab === 'notes' && (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-teal-300 font-semibold text-sm">
+              <StickyNote className="w-4 h-4" /> Заметки ({notes.length})
+            </div>
+          </div>
+
+          <div className="space-y-2 p-3 rounded-xl bg-slate-950/70 border border-white/10">
+            <div className="flex gap-2">
+              <input
+                value={noteTitle}
+                onChange={(e) => setNoteTitle(e.target.value)}
+                placeholder="Заголовок..."
+                className="flex-1 rounded-lg bg-slate-900 border border-white/10 px-3 py-2 text-sm text-white"
+              />
+              <select
+                value={noteTag}
+                onChange={(e) => setNoteTag(e.target.value)}
+                className="rounded-lg bg-slate-900 border border-white/10 px-2.5 py-2 text-xs text-white"
+              >
+                <option value="general">Общее</option>
+                <option value="work">Работа</option>
+                <option value="ideas">Идеи</option>
+              </select>
+            </div>
+            <textarea
+              rows={3}
+              value={noteContent}
+              onChange={(e) => setNoteContent(e.target.value)}
+              placeholder="Текст заметки..."
+              className="w-full rounded-lg bg-slate-900 border border-white/10 p-2.5 text-sm text-white"
+            />
+            <button
+              onClick={addNote}
+              className="w-full py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" /> Сохранить заметку
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {notes.length === 0 ? (
+              <div className="p-4 text-center text-xs text-slate-400">Заметок пока нет</div>
+            ) : (
+              notes.map((n) => (
+                <div key={n.id} className="p-3.5 rounded-xl bg-slate-950 border border-white/10 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-semibold text-sm text-white flex items-center gap-1.5">
+                      {n.pinned === 1 && <span className="text-amber-400">📌</span>}
+                      {n.title}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300">
+                        {n.tag}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() =>
+                          apiPost(`/api/workspace/notes/${n.id}/pin`, {})
+                            .then(onRefreshWorkspace)
+                            .catch((e) => onToast(e.message))
+                        }
+                        className="p-1.5 text-slate-400 hover:text-amber-300"
+                        title="Закрепить"
+                      >
+                        <Pin className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() =>
+                          apiDelete(`/api/workspace/notes/${n.id}`)
+                            .then(onRefreshWorkspace)
+                            .catch((e) => onToast(e.message))
+                        }
+                        className="p-1.5 text-slate-400 hover:text-rose-400"
+                        title="Удалить"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-300 whitespace-pre-wrap">{n.content}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -249,15 +249,15 @@ export const TelegramSimulator: React.FC<Props> = ({ onOpenMiniAppTool, onWorksp
   };
 
   const omniQuickChips = [
-    { label: '🔮 6 дюймов', value: '6 дюймов' },
-    { label: '💡 /bored', value: '/bored' },
+    { label: '🌟 /horoscope', value: '/horoscope' },
+    { label: '💞 /compat', value: '/compat' },
+    { label: '⚛️ /physics', value: '/physics' },
+    { label: '📅 /habits', value: '/habits' },
+    { label: '📏 75 кг в фунты', value: '75 кг в фунты' },
     { label: '🥃 /alcohol', value: '/alcohol' },
-    { label: '🎤 рифма к любовь', value: 'рифма к любовь' },
-    { label: '🌟 /stand', value: '/stand' },
+    { label: '💡 /bored', value: '/bored' },
     { label: '🏆 /top', value: '/top' },
-    { label: '💘 /altushka', value: '/altushka' },
-    { label: '🕶️ /author', value: '/author' },
-    { label: '⌨️ Ghbdtn? rfr ltkf&', value: 'Ghbdtn? rfr ltkf&' },
+    { label: '🔗 /author', value: '/author' },
   ];
 
   return (

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from aiogram import Bot, F, Router
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
@@ -366,6 +367,8 @@ async def cb_open_tool(
         await _render_todos_view(callback)
         return
 
+    raise SkipHandler()
+
 
 # ==============================================================================
 # Password Forge Callbacks & /pass Command
@@ -426,10 +429,10 @@ async def cb_qr_cfg(callback: CallbackQuery, state: FSMContext) -> None:
 async def cmd_qr(message: Message, user_favorites: list[str]) -> None:
     arg = (message.text or "").partition(" ")[2].strip()
     if not arg:
-        arg = "https://t.me/nexus_multitool_bot"
+        arg = "https://t.me/multi_tg_bot"
     parts = [p.strip() for p in arg.split("|")]
     payload = parts[0]
-    badge = parts[1] if len(parts) > 1 else "NX"
+    badge = parts[1] if len(parts) > 1 else "MT"
     png = generate_styled_qr(payload, theme="cyber", shape="rounded", badge_text=badge, caption=payload[:42])
     await db.record_tool_use(message.from_user.id, "qr_studio", "qr", "bot", payload[:50])
     await message.answer_photo(
