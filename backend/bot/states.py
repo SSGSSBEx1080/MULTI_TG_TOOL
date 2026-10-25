@@ -59,3 +59,7 @@ class ToolState(StatesGroup):
     birth_date_waiting = State()
     compat_waiting_dates = State()
     physics_waiting_params = State()
+
+    # v6 AI Assistant & CBT Psychotherapist
+    ai_web_chat_waiting = State()
+    ai_cbt_waiting = State()

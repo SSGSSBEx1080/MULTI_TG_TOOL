@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useState } from 'react';
+import { RefObject, useEffect, useRef, useState } from 'react';
 
 export interface Vec3 {
   x: number;
@@ -502,4 +502,34 @@ export const createCylinder = (rTop = 0.5, rBot = 0.5, height = 1.6, segs = 18):
 
   return { vertices, faces, edges: uniqueEdgesFromFaces(faces) };
 };
+
+export const useCanvasVisibility = () => {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    let inView = true;
+    const sync = () => setVisible(inView && document.visibilityState !== 'hidden');
+    let obs: IntersectionObserver | null = null;
+    if (el && typeof IntersectionObserver !== 'undefined') {
+      obs = new IntersectionObserver(
+        (entries) => {
+          inView = entries[0]?.isIntersecting ?? true;
+          sync();
+        },
+        { threshold: 0.02 }
+      );
+      obs.observe(el);
+    }
+    document.addEventListener('visibilitychange', sync);
+    return () => {
+      obs?.disconnect();
+      document.removeEventListener('visibilitychange', sync);
+    };
+  }, []);
+
+  return { wrapRef, visible };
+};
+
 

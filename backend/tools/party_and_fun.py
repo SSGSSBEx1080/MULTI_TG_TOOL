@@ -412,6 +412,187 @@ def calculate_pencil_index(
 
 
 # ==============================================================================
+# 2B. Десятифакторный Маммометрический Расчёт Размера Женской Груди (Реалистичная калибровка)
+# ==============================================================================
+
+BREAST_COMPARISON_OBJECTS: list[dict[str, Any]] = [
+    {"id": "tangerine", "name": "Мандарин абхазский", "volume_ml": 115, "diameter_cm": 7.6, "cup_hint": "AA", "color": "#fb923c"},
+    {"id": "champagne_coupe", "name": "Бокал шампанского «Мария-Антуанетта»", "volume_ml": 185, "diameter_cm": 9.2, "cup_hint": "A", "color": "#fde047"},
+    {"id": "peach", "name": "Спелый бархатный персик", "volume_ml": 255, "diameter_cm": 10.3, "cup_hint": "B", "color": "#f472b6"},
+    {"id": "apple_large", "name": "Крупное яблоко Гренни Смит", "volume_ml": 340, "diameter_cm": 11.4, "cup_hint": "B+/C", "color": "#4ade80"},
+    {"id": "grapefruit", "name": "Розовый грейпфрут", "volume_ml": 450, "diameter_cm": 12.6, "cup_hint": "C", "color": "#fb7185"},
+    {"id": "coconut", "name": "Кокосовый орех в скорлупе", "volume_ml": 590, "diameter_cm": 13.8, "cup_hint": "D", "color": "#a16207"},
+    {"id": "pomelo", "name": "Азиатское помело", "volume_ml": 740, "diameter_cm": 15.0, "cup_hint": "E (DD)", "color": "#a3e635"},
+    {"id": "cantaloupe", "name": "Дыня Канталупа", "volume_ml": 910, "diameter_cm": 16.2, "cup_hint": "F", "color": "#f59e0b"},
+]
+
+
+def calculate_breast_size_index(
+    age: int = 22,
+    height_cm: float = 166.0,
+    underbust_cm: float = 74.0,
+    hip_cm: float = 95.0,
+    hair_length_cm: float = 42.0,
+    matcha_latte_per_week: int = 4,
+    pinterest_pins: int = 650,
+    skincare_jars: int = 9,
+    shower_temp_c: float = 41.0,
+    sims_genshin_hours: int = 280,
+) -> dict[str, Any]:
+    """
+    Десятифакторная антропометрическая модель женской маммометрии
+    (базовая медианная проекция Δ = ОГ − ОПГ = 14.3 см, чашка B/C, стандарт EN 13402).
+    """
+    clamped_age = max(18, min(68, int(age)))
+    clamped_h = max(145.0, min(195.0, float(height_cm)))
+    clamped_ub = max(62.0, min(104.0, float(underbust_cm)))
+    clamped_hip = max(78.0, min(132.0, float(hip_cm)))
+    clamped_hair = max(3.0, min(110.0, float(hair_length_cm)))
+    clamped_matcha = max(0, min(28, int(matcha_latte_per_week)))
+    clamped_pins = max(0, min(10000, int(pinterest_pins)))
+    clamped_jars = max(0, min(50, int(skincare_jars)))
+    clamped_shower = max(33.0, min(48.0, float(shower_temp_c)))
+    clamped_games = max(0, min(6000, int(sims_genshin_hours)))
+
+    # Базовая разница ОГ - ОПГ (в см) в европейской популяции ~14.2 см (между B и C)
+    delta_cm = 14.20
+    factors: list[dict[str, Any]] = []
+
+    # 1. Тонус связок Купера (ligamenta suspensoria) по возрасту
+    age_d = round(min(0.85, max(-0.55, (clamped_age - 22) * 0.045)), 2)
+    delta_cm += age_d
+    factors.append({"label": f"Эластичность фасциальных связок Купера ({clamped_age} лет)", "impact_cm": age_d})
+
+    # 2. Гиноидный эстрадиоловый индекс (соотношение обхвата бёдер к ОПГ)
+    hip_ratio_d = round(max(-2.1, min(3.2, (clamped_hip - (clamped_ub + 20.5)) * 0.145)), 2)
+    delta_cm += hip_ratio_d
+    factors.append({"label": f"Гиноидное эстрадиоловое депо адипоцитов (бёдра {clamped_hip:.0f} см)", "impact_cm": hip_ratio_d})
+
+    # 3. Продольная соматотропная проекция грудной клетки (рост)
+    h_d = round((clamped_h - 166.0) * 0.024, 2)
+    delta_cm += h_d
+    factors.append({"label": f"Торакальная пропорция грудной клетки (рост {clamped_h:.0f} см)", "impact_cm": h_d})
+
+    # 4. Фолликулярная ароматазная корреляция длины волос
+    hair_d = round(max(-0.5, min(0.75, (clamped_hair - 38.0) * 0.012)), 2)
+    delta_cm += hair_d
+    factors.append({"label": f"Экспрессия рецепторов эстрогена ER-β (волосы {clamped_hair:.0f} см)", "impact_cm": hair_d})
+
+    # 5. Фитоэстрогеновый индекс матчи и растительного молока
+    if clamped_matcha <= 9:
+        matcha_d = round(clamped_matcha * 0.085, 2)
+    else:
+        matcha_d = round(0.76 - (clamped_matcha - 9) * 0.035, 2)
+    delta_cm += matcha_d
+    factors.append({"label": f"Изофлавоновая модуляция растительного латте/матчи ({clamped_matcha} чаш./нед)", "impact_cm": matcha_d})
+
+    # 6. Нейроэстетический дофаминовый отклик досок Pinterest
+    pins_d = round(min(0.62, math.log10(clamped_pins + 10) * 0.22 - 0.35), 2)
+    delta_cm += pins_d
+    factors.append({"label": f"Визуально-лимбическая стимуляция гипофиза ({clamped_pins} пинов Pinterest)", "impact_cm": pins_d})
+
+    # 7. Трансдермальная дисциплина баночек ухода на полке
+    jars_d = round(max(-0.35, min(0.68, (clamped_jars - 7) * 0.032)), 2)
+    delta_cm += jars_d
+    factors.append({"label": f"Пептидно-церамидный индекс домашней полки ({clamped_jars} средств)", "impact_cm": jars_d})
+
+    # 8. Термальная вазодилатация («кипяток» в душе)
+    shower_d = round(max(-0.60, min(0.72, (clamped_shower - 39.5) * 0.095)), 2)
+    delta_cm += shower_d
+    factors.append({"label": f"Капиллярная гиперемия от температуры душа ({clamped_shower:.0f} °C)", "impact_cm": shower_d})
+
+    # 9. Ночной мелатониново-пролактиновый сдвиг (Sims 4 / Genshin / Клуб Романтики)
+    games_d = round(min(0.58, (clamped_games / 1200.0) * 0.28) if clamped_games <= 2400 else round(0.56 - (clamped_games - 2400) / 8000.0, 2), 2)
+    delta_cm += games_d
+    factors.append({"label": f"Циркадный пролактиновый фон (Sims / Genshin / новеллы: {clamped_games} ч)", "impact_cm": games_d})
+
+    # 10. Опорный каркас пояса (ОПГ)
+    ub_d = round((clamped_ub - 74.0) * 0.04, 2)
+    delta_cm += ub_d
+    factors.append({"label": f"Ширина основания грудной фасции (ОПГ {clamped_ub:.0f} см)", "impact_cm": ub_d})
+
+    delta_cm = round(max(8.5, min(24.5, delta_cm)), 2)
+    bust_cm = round(clamped_ub + delta_cm, 1)
+
+    # Стандарт EN 13402: округление пояса с шагом 5 см
+    eu_band = int(round(clamped_ub / 5.0) * 5)
+    eu_band = max(65, min(105, eu_band))
+    us_band = int(round(eu_band / 5) * 2 + 2)  # 65->30, 70->32, 75->34, 80->36, 85->38
+
+    cup_table = [
+        (10.0, "AA", "AA"),
+        (12.0, "A", "A"),
+        (14.0, "B", "B"),
+        (16.0, "C", "C"),
+        (18.0, "D", "D"),
+        (20.0, "E", "DD"),
+        (22.0, "F", "DDD / F"),
+        (99.0, "G", "G"),
+    ]
+    eu_cup = "B"
+    us_cup = "B"
+    for max_d, c_eu, c_us in cup_table:
+        if delta_cm < max_d:
+            eu_cup, us_cup = c_eu, c_us
+            break
+
+    # Реалистичный объём одной молочной железы (мл) с учётом и чашки, и ширины пояса (sister sizing!)
+    band_steps = (eu_band - 75) / 5.0
+    cup_idx = ["AA", "A", "B", "C", "D", "E", "F", "G"].index(eu_cup)
+    base_volumes = [130, 195, 275, 380, 500, 635, 780, 930]
+    frac = (delta_cm - (8.0 + cup_idx * 2.0)) / 2.0
+    frac = max(-0.4, min(0.6, frac))
+    single_volume_ml = int(round(max(105.0, (base_volumes[cup_idx] * (1.0 + 0.14 * frac)) * (1.0 + band_steps * 0.11))))
+    pair_weight_g = int(round(single_volume_ml * 2 * 0.91))  # плотность адипозно-гландулярной ткани ~0.91 г/см³
+    spine_load_newtons = round((pair_weight_g / 1000.0) * 9.81, 2)
+
+    z = (delta_cm - 14.3) / 2.85
+    percentile = round(min(99.4, max(1.2, 0.5 * (1.0 + math.erf(z / math.sqrt(2.0))) * 100.0)), 1)
+
+    for f in factors:
+        imp = f["impact_cm"]
+        f["impact"] = f"{'+' if imp >= 0 else ''}{imp:.2f} см к проекции"
+
+    comparisons = []
+    for obj in BREAST_COMPARISON_OBJECTS:
+        diff_ml = single_volume_ml - obj["volume_ml"]
+        ratio = round(single_volume_ml / obj["volume_ml"], 2)
+        comparisons.append({
+            **obj,
+            "diff_ml": diff_ml,
+            "ratio": ratio,
+            "verdict": (
+                f"Точное совпадение объёма ({diff_ml:+d} мл)"
+                if abs(diff_ml) <= 38
+                else (f"Крупнее на {diff_ml} мл ({ratio}×)" if diff_ml > 0 else f"Компактнее на {abs(diff_ml)} мл ({ratio}×)")
+            ),
+        })
+    closest_obj = min(comparisons, key=lambda item: abs(item["diff_ml"]))
+
+    return {
+        "eu_size": f"{eu_band}{eu_cup}",
+        "us_uk_size": f"{us_band}{us_cup}",
+        "eu_band": eu_band,
+        "eu_cup": eu_cup,
+        "underbust_cm": round(clamped_ub, 1),
+        "bust_cm": bust_cm,
+        "delta_cm": delta_cm,
+        "single_volume_ml": single_volume_ml,
+        "pair_volume_ml": single_volume_ml * 2,
+        "pair_weight_g": pair_weight_g,
+        "spine_load_newtons": spine_load_newtons,
+        "percentile": percentile,
+        "closest_object": closest_obj,
+        "comparisons": comparisons,
+        "factors": factors,
+        "methodology": (
+            "Расчёт выполнен по десятифакторному протоколу НИИ Прикладной Маммометрии (стандарт EN 13402, "
+            "коэффициент плотности гландулярно-липидной паренхимы ρ = 0.91 г/см³, поправка Sister-Sizing по ОПГ)."
+        ),
+    }
+
+
+# ==============================================================================
 # 3. Подсказчик «Что делать, когда нечего делать» (135+ идей + Лигурия!)
 # ==============================================================================
 

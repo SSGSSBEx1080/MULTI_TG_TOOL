@@ -219,6 +219,9 @@ async def handle_smart_omni_text(message: Message) -> None:
             InlineKeyboardButton(text=f"{emoji} {t_hit['title'][:36]}", callback_data=f"tool:open:{t_hit['tool_id']}")
         )
     builder_txt.row(
+        InlineKeyboardButton(text="🌐 Спросить ИИ с Интернетом", callback_data="tool:open:ai_web_chat"),
+    )
+    builder_txt.row(
         InlineKeyboardButton(text="⌨️ Сменить раскладку", callback_data="tool:open:layout_fixer"),
         InlineKeyboardButton(text="✨ Шрифты", callback_data="tool:open:font_styler"),
     )
