@@ -978,3 +978,256 @@ async def cb_open_guess_size(call: CallbackQuery) -> None:
         "Интерактивное 3D-сравнение реальных размеров объектов и рекорды точности.",
     )
 
+
+# ==============================================================================
+# 6. НОВЫЕ ИНСТРУМЕНТЫ: ЗВУК, РЕАКЦИЯ/АИМ, РУССКИЙ ЯЗЫК, ВЕЧЕРИНКА, ПЕСОЧНИЦА
+# ==============================================================================
+_TIMBRICA_BOT_CARDS: dict[str, tuple[str, str, str]] = {
+    "speaker_cleaner": (
+        "audio_device",
+        "💦 Очистка динамика (165 Гц) и Каналы L/R",
+        "Акустический выброс воды на частоте 165 Гц, вытряхивание пыли, проверка левого/правого наушника и сабвуфера.",
+    ),
+    "binaural_noise": (
+        "audio_device",
+        "🧠 Бинауральные ритмы и Фоновый Шум",
+        "Генератор мозговых волн (Дельта, Тета, Шуман 7.83 Гц, Альфа, Бета, Гамма), белый/розовый/коричневый шум и таймер сна.",
+    ),
+    "hearing_sound_meter": (
+        "audio_device",
+        "👂 Тест слуха (Аудиометрия) и Шумомер дБ",
+        "Тональная проверка диапазона слышимости 125–18 000 Гц, оценка возраста слуха и живой измеритель шума в дБ.",
+    ),
+    "music_synth_studio": (
+        "audio_device",
+        "🎹 Пианино, Калимба и Метроном",
+        "Полифоническое пианино с тембрами и подсветкой мелодий, 17-язычковая калимба и точный метроном с Tap BPM.",
+    ),
+    "device_screen_test": (
+        "audio_device",
+        "🖥️ Экран (Гц / Пиксели), Мышь и Геймпад",
+        "Замер реальной частоты обновления монитора (Гц), 8 паттернов на битые пиксели, тест 5 кнопок мыши и дрифта стиков геймпада.",
+    ),
+    "reaction_cps_lab": (
+        "brain_reflex",
+        "⏱️ Скорость реакции (мс) и CPS-тест",
+        "Визуальный и звуковой тест реакции с точностью до миллисекунды + замер кликов в секунду (1–30 с).",
+    ),
+    "aim_trainer_3d": (
+        "brain_reflex",
+        "🎯 3D Тренажёр Аима (Флики и Трекинг)",
+        "4 режима тренировки прицеливания: флик-шот, плавный трекинг движущейся цели, скорость и точность.",
+    ),
+    "schulte_stroop": (
+        "brain_reflex",
+        "🔢 Таблицы Шульте (5 серий) и Тест Струпа",
+        "Классическая серия из 5 таблиц Шульте (ЭР, ВР, ПУ), цветовой тест Струпа и тренировка зрительной памяти.",
+    ),
+    "breath_panic_calm": (
+        "brain_reflex",
+        "🫁 3D Дыхание и Кнопка спокойствия",
+        "Дыхательные протоколы 4-4-4-4, 4-7-8 и физиологический вздох с плавной 3D-сферой и звуковым ритмом.",
+    ),
+    "sand_physics": (
+        "arcade",
+        "⏳ Песочница стихий: Песок, Вода, Лава, Кислота",
+        "Живая физическая симуляция 12 элементов (песок, вода, камень, дерево, огонь, лава, нефть, кислота, порох, растение).",
+    ),
+    "nonogram_15": (
+        "arcade",
+        "🧩 Нонограммы (Японские кроссворды) и Пятнашки",
+        "Пиксельные японские головоломки с числовыми подсказками и классические Пятнашки 3×3, 4×4 и 5×5.",
+    ),
+    "fortune_wheel_8ball": (
+        "party",
+        "🎡 Колесо Фортуны, Шар 8 и Пузырчатая плёнка",
+        "Колесо выбора с инерцией, 20-гранный шар ответов и антистресс-плёнка со звуком хлопков.",
+    ),
+}
+
+
+async def _render_timbrica_card(target: Message | CallbackQuery, tool_id: str, extra_html: str = "") -> None:
+    cat_id, title, desc = _TIMBRICA_BOT_CARDS[tool_id]
+    b = InlineKeyboardBuilder()
+    b.row(webapp_button(f"🚀 Открыть: {title[:28]}", tab=tool_id))
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data=f"nav:cat:{cat_id}"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    body = f"<b>{esc(title)}</b>\n<blockquote>{esc(desc)}</blockquote>"
+    if extra_html:
+        body += f"\n\n{extra_html}"
+    await render_hud(target, body, reply_markup=b.as_markup())
+
+
+@router.callback_query(F.data.in_({f"tool:open:{k}" for k in _TIMBRICA_BOT_CARDS}))
+async def cb_open_timbrica_cards(call: CallbackQuery) -> None:
+    tool_id = call.data.split(":")[-1]
+    cat_id = _TIMBRICA_BOT_CARDS[tool_id][0]
+    await db.record_tool_use(call.from_user.id, tool_id, cat_id, "bot", "open")
+    await _render_timbrica_card(call, tool_id)
+
+
+async def _render_ege_ortho_bot(target: Message | CallbackQuery) -> None:
+    from backend.tools.timbrica_activities import get_ege_stress_deck
+
+    deck = get_ege_stress_deck(count=5)
+    lines = [
+        f"• <b>{esc(w['correct'])}</b> <i>(не «{esc(w['wrong'])}»)</i> — {esc(w['hint'])}"
+        for w in deck["items"]
+    ]
+    b = InlineKeyboardBuilder()
+    b.row(InlineKeyboardButton(text="🔄 Ещё 5 слов ФИПИ", callback_data="v3:ortho_more"))
+    b.row(webapp_button("🎯 Открыть тренажёр, Ёфикатор и Транслит", tab="russian_ege_ortho"))
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:text"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    await render_hud(
+        target,
+        "<b>🎯 Ударения ЕГЭ (ФИПИ), Ёфикатор и Транслитерация ГОСТ</b>\n\n"
+        + "\n".join(lines),
+        reply_markup=b.as_markup(),
+    )
+
+
+@router.message(Command("udareniya", "yo"))
+async def cmd_ege_ortho(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "russian_ege_ortho", "text", "bot", "open")
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) > 1 and parts[1].strip():
+        from backend.tools.timbrica_activities import transliterate_multistandard, yoficate_russian_text
+
+        arg = parts[1].strip()
+        yo_res = yoficate_russian_text(arg)
+        tr_res = transliterate_multistandard(yo_res["output"])
+        tr_lines = "\n".join(f"• {esc(s['title'])}: <code>{esc(s['value'])}</code>" for s in tr_res["standards"][:2])
+        b = InlineKeyboardBuilder()
+        b.row(webapp_button("🎯 Открыть тренажёр, Ёфикатор и Транслит", tab="russian_ege_ortho"))
+        await render_hud(
+            message,
+            f"<b>Ёфикатор ({yo_res['replacements_count']} замен):</b>\n"
+            f"<code>{esc(yo_res['output'])}</code>\n\n"
+            f"<b>Транслитерация:</b>\n{tr_lines}",
+            reply_markup=b.as_markup(),
+        )
+        return
+    await _render_ege_ortho_bot(message)
+
+
+@router.callback_query(F.data.in_({"tool:open:russian_ege_ortho", "v3:ortho_more"}))
+async def cb_ege_ortho(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "russian_ege_ortho", "text", "bot", "open")
+    await _render_ege_ortho_bot(call)
+
+
+async def _render_croco_bot(target: Message | CallbackQuery, level: str = "all") -> None:
+    from backend.tools.timbrica_activities import roll_croco_words
+
+    pack = roll_croco_words(level=level, count=5)
+    words_txt = "\n".join(f"{i + 1}. <b>{esc(w)}</b>" for i, w in enumerate(pack["words"]))
+    b = InlineKeyboardBuilder()
+    b.row(
+        InlineKeyboardButton(text="🟢 Лёгкие", callback_data="v3:croco:easy"),
+        InlineKeyboardButton(text="🟡 Средние", callback_data="v3:croco:medium"),
+        InlineKeyboardButton(text="🔴 Сложные", callback_data="v3:croco:hard"),
+    )
+    b.row(webapp_button("🐊 Открыть режим с таймером раунда", tab="croco_words"))
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:party"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    await render_hud(
+        target,
+        f"<b>🐊 Слова для «Крокодила», Шарад и Шляпы</b>\n\n{words_txt}",
+        reply_markup=b.as_markup(),
+    )
+
+
+@router.message(Command("croco"))
+async def cmd_croco(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "croco_words", "party", "bot", "open")
+    await _render_croco_bot(message)
+
+
+@router.callback_query(F.data == "tool:open:croco_words")
+async def cb_open_croco(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "croco_words", "party", "bot", "open")
+    await _render_croco_bot(call)
+
+
+@router.callback_query(F.data.startswith("v3:croco:"))
+async def cb_roll_croco_lvl(call: CallbackQuery) -> None:
+    lvl = call.data.split(":")[-1]
+    await _render_croco_bot(call, lvl)
+
+
+async def _render_lie_detector_bot(target: Message | CallbackQuery) -> None:
+    from backend.tools.timbrica_activities import get_lie_detector_pack
+
+    qs = get_lie_detector_pack("all")["questions"][:3]
+    q_txt = "\n".join(f"• {esc(q)}" for q in qs)
+    b = InlineKeyboardBuilder()
+    b.row(InlineKeyboardButton(text="🔄 Другие каверзные вопросы", callback_data="v3:lie_more"))
+    b.row(webapp_button("🕵️ Открыть сканер пальца и микрофона", tab="lie_detector_fun"))
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:party"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    await render_hud(
+        target,
+        "<b>🕵️ Шуточный Детектор Лжи и Голоса</b>\n"
+        "<blockquote>В приложении: сканер отпечатка со скрытым режимом ведущего и замер волнения голоса по микрофону.</blockquote>\n\n"
+        f"<b>Вопросы для компании:</b>\n{q_txt}",
+        reply_markup=b.as_markup(),
+    )
+
+
+@router.message(Command("lie"))
+async def cmd_lie_bot(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "lie_detector_fun", "party", "bot", "open")
+    await _render_lie_detector_bot(message)
+
+
+@router.callback_query(F.data.in_({"tool:open:lie_detector_fun", "v3:lie_more"}))
+async def cb_open_lie_bot(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "lie_detector_fun", "party", "bot", "open")
+    await _render_lie_detector_bot(call)
+
+
+@router.message(Command("speaker"))
+async def cmd_speaker(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "speaker_cleaner", "audio_device", "bot", "open")
+    await _render_timbrica_card(message, "speaker_cleaner")
+
+
+@router.message(Command("binaural"))
+async def cmd_binaural(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "binaural_noise", "audio_device", "bot", "open")
+    await _render_timbrica_card(message, "binaural_noise")
+
+
+@router.message(Command("reaction"))
+async def cmd_reaction(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "reaction_cps_lab", "brain_reflex", "bot", "open")
+    await _render_timbrica_card(message, "reaction_cps_lab")
+
+
+@router.message(Command("aim"))
+async def cmd_aim(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "aim_trainer_3d", "brain_reflex", "bot", "open")
+    await _render_timbrica_card(message, "aim_trainer_3d")
+
+
+@router.message(Command("schulte"))
+async def cmd_schulte(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "schulte_stroop", "brain_reflex", "bot", "open")
+    await _render_timbrica_card(message, "schulte_stroop")
+
+
+@router.message(Command("sand"))
+async def cmd_sand(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "sand_physics", "arcade", "bot", "open")
+    await _render_timbrica_card(message, "sand_physics")
+
+

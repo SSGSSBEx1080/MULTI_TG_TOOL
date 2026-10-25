@@ -35,6 +35,10 @@ const SocialDatingHub = lazy(() =>
 const HoroscopeHub = lazy(() => import('./tools/HoroscopeHub').then((m) => ({ default: m.HoroscopeHub })));
 const PhysicsHub = lazy(() => import('./tools/PhysicsHub').then((m) => ({ default: m.PhysicsHub })));
 const UniversesHub = lazy(() => import('./tools/UniversesHub').then((m) => ({ default: m.UniversesHub })));
+const AudioDeviceLabHub = lazy(() =>
+  import('./tools/AudioDeviceLabHub').then((m) => ({ default: m.AudioDeviceLabHub }))
+);
+const BrainReflexHub = lazy(() => import('./tools/BrainReflexHub').then((m) => ({ default: m.BrainReflexHub })));
 
 interface Props {
   isNativeTma?: boolean;
@@ -342,6 +346,12 @@ export const MiniAppStudio: React.FC<Props> = ({
           onToast={onToast}
         />
       );
+    }
+    if (activeCategory === 'audio_device') {
+      return <AudioDeviceLabHub activeTool={activeTool} onToast={onToast} />;
+    }
+    if (activeCategory === 'brain_reflex') {
+      return <BrainReflexHub activeTool={activeTool} onSync={onRefreshWorkspace} onToast={onToast} />;
     }
     if (activeCategory === 'qr' || activeCategory === 'image' || activeCategory === 'pdf') {
       return (

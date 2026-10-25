@@ -3,6 +3,7 @@ import { Play, Trophy } from 'lucide-react';
 import { apiGet, apiPost } from '../../lib/api';
 import { createIcosahedron, cross3, hexToRgb, project3D, rotateEuler, scale3, shadeBlinnPhong, sub3 } from '../../lib/engine3d';
 import { ChessAcademyHub } from './ChessAcademyHub';
+import { NonogramAndSlidingHub, SandPhysicsSandbox } from './SandAndPuzzlesHub';
 import { GuessSizeGame, SpyLobbyHub } from './SpyAndGuessHub';
 
 interface Props {
@@ -16,6 +17,11 @@ const GAME_NAMES: Record<string, string> = {
   chess_academy: '♟️ Шахматы',
   spy_lobby: '🕵️ Шпион',
   guess_size: '📐 Guess Size',
+  sand_physics: '🏜️ Песочница',
+  nonogram_15: '🧩 Нонограммы / 15',
+  reaction_cps_lab: '⏱️ Реакция / CPS',
+  aim_trainer_3d: '🎯 3D Аим',
+  schulte_stroop: '🔢 Шульте',
   arcade_wolf: '🐺 Ну, погоди!',
   wolf: '🐺 Ну, погоди!',
   arcade_doodle: '🚀 Doodle Jump',
@@ -1032,13 +1038,17 @@ const CyberClickerGame: React.FC<{ onSaveScore: (s: number) => void }> = ({ onSa
 // MAIN ARCADE HUB WRAPPER
 // ============================================================================
 export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSync, onToast }) => {
-  const [gameTab, setGameTab] = useState<'chess' | 'spy' | 'guess' | 'wolf' | 'doodle' | 'tetris' | 'clicker'>('chess');
+  const [gameTab, setGameTab] = useState<
+    'chess' | 'spy' | 'guess' | 'sand' | 'nonogram' | 'wolf' | 'doodle' | 'tetris' | 'clicker'
+  >('chess');
   const [highscores, setHighscores] = useState<any[]>([]);
 
   useEffect(() => {
     if (activeTool === 'chess_academy') setGameTab('chess');
     else if (activeTool === 'spy_lobby') setGameTab('spy');
     else if (activeTool === 'guess_size') setGameTab('guess');
+    else if (activeTool === 'sand_physics') setGameTab('sand');
+    else if (activeTool === 'nonogram_15') setGameTab('nonogram');
     else if (activeTool === 'arcade_wolf') setGameTab('wolf');
     else if (activeTool === 'arcade_doodle') setGameTab('doodle');
     else if (activeTool === 'arcade_tetris') setGameTab('tetris');
@@ -1067,13 +1077,16 @@ export const ArcadeGamesHub: React.FC<Props> = ({ activeTool, onSync, onToast })
     }
   };
 
-  const isWideFeatured = gameTab === 'chess' || gameTab === 'spy' || gameTab === 'guess';
+  const isWideFeatured =
+    gameTab === 'chess' || gameTab === 'spy' || gameTab === 'guess' || gameTab === 'sand' || gameTab === 'nonogram';
 
   return (
     <div className="space-y-5 min-w-0">
       {gameTab === 'chess' && <ChessAcademyHub onScoreSubmit={saveScore} onToast={onToast} />}
       {gameTab === 'spy' && <SpyLobbyHub onToast={onToast} />}
       {gameTab === 'guess' && <GuessSizeGame onScoreSubmit={saveScore} onToast={onToast} />}
+      {gameTab === 'sand' && <SandPhysicsSandbox onToast={onToast} />}
+      {gameTab === 'nonogram' && <NonogramAndSlidingHub onScoreSubmit={saveScore} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {!isWideFeatured && (

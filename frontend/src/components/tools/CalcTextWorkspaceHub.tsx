@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { HabitItem, NoteItem, TodoItem, apiDelete, apiPost, copyText } from '../../lib/api';
 import { HabitRing3D, NetworkTopology3D, PolyhedralDice3D } from '../three/Interactive3DScenes';
+import { RussianLanguageStudio } from './RussianLanguageStudio';
 
 interface Props {
   activeCategory: string;
@@ -59,7 +60,7 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   const [subRes, setSubRes] = useState<any>(null);
 
   // --- Hub 7: Text & Random ---
-  const [txtTab, setTxtTab] = useState<'rhyme' | 'layout' | 'fonts' | 'diff' | 'random'>('rhyme');
+  const [txtTab, setTxtTab] = useState<'rhyme' | 'russian_ege' | 'layout' | 'fonts' | 'diff' | 'random'>('rhyme');
   const [rhymeWord, setRhymeWord] = useState('любовь');
   const [rhymeRes, setRhymeRes] = useState<any>(null);
   const [layoutText, setLayoutText] = useState('Ghbdtn? rfr ltkf&');
@@ -104,6 +105,7 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
     else if (activeTool === 'subnet_calc') setCalcTab('subnet');
 
     if (activeTool === 'rhyme_gen') setTxtTab('rhyme');
+    else if (activeTool === 'russian_ege_ortho') setTxtTab('russian_ege');
     else if (activeTool === 'layout_fixer') setTxtTab('layout');
     else if (activeTool === 'font_styler') setTxtTab('fonts');
     else if (activeTool === 'text_diff') setTxtTab('diff');
@@ -934,6 +936,8 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
             )}
           </div>
         )}
+
+        {txtTab === 'russian_ege' && <RussianLanguageStudio onToast={onToast} />}
       </div>
     );
   }
