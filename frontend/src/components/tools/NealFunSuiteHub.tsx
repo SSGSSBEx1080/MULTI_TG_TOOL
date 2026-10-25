@@ -30,6 +30,63 @@ const OCEAN_ZONES = [
   { depth: 10994, title: 'Бездна Челленджера — Дно Марианской впадины', temp: '+1.2 °C', pressure: '1086 атм (~1.1 т на см²)', desc: 'Низшая точка земной коры: здесь побывали Жак Пикар и Дон Уолш («Триест», 1960), Джеймс Кэмерон и Виктор Весково.' },
 ];
 
+const TROLLEY_DILEMMAS = [
+  {
+    id: 'classic',
+    title: '1. Классическая стрелка (Филиппа Фут, 1967)',
+    setup: 'Неуправляемая вагонетка несётся по главному пути, на котором привязаны 5 человек. Вы стоите у рычага стрелки и можете перевести её на запасной путь, где находится 1 человек.',
+    optA: 'Дёрнуть рычаг (погибнет 1, спасутся 5)',
+    optB: 'Не трогать рычаг (не становиться причиной гибели 1)',
+    pctA: 73,
+    note: 'Утилитаризм выбирает минимум жертв (1 вместо 5); деонтология Канта разграничивает допущение беды и активное причинение вреда.',
+  },
+  {
+    id: 'friend',
+    title: '2. Близкий человек на запасном пути',
+    setup: 'На главном пути 5 незнакомцев, а на боковой ветке находится ваш близкий друг, с которым вы знакомы всю жизнь.',
+    optA: 'Перевести стрелку на боковой путь (спасти 5 незнакомцев)',
+    optB: 'Оставить вагонетку на главном пути (спасти друга)',
+    pctA: 26,
+    note: 'Этика заботы показывает, что личные обязательства перед близкими резко меняют сухую арифметику утилитаризма.',
+  },
+  {
+    id: 'surgeon',
+    title: '3. Дилемма хирурга (Джудит Томсон)',
+    setup: 'В клинике лежат 5 пациентов, которым срочно нужны 5 разных органов для выживания. В кабинет заходит полностью здоровый путешественник на плановый осмотр.',
+    optA: 'Спасти 5 пациентов ценой 1 донора',
+    optB: 'Категорически отказаться (неприкосновенность личности)',
+    pctA: 8,
+    note: 'Математически исход 5 против 1 идентичен первой задаче, но нарушение базовых прав человека делает утилитарный выбор неприемлемым для 92% людей.',
+  },
+  {
+    id: 'autopilot',
+    title: '4. Алгоритм беспилотного автомобиля',
+    setup: 'Тормоза отказали на горной дороге. Прямо по курсу — 3 пешехода, перебегающих дорогу на красный свет. Справа — бетонный отбойник, удар о который смертелен для 1 пассажира внутри авто.',
+    optA: 'Свернуть в отбойник (защитить 3 пешеходов)',
+    optB: 'Сохранить полосу и защитить пассажира авто',
+    pctA: 41,
+    note: 'Парадокс MIT Moral Machine: большинство одобряет утилитарные авто в теории, но отказывается покупать машину, готовую пожертвовать владельцем.',
+  },
+  {
+    id: 'art',
+    title: '5. Наследие цивилизации vs Жизнь',
+    setup: 'По левому пути вагонетка уничтожит герметичный контейнер с подлинниками «Моны Лизы», рукописями Леонардо да Винчи и Александрийским свитком. По правому — 1 незнакомого человека.',
+    optA: 'Спасти человека (уничтожить шедевры)',
+    optB: 'Спасти культурное наследие человечества',
+    pctA: 86,
+    note: 'Проверка границы ценности материальной культуры в сравнении с единичной человеческой жизнью.',
+  },
+  {
+    id: 'loop',
+    title: '6. Информированный парадокс будущего',
+    setup: 'На главном пути 5 обычных прохожих, на запасном — 1 биоинженер, который через 5 лет гарантированно изобретёт лекарство, спасающее 100 000 человек.',
+    optA: 'Перевести стрелку на биоинженера (спасти 5 сейчас)',
+    optB: 'Не переводить стрелку (сохранить жизнь учёного и 100 000 в будущем)',
+    pctA: 19,
+    note: 'Долгосрочный консеквенциализм учитывает цепочку будущих последствий каждого решения.',
+  },
+];
+
 export const NealFunSuiteHub: React.FC<{
   activeTool: string;
   onSelectTool: (t: string) => void;
@@ -37,7 +94,14 @@ export const NealFunSuiteHub: React.FC<{
   onToast: (msg: string) => void;
 }> = ({ activeTool, onSelectTool, onSync, onToast }) => {
   const tab = (
-    ['infinite_craft_lab', 'spend_billionaire', 'absurd_password_game', 'deep_sea_space_scale'] as const
+    [
+      'infinite_craft_lab',
+      'spend_billionaire',
+      'absurd_password_game',
+      'deep_sea_space_scale',
+      'trolley_problem_sim',
+      'asteroid_launcher_sim',
+    ] as const
   ).includes(activeTool as any)
     ? activeTool
     : 'infinite_craft_lab';
@@ -66,6 +130,15 @@ export const NealFunSuiteHub: React.FC<{
   // --- 4. Deep Sea & Life Stats State ---
   const [depthM, setDepthM] = useState(3800);
   const [birthDate, setBirthDate] = useState('2004-05-15');
+
+  // --- 5. Trolley Problem State ---
+  const [trolleyAnswers, setTrolleyAnswers] = useState<Record<string, 'A' | 'B'>>({});
+
+  // --- 6. Asteroid Impact Simulator State ---
+  const [astDiamM, setAstDiamM] = useState<number>(370); // Apophis scale
+  const [astDensity, setAstDensity] = useState<number>(3100); // Stony kg/m3
+  const [astVelKms, setAstVelKms] = useState<number>(19);
+  const [astAngleDeg, setAstAngleDeg] = useState<number>(45);
 
   useEffect(() => {
     if (tab === 'spend_billionaire' && shopItems.length === 0) {
@@ -156,6 +229,39 @@ export const NealFunSuiteHub: React.FC<{
     return OCEAN_ZONES.reduce((best, z) => (Math.abs(z.depth - depthM) < Math.abs(best.depth - depthM) ? z : best), OCEAN_ZONES[0]);
   }, [depthM]);
 
+  const asteroidStats = useMemo(() => {
+    const r = astDiamM / 2;
+    const volumeM3 = (4 / 3) * Math.PI * r * r * r;
+    const massKg = volumeM3 * astDensity;
+    const vMs = astVelKms * 1000;
+    const energyJ = 0.5 * massKg * vMs * vMs;
+    const megatonsTnt = energyJ / 4.184e15;
+    const sinTheta = Math.sin((astAngleDeg * Math.PI) / 180);
+    // Collins-Melosh transient-to-final crater scaling against crystalline rock (2650 kg/m3)
+    const craterDiamM =
+      1.35 *
+      Math.pow(astDensity / 2650, 1 / 3) *
+      Math.pow(astDiamM, 0.78) *
+      Math.pow(vMs, 0.44) *
+      Math.pow(9.81, -0.22) *
+      Math.pow(sinTheta, 1 / 3);
+    const craterDepthM = craterDiamM * 0.21;
+    const fireballRadiusKm = 0.0022 * Math.pow(energyJ, 0.333) / 1000;
+    const shockwave5psiKm = 2.2 * Math.pow(Math.max(0.001, megatonsTnt), 1 / 3);
+    const richterMag = Math.max(0, 0.67 * Math.log10(Math.max(1, energyJ)) - 5.87);
+    const airburstOnly = astDiamM < 35 && astDensity <= 3100;
+    return {
+      massTons: massKg / 1000,
+      megatonsTnt,
+      craterDiamKm: airburstOnly ? 0 : craterDiamM / 1000,
+      craterDepthM: airburstOnly ? 0 : craterDepthM,
+      fireballRadiusKm,
+      shockwave5psiKm,
+      richterMag,
+      airburstOnly,
+    };
+  }, [astDiamM, astDensity, astVelKms, astAngleDeg]);
+
   return (
     <div className="space-y-4 min-w-0">
       <div className="flex flex-wrap gap-1.5">
@@ -164,6 +270,8 @@ export const NealFunSuiteHub: React.FC<{
           { id: 'spend_billionaire', label: '💸 Потрать $350 Млрд' },
           { id: 'absurd_password_game', label: '🔐 Абсурдный Пароль' },
           { id: 'deep_sea_space_scale', label: '🌊 Глубины и Статистика Жизни' },
+          { id: 'trolley_problem_sim', label: '🚋 Проблема Вагонетки' },
+          { id: 'asteroid_launcher_sim', label: '☄️ Падение Астероида' },
         ].map((b) => (
           <button
             key={b.id}
@@ -471,6 +579,243 @@ export const NealFunSuiteHub: React.FC<{
               <div className="p-3 rounded-xl bg-slate-950 border border-white/10">
                 <div className="text-slate-400">Создано новых эритроцитов</div>
                 <div className="text-base font-mono font-bold text-emerald-300">{lifeStats.redBloodCells}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. TROLLEY PROBLEM & MORAL DILEMMAS */}
+      {tab === 'trolley_problem_sim' && (
+        <div className="rounded-2xl bg-slate-900/80 border border-amber-500/25 p-4 sm:p-5 space-y-4 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white">🚋 Проблема Вагонетки и Моральные Дилеммы</h3>
+              <p className="text-slate-400">
+                Примите решение в каждом сценарии и сравните свой выбор с распределением ответов и классической философией
+              </p>
+            </div>
+            <span className="px-3 py-1 rounded-xl bg-amber-500/20 border border-amber-400/40 font-mono text-amber-200 font-bold">
+              Решено: {Object.keys(trolleyAnswers).length} / {TROLLEY_DILEMMAS.length}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {TROLLEY_DILEMMAS.map((d) => {
+              const choice = trolleyAnswers[d.id];
+              return (
+                <div key={d.id} className="p-4 rounded-xl bg-slate-950 border border-white/10 space-y-3">
+                  <div className="text-sm font-bold text-amber-300">{d.title}</div>
+                  <p className="text-slate-200 leading-relaxed">{d.setup}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTrolleyAnswers((prev) => ({ ...prev, [d.id]: 'A' }));
+                        onSync();
+                      }}
+                      className={`p-3 rounded-xl border text-left font-semibold transition ${
+                        choice === 'A'
+                          ? 'bg-emerald-500/25 border-emerald-400 text-emerald-100'
+                          : 'bg-slate-900 border-white/10 text-slate-200 hover:border-white/25'
+                      }`}
+                    >
+                      🔀 {d.optA}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTrolleyAnswers((prev) => ({ ...prev, [d.id]: 'B' }));
+                        onSync();
+                      }}
+                      className={`p-3 rounded-xl border text-left font-semibold transition ${
+                        choice === 'B'
+                          ? 'bg-sky-500/25 border-sky-400 text-sky-100'
+                          : 'bg-slate-900 border-white/10 text-slate-200 hover:border-white/25'
+                      }`}
+                    >
+                      ✋ {d.optB}
+                    </button>
+                  </div>
+
+                  {choice && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="w-full h-5 rounded-lg overflow-hidden flex font-mono text-[10px] font-bold">
+                        <div
+                          style={{ width: `${d.pctA}%` }}
+                          className="bg-emerald-500/75 text-slate-950 flex items-center justify-center"
+                        >
+                          {d.pctA}%
+                        </div>
+                        <div
+                          style={{ width: `${100 - d.pctA}%` }}
+                          className="bg-sky-500/75 text-slate-950 flex items-center justify-center"
+                        >
+                          {100 - d.pctA}%
+                        </div>
+                      </div>
+                      <p className="text-slate-400 leading-relaxed">{d.note}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 6. ASTEROID LAUNCHER IMPACT SIMULATOR */}
+      {tab === 'asteroid_launcher_sim' && (
+        <div className="rounded-2xl bg-slate-900/80 border border-rose-500/30 p-4 sm:p-5 space-y-4 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white">☄️ Физический Симулятор Падения Астероида</h3>
+              <p className="text-slate-400">
+                Расчёт кинетической энергии удара, ударного кратера (модель Коллинза–Мелоша), огненного шара и сейсмики
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: 'Челябинск (18 м)', d: 18, rho: 3100, v: 19 },
+                { label: 'Тунгусский (60 м)', d: 60, rho: 1500, v: 22 },
+                { label: 'Апофис (370 м)', d: 370, rho: 3100, v: 19 },
+                { label: 'Чиксулуб (10 км)', d: 10000, rho: 3100, v: 20 },
+              ].map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    setAstDiamM(p.d);
+                    setAstDensity(p.rho);
+                    setAstVelKms(p.v);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-950 border border-white/10 hover:border-rose-400 text-rose-200 font-semibold"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Диаметр тела:</span>
+                <b className="font-mono text-white">
+                  {astDiamM >= 1000 ? `${(astDiamM / 1000).toFixed(2)} км` : `${astDiamM} м`}
+                </b>
+              </div>
+              <input
+                type="range"
+                min={15}
+                max={12000}
+                step={5}
+                value={astDiamM}
+                onChange={(e) => setAstDiamM(Number(e.target.value))}
+                className="w-full accent-rose-400"
+              />
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Скорость входа в атмосферу:</span>
+                <b className="font-mono text-amber-300">{astVelKms} км/с</b>
+              </div>
+              <input
+                type="range"
+                min={11}
+                max={72}
+                value={astVelKms}
+                onChange={(e) => setAstVelKms(Number(e.target.value))}
+                className="w-full accent-amber-400"
+              />
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-1.5">
+              <span className="text-slate-400 block">Состав и плотность:</span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { rho: 1000, label: 'Кометный лёд' },
+                  { rho: 3100, label: 'Каменный' },
+                  { rho: 7800, label: 'Железный' },
+                ].map((m) => (
+                  <button
+                    key={m.rho}
+                    type="button"
+                    onClick={() => setAstDensity(m.rho)}
+                    className={`py-1.5 rounded-lg font-semibold border ${
+                      astDensity === m.rho
+                        ? 'bg-rose-500/25 border-rose-400 text-rose-100'
+                        : 'bg-slate-900 border-white/10 text-slate-300'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950 border border-white/10 space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Угол входа к горизонту:</span>
+                <b className="font-mono text-sky-300">{astAngleDeg}°</b>
+              </div>
+              <input
+                type="range"
+                min={15}
+                max={90}
+                value={astAngleDeg}
+                onChange={(e) => setAstAngleDeg(Number(e.target.value))}
+                className="w-full accent-sky-400"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-rose-500/30">
+              <div className="text-slate-400">Энергия взрыва (ТНТ)</div>
+              <div className="text-base sm:text-lg font-mono font-black text-rose-300 mt-0.5">
+                {asteroidStats.megatonsTnt >= 1000
+                  ? `${(asteroidStats.megatonsTnt / 1000).toFixed(1)} Гт ТНТ`
+                  : asteroidStats.megatonsTnt >= 1
+                  ? `${asteroidStats.megatonsTnt.toFixed(1)} Мт ТНТ`
+                  : `${(asteroidStats.megatonsTnt * 1000).toFixed(0)} Кт ТНТ`}
+              </div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/30">
+              <div className="text-slate-400">Диаметр кратера</div>
+              <div className="text-base sm:text-lg font-mono font-black text-amber-300 mt-0.5">
+                {asteroidStats.airburstOnly
+                  ? 'Воздушный взрыв'
+                  : `${asteroidStats.craterDiamKm.toFixed(2)} км (глуб. ${Math.round(asteroidStats.craterDepthM)} м)`}
+              </div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-orange-500/30">
+              <div className="text-slate-400">Радиус огненного шара</div>
+              <div className="text-base sm:text-lg font-mono font-black text-orange-300 mt-0.5">
+                {asteroidStats.fireballRadiusKm.toFixed(2)} км
+              </div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-sky-500/30">
+              <div className="text-slate-400">Ударная волна (разрушения)</div>
+              <div className="text-base sm:text-lg font-mono font-black text-sky-300 mt-0.5">
+                R = {asteroidStats.shockwave5psiKm.toFixed(1)} км
+              </div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-purple-500/30">
+              <div className="text-slate-400">Сейсмическая магнитуда</div>
+              <div className="text-base sm:text-lg font-mono font-black text-purple-300 mt-0.5">
+                M {asteroidStats.richterMag.toFixed(1)} по Рихтеру
+              </div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30">
+              <div className="text-slate-400">Масса объекта</div>
+              <div className="text-base font-mono font-black text-emerald-300 mt-0.5">
+                {asteroidStats.massTons >= 1e9
+                  ? `${(asteroidStats.massTons / 1e9).toFixed(2)} млрд т`
+                  : asteroidStats.massTons >= 1e6
+                  ? `${(asteroidStats.massTons / 1e6).toFixed(2)} млн т`
+                  : `${Math.round(asteroidStats.massTons).toLocaleString('ru-RU')} т`}
               </div>
             </div>
           </div>

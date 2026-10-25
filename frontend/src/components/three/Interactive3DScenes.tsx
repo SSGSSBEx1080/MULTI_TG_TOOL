@@ -162,9 +162,9 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
 
       if (!dragRef.current.down) {
         if (autoSpin) {
-          const speedMult = dragRef.current.hovered ? 0.18 : 1.0;
-          st.ry += 0.0018 * speedMult;
-          st.t4d += 0.0042 * speedMult;
+          const speedMult = dragRef.current.hovered ? 0.14 : 1.0;
+          st.ry += 0.00115 * speedMult;
+          st.t4d += 0.0028 * speedMult;
         }
         st.rx += st.vx;
         st.ry += st.vy;
@@ -172,7 +172,7 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
         st.vy *= 0.9;
         st.rx = Math.max(-1.35, Math.min(1.35, st.rx));
       } else {
-        st.t4d += 0.0025;
+        st.t4d += 0.002;
       }
 
       ctx.clearRect(0, 0, W, H);
@@ -1315,43 +1315,140 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
 
       if (scene === 'globe') {
         const R = 1.38;
-        // Atmosphere halo
+        const zLimb = (R * R) / camDist;
+        const rLimb = Math.sqrt(Math.max(1e-4, R * R - zLimb * zLimb));
         const c0 = project3D(v3(0, 0, 0), W, H, fov, camDist);
-        const halo = ctx.createRadialGradient(c0.sx, c0.sy, R * c0.scale * 0.7, c0.sx, c0.sy, R * c0.scale * 1.22);
-        halo.addColorStop(0, 'rgba(14,165,233,0.18)');
-        halo.addColorStop(0.75, 'rgba(56,189,248,0.12)');
+        const edge0 = project3D(v3(rLimb, 0, zLimb), W, H, fov, camDist);
+        const screenR = Math.max(30, Math.abs(edge0.sx - c0.sx));
+
+        // Atmosphere halo
+        const halo = ctx.createRadialGradient(c0.sx, c0.sy, screenR * 0.72, c0.sx, c0.sy, screenR * 1.24);
+        halo.addColorStop(0, 'rgba(14,165,233,0.22)');
+        halo.addColorStop(0.75, 'rgba(56,189,248,0.14)');
         halo.addColorStop(1, 'rgba(8,12,22,0)');
         ctx.fillStyle = halo;
         ctx.beginPath();
-        ctx.arc(c0.sx, c0.sy, R * c0.scale * 1.22, 0, Math.PI * 2);
+        ctx.arc(c0.sx, c0.sy, screenR * 1.24, 0, Math.PI * 2);
         ctx.fill();
 
-        // Latitude parallels
-        for (const lat of [-60, -30, 0, 30, 60]) {
+        // Ocean sphere fill
+        const oceanG = ctx.createRadialGradient(
+          c0.sx - screenR * 0.28,
+          c0.sy - screenR * 0.28,
+          screenR * 0.08,
+          c0.sx,
+          c0.sy,
+          screenR
+        );
+        oceanG.addColorStop(0, '#0369a1');
+        oceanG.addColorStop(0.65, '#0c4a6e');
+        oceanG.addColorStop(1, '#082f49');
+        ctx.fillStyle = oceanG;
+        ctx.beginPath();
+        ctx.arc(c0.sx, c0.sy, screenR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Compact continent silhouettes (North UP, South DOWN)
+        const miniConts: [number, number][][] = [
+          [[70, -162], [72, -95], [52, -56], [26, -80], [18, -96], [9, -80], [23, -108], [38, -123], [58, -138], [62, -164]],
+          [[11, -74], [5, -52], [-6, -35], [-23, -43], [-38, -58], [-54, -69], [-42, -74], [-18, -71], [-4, -80]],
+          [[36, -8], [48, -4], [58, 8], [70, 26], [69, 58], [46, 50], [41, 29], [38, 15], [41, 2]],
+          [[69, 58], [75, 102], [68, 172], [53, 158], [43, 134], [31, 121], [12, 108], [8, 77], [24, 67], [22, 40], [36, 36], [46, 50]],
+          [[35, -6], [32, 32], [12, 50], [-12, 40], [-34, 24], [-34, 18], [-16, 12], [5, 8], [5, -7], [16, -17], [30, -11]],
+          [[-12, 131], [-12, 142], [-26, 153], [-38, 147], [-34, 115], [-21, 114]],
+        ];
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(c0.sx, c0.sy, screenR, 0, Math.PI * 2);
+        ctx.clip();
+
+        for (const poly of miniConts) {
+          const wps = poly.map(([la, lo]) => rotateEuler(latLonToVec3(la, lo, R * 1.003), cam.rx, cam.ry));
+          if (wps.filter((w) => w.z > zLimb).length < 2) continue;
           ctx.beginPath();
-          for (let lon = -180; lon <= 180; lon += 8) {
-            const p = rotateEuler(latLonToVec3(lat, lon, R), cam.rx, cam.ry);
-            const pp = project3D(p, W, H, fov, camDist);
-            if (lon === -180) ctx.moveTo(pp.sx, pp.sy);
+          wps.forEach((wp, idx) => {
+            const clamped =
+              wp.z >= zLimb
+                ? wp
+                : {
+                    x: (wp.x / (Math.hypot(wp.x, wp.y) || 1e-4)) * rLimb,
+                    y: (wp.y / (Math.hypot(wp.x, wp.y) || 1e-4)) * rLimb,
+                    z: zLimb,
+                  };
+            const pp = project3D(clamped, W, H, fov, camDist);
+            if (idx === 0) ctx.moveTo(pp.sx, pp.sy);
             else ctx.lineTo(pp.sx, pp.sy);
-          }
-          ctx.strokeStyle = lat === 0 ? 'rgba(56,189,248,0.38)' : 'rgba(148,163,184,0.13)';
-          ctx.lineWidth = lat === 0 ? 1.4 : 1;
+          });
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(34,165,102,0.58)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(167,243,208,0.45)';
+          ctx.lineWidth = 0.85;
           ctx.stroke();
         }
 
-        // Longitude meridians
+        // Front-hemisphere Latitude parallels
+        for (const lat of [-60, -30, 0, 30, 60]) {
+          ctx.beginPath();
+          let pen = false;
+          for (let lon = -180; lon <= 180; lon += 6) {
+            const p = rotateEuler(latLonToVec3(lat, lon, R), cam.rx, cam.ry);
+            if (p.z < zLimb) {
+              pen = false;
+              continue;
+            }
+            const pp = project3D(p, W, H, fov, camDist);
+            if (!pen) {
+              ctx.moveTo(pp.sx, pp.sy);
+              pen = true;
+            } else {
+              ctx.lineTo(pp.sx, pp.sy);
+            }
+          }
+          ctx.strokeStyle = lat === 0 ? 'rgba(125,211,252,0.44)' : 'rgba(148,163,184,0.16)';
+          ctx.lineWidth = lat === 0 ? 1.3 : 0.85;
+          ctx.stroke();
+        }
+
+        // Front-hemisphere Longitude meridians
         for (let lon = -150; lon <= 180; lon += 30) {
           ctx.beginPath();
-          for (let lat = -90; lat <= 90; lat += 8) {
+          let pen = false;
+          for (let lat = -85; lat <= 85; lat += 6) {
             const p = rotateEuler(latLonToVec3(lat, lon, R), cam.rx, cam.ry);
+            if (p.z < zLimb) {
+              pen = false;
+              continue;
+            }
             const pp = project3D(p, W, H, fov, camDist);
-            if (lat === -90) ctx.moveTo(pp.sx, pp.sy);
-            else ctx.lineTo(pp.sx, pp.sy);
+            if (!pen) {
+              ctx.moveTo(pp.sx, pp.sy);
+              pen = true;
+            } else {
+              ctx.lineTo(pp.sx, pp.sy);
+            }
           }
-          ctx.strokeStyle = 'rgba(148,163,184,0.12)';
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(148,163,184,0.14)';
+          ctx.lineWidth = 0.85;
           ctx.stroke();
+        }
+
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.arc(c0.sx, c0.sy, screenR, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(125,211,252,0.5)';
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+
+        // North & South Pole markers
+        const np = rotateEuler(latLonToVec3(90, 0, R * 1.08), cam.rx, cam.ry);
+        if (np.z > -0.2) {
+          const npp = project3D(np, W, H, fov, camDist);
+          ctx.fillStyle = '#7dd3fc';
+          ctx.font = '700 9px monospace';
+          ctx.fillText('N↑', npp.sx - 6, npp.sy - 2);
         }
 
         // 3D Population & Country Beacons

@@ -3,7 +3,290 @@ import { Play, RotateCcw, Sparkles } from 'lucide-react';
 import { syncHiDPICanvas, useCanvasVisibility } from '../../lib/engine3d';
 import { Mini3DSceneBadge } from '../three/Interactive3DScenes';
 
-type SportMode = 'billiards_3d_sim' | 'curling_sim' | 'carrom_sim' | 'bowling_3d_sim';
+type SportMode = 'billiards_3d_sim' | 'curling_sim' | 'carrom_sim' | 'bowling_3d_sim' | 'air_hockey_sim';
+
+const AirHockeyArena: React.FC<{ onSync: () => void }> = ({ onSync }) => {
+  const { wrapRef, visible } = useCanvasVisibility();
+  const cvsRef = useRef<HTMLCanvasElement | null>(null);
+  const [aiLevel, setAiLevel] = useState<'easy' | 'normal' | 'pro'>('normal');
+  const [score, setScore] = useState<{ player: number; ai: number }>({ player: 0, ai: 0 });
+
+  const stateRef = useRef({
+    px: -0.62,
+    py: 0,
+    pvx: 0,
+    pvy: 0,
+    ax: 0.62,
+    ay: 0,
+    bx: 0,
+    by: 0,
+    bvx: 0.014,
+    bvy: 0.009,
+    playerScore: 0,
+    aiScore: 0,
+  });
+
+  const resetMatch = () => {
+    stateRef.current = {
+      px: -0.62,
+      py: 0,
+      pvx: 0,
+      pvy: 0,
+      ax: 0.62,
+      ay: 0,
+      bx: 0,
+      by: 0,
+      bvx: 0.015,
+      bvy: (Math.random() - 0.5) * 0.018,
+      playerScore: 0,
+      aiScore: 0,
+    };
+    setScore({ player: 0, ai: 0 });
+  };
+
+  useEffect(() => {
+    const cvs = cvsRef.current;
+    if (!cvs || !visible) return;
+    let raf = 0;
+
+    const tick = () => {
+      const { ctx, W, H } = syncHiDPICanvas(cvs);
+      if (!ctx || W < 40) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      const st = stateRef.current;
+      const halfX = 0.92;
+      const halfY = 0.46;
+      const goalHalf = 0.17;
+      const malletR = 0.068;
+      const puckR = 0.044;
+
+      // AI tracking speed
+      const aiSpd = aiLevel === 'easy' ? 0.011 : aiLevel === 'normal' ? 0.018 : 0.027;
+      const targetY = st.bx > -0.1 ? st.by : st.by * 0.35;
+      const targetX = st.bx > 0.15 && Math.abs(st.by) < 0.38 ? Math.min(0.82, st.bx + 0.08) : 0.68;
+      st.ax += Math.max(-aiSpd, Math.min(aiSpd, targetX - st.ax));
+      st.ay += Math.max(-aiSpd, Math.min(aiSpd, targetY - st.ay));
+      st.ax = Math.max(0.08, Math.min(halfX - malletR, st.ax));
+      st.ay = Math.max(-halfY + malletR, Math.min(halfY - malletR, st.ay));
+
+      // Puck integration
+      st.bx += st.bvx;
+      st.by += st.bvy;
+      st.bvx *= 0.996;
+      st.bvy *= 0.996;
+
+      // Top & bottom cushions
+      if (st.by - puckR < -halfY) {
+        st.by = -halfY + puckR;
+        st.bvy = Math.abs(st.bvy) * 0.96;
+      } else if (st.by + puckR > halfY) {
+        st.by = halfY - puckR;
+        st.bvy = -Math.abs(st.bvy) * 0.96;
+      }
+
+      // Left / Right walls & Goals
+      if (st.bx - puckR < -halfX) {
+        if (Math.abs(st.by) < goalHalf) {
+          st.aiScore += 1;
+          setScore({ player: st.playerScore, ai: st.aiScore });
+          st.bx = 0;
+          st.by = 0;
+          st.bvx = -0.014;
+          st.bvy = (Math.random() - 0.5) * 0.016;
+          onSync();
+        } else {
+          st.bx = -halfX + puckR;
+          st.bvx = Math.abs(st.bvx) * 0.96;
+        }
+      } else if (st.bx + puckR > halfX) {
+        if (Math.abs(st.by) < goalHalf) {
+          st.playerScore += 1;
+          setScore({ player: st.playerScore, ai: st.aiScore });
+          st.bx = 0;
+          st.by = 0;
+          st.bvx = 0.014;
+          st.bvy = (Math.random() - 0.5) * 0.016;
+          onSync();
+        } else {
+          st.bx = halfX - puckR;
+          st.bvx = -Math.abs(st.bvx) * 0.96;
+        }
+      }
+
+      // Mallet-puck elastic collisions
+      const collideMallet = (mx: number, my: number, mvx: number, mvy: number) => {
+        const dx = st.bx - mx;
+        const dy = st.by - my;
+        const dist = Math.hypot(dx, dy) || 1e-5;
+        const minDist = malletR + puckR;
+        if (dist < minDist) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          st.bx = mx + nx * (minDist + 0.003);
+          st.by = my + ny * (minDist + 0.003);
+          const relVx = st.bvx - mvx;
+          const relVy = st.bvy - mvy;
+          const dot = relVx * nx + relVy * ny;
+          if (dot < 0) {
+            st.bvx = (st.bvx - 1.92 * dot * nx) + mvx * 0.35;
+            st.bvy = (st.bvy - 1.92 * dot * ny) + mvy * 0.35;
+          } else {
+            st.bvx += nx * 0.016;
+            st.bvy += ny * 0.016;
+          }
+          const spd = Math.hypot(st.bvx, st.bvy);
+          if (spd > 0.045) {
+            st.bvx = (st.bvx / spd) * 0.045;
+            st.bvy = (st.bvy / spd) * 0.045;
+          }
+        }
+      };
+      collideMallet(st.px, st.py, st.pvx, st.pvy);
+      collideMallet(st.ax, st.ay, 0, 0);
+      st.pvx *= 0.5;
+      st.pvy *= 0.5;
+
+      // Render Neon Air Hockey Rink
+      ctx.fillStyle = '#030712';
+      ctx.fillRect(0, 0, W, H);
+      const scale = Math.min((W - 32) / (halfX * 2), (H - 32) / (halfY * 2));
+      const toS = (nx: number, ny: number) => ({ sx: W / 2 + nx * scale, sy: H / 2 + ny * scale });
+      const tl = toS(-halfX, -halfY);
+      const br = toS(halfX, halfY);
+
+      ctx.fillStyle = '#081226';
+      ctx.fillRect(tl.sx, tl.sy, br.sx - tl.sx, br.sy - tl.sy);
+      ctx.strokeStyle = 'rgba(56,189,248,0.65)';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(tl.sx, tl.sy, br.sx - tl.sx, br.sy - tl.sy);
+
+      // Center line & circle
+      ctx.strokeStyle = 'rgba(244,63,94,0.42)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(W / 2, tl.sy);
+      ctx.lineTo(W / 2, br.sy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(W / 2, H / 2, 0.16 * scale, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Goals
+      const gTop = toS(-halfX, -goalHalf).sy;
+      const gBot = toS(-halfX, goalHalf).sy;
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(tl.sx, gTop);
+      ctx.lineTo(tl.sx, gBot);
+      ctx.stroke();
+      ctx.strokeStyle = '#f43f5e';
+      ctx.beginPath();
+      ctx.moveTo(br.sx, gTop);
+      ctx.lineTo(br.sx, gBot);
+      ctx.stroke();
+
+      const drawDisc = (nx: number, ny: number, nr: number, col: string) => {
+        const p = toS(nx, ny);
+        const r = nr * scale;
+        const g = ctx.createRadialGradient(p.sx - r * 0.25, p.sy - r * 0.25, r * 0.1, p.sx, p.sy, r);
+        g.addColorStop(0, '#ffffff');
+        g.addColorStop(0.35, col);
+        g.addColorStop(1, '#020617');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+        ctx.fill();
+      };
+
+      drawDisc(st.px, st.py, malletR, '#10b981');
+      drawDisc(st.ax, st.ay, malletR, '#f43f5e');
+      drawDisc(st.bx, st.by, puckR, '#facc15');
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [visible, aiLevel, onSync]);
+
+  const handleMove = (clientX: number, clientY: number) => {
+    const cvs = cvsRef.current;
+    if (!cvs) return;
+    const rect = cvs.getBoundingClientRect();
+    const halfX = 0.92;
+    const halfY = 0.46;
+    const malletR = 0.068;
+    const scale = Math.min((rect.width - 32) / (halfX * 2), (rect.height - 32) / (halfY * 2));
+    const nx = (clientX - rect.left - rect.width / 2) / scale;
+    const ny = (clientY - rect.top - rect.height / 2) / scale;
+    const clampedX = Math.max(-halfX + malletR, Math.min(-malletR, nx));
+    const clampedY = Math.max(-halfY + malletR, Math.min(halfY - malletR, ny));
+    stateRef.current.pvx = clampedX - stateRef.current.px;
+    stateRef.current.pvy = clampedY - stateRef.current.py;
+    stateRef.current.px = clampedX;
+    stateRef.current.py = clampedY;
+  };
+
+  return (
+    <div ref={wrapRef} className="rounded-2xl bg-slate-900/80 border border-emerald-500/25 p-4 space-y-3 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <span className="font-bold text-sm text-white">🏒 Неоновый Аэрохоккей 60 FPS</span>
+          <span className="px-3 py-1 rounded-xl bg-slate-950 border border-white/15 font-mono text-sm font-black">
+            <span className="text-emerald-300">ВЫ {score.player}</span> : <span className="text-rose-400">{score.ai} ИИ</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {(
+            [
+              { id: 'easy', label: 'Лёгкий' },
+              { id: 'normal', label: 'Средний' },
+              { id: 'pro', label: 'Турбо ИИ' },
+            ] as const
+          ).map((lv) => (
+            <button
+              key={lv.id}
+              type="button"
+              onClick={() => setAiLevel(lv.id)}
+              className={`px-2.5 py-1 rounded-lg font-semibold border ${
+                aiLevel === lv.id
+                  ? 'bg-emerald-500/25 border-emerald-400 text-emerald-100'
+                  : 'bg-slate-950 border-white/10 text-slate-400'
+              }`}
+            >
+              {lv.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={resetMatch}
+            className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white flex items-center gap-1"
+          >
+            <RotateCcw className="w-3.5 h-3.5" /> Сброс
+          </button>
+        </div>
+      </div>
+
+      <p className="text-slate-400">
+        Водите курсором или пальцем по левой половине стола, чтобы отбивать шайбу и забивать в правые ворота
+      </p>
+
+      <canvas
+        ref={cvsRef}
+        style={{ height: 295 }}
+        onPointerMove={(e) => handleMove(e.clientX, e.clientY)}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          handleMove(e.clientX, e.clientY);
+        }}
+        className="w-full rounded-2xl bg-slate-950 border border-sky-500/25 touch-none cursor-crosshair block"
+      />
+    </div>
+  );
+};
 
 interface Disc {
   id: number;
@@ -24,7 +307,7 @@ export const SportsPhysicsSimHub: React.FC<{
   onSync: () => void;
 }> = ({ activeTool, onSelectTool, onSync }) => {
   const mode: SportMode = (
-    ['billiards_3d_sim', 'curling_sim', 'carrom_sim', 'bowling_3d_sim'] as const
+    ['billiards_3d_sim', 'curling_sim', 'carrom_sim', 'bowling_3d_sim', 'air_hockey_sim'] as const
   ).includes(activeTool as SportMode)
     ? (activeTool as SportMode)
     : 'billiards_3d_sim';
@@ -519,6 +802,7 @@ export const SportsPhysicsSimHub: React.FC<{
           { id: 'curling_sim', label: '🥌 Кёрлинг на Льду' },
           { id: 'carrom_sim', label: '🎯 Карром (Carrom)' },
           { id: 'bowling_3d_sim', label: '🎳 Боулинг (10 кеглей)' },
+          { id: 'air_hockey_sim', label: '🏒 Аэрохоккей 60 FPS' },
         ].map((t) => (
           <button
             key={t.id}
@@ -535,6 +819,9 @@ export const SportsPhysicsSimHub: React.FC<{
         ))}
       </div>
 
+      {mode === 'air_hockey_sim' ? (
+        <AirHockeyArena onSync={onSync} />
+      ) : (
       <div className="rounded-2xl bg-slate-900/80 border border-emerald-500/25 p-4 space-y-4 text-xs">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
@@ -641,6 +928,7 @@ export const SportsPhysicsSimHub: React.FC<{
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

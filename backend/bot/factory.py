@@ -64,6 +64,8 @@ class BotRuntimeManager:
 
         self.live_bot: Bot | None = None
         self.polling_task: asyncio.Task[Any] | None = None
+        self._supervisor_task: asyncio.Task[Any] | None = None
+        self._stopping: bool = False
         self.live_status: dict[str, Any] = {
             "configured": bool(BOT_TOKEN),
             "running": False,
@@ -105,8 +107,65 @@ class BotRuntimeManager:
     async def init_simulator(self) -> None:
         await self.sim_bot.set_my_commands(BOT_COMMANDS)
 
+    async def _connect_and_poll_once(self, token: str) -> bool:
+        bot = Bot(token=token)
+        try:
+            me = await asyncio.wait_for(bot.get_me(), timeout=7.0)
+        except Exception as exc:
+            try:
+                await bot.session.close()
+            except Exception:
+                pass
+            raise exc
+
+        try:
+            await asyncio.wait_for(bot.set_my_commands(BOT_COMMANDS), timeout=7.0)
+        except Exception as cmd_exc:
+            logger.warning("Telegram set_my_commands skipped: %s", cmd_exc)
+
+        try:
+            await asyncio.wait_for(bot.delete_webhook(drop_pending_updates=False), timeout=7.0)
+        except Exception as wh_exc:
+            logger.warning("Telegram delete_webhook skipped: %s", wh_exc)
+
+        self.live_bot = bot
+        self.polling_task = asyncio.create_task(
+            self.dp.start_polling(
+                bot,
+                handle_signals=False,
+                polling_timeout=25,
+                close_bot_session=False,
+            ),
+            name="live_telegram_polling",
+        )
+        self.live_status = {
+            "configured": True,
+            "running": True,
+            "bot_username": me.username,
+            "bot_name": me.first_name,
+            "error": None,
+        }
+        logger.info("Live Telegram bot @%s (id=%s) started polling", me.username, me.id)
+        return True
+
+    async def _retry_polling_background(self, token: str) -> None:
+        for delay in (2.5, 6.0, 14.0, 30.0):
+            if self._stopping:
+                return
+            await asyncio.sleep(delay)
+            if self._stopping or (self.polling_task and not self.polling_task.done()):
+                return
+            try:
+                await self._connect_and_poll_once(token)
+                return
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.info("Telegram background reconnect attempt failed (%s), will retry if needed", type(exc).__name__)
+
     async def start_live_polling(self, token: str) -> dict[str, Any]:
         await self.stop_live_polling()
+        self._stopping = False
         if not token or ":" not in token:
             self.live_status = {
                 "configured": False,
@@ -117,45 +176,62 @@ class BotRuntimeManager:
             return self.live_status
 
         try:
-            bot = Bot(token=token)
-            me = await asyncio.wait_for(bot.get_me(), timeout=8.0)
-            await asyncio.wait_for(bot.set_my_commands(BOT_COMMANDS), timeout=8.0)
-            await asyncio.wait_for(bot.delete_webhook(drop_pending_updates=True), timeout=8.0)
-
-            self.live_bot = bot
-            self.polling_task = asyncio.create_task(
-                self.dp.start_polling(bot, handle_signals=False),
-                name="live_telegram_polling",
-            )
-            self.live_status = {
-                "configured": True,
-                "running": True,
-                "bot_username": me.username,
-                "bot_name": me.first_name,
-                "error": None,
-            }
-            logger.info("Live Telegram bot @%s started polling", me.username)
+            await self._connect_and_poll_once(token)
         except Exception as exc:
-            logger.warning("Live Telegram connection unavailable in current network: %s", exc)
+            logger.warning("Initial Telegram connection deferred (%s: %s)", type(exc).__name__, exc)
             self.live_status = {
                 "configured": True,
                 "running": False,
                 "bot_username": None,
                 "error": f"Нет доступа к api.telegram.org: {type(exc).__name__}",
             }
+            if not self._stopping:
+                self._supervisor_task = asyncio.create_task(
+                    self._retry_polling_background(token),
+                    name="live_telegram_supervisor",
+                )
         return self.live_status
 
     async def stop_live_polling(self) -> None:
-        if self.polling_task and not self.polling_task.done():
-            self.polling_task.cancel()
+        self._stopping = True
+        if self._supervisor_task and not self._supervisor_task.done():
+            self._supervisor_task.cancel()
             try:
-                await self.polling_task
+                await self._supervisor_task
             except asyncio.CancelledError:
                 pass
+        self._supervisor_task = None
+
+        if self.polling_task and not self.polling_task.done():
+            aio_disp_logger = logging.getLogger("aiogram.dispatcher")
+            prev_level = aio_disp_logger.level
+            aio_disp_logger.setLevel(logging.CRITICAL)
+            try:
+                try:
+                    await self.dp.stop_polling()
+                except RuntimeError:
+                    pass
+                try:
+                    await asyncio.wait_for(self.polling_task, timeout=1.5)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    if not self.polling_task.done():
+                        self.polling_task.cancel()
+                        try:
+                            await self.polling_task
+                        except asyncio.CancelledError:
+                            pass
+            finally:
+                aio_disp_logger.setLevel(prev_level)
         self.polling_task = None
+
         if self.live_bot:
-            await self.live_bot.session.close()
+            try:
+                await self.live_bot.session.close()
+            except Exception:
+                pass
             self.live_bot = None
+        if self.live_status.get("running"):
+            logger.info("Live Telegram bot polling stopped cleanly")
         self.live_status["running"] = False
 
 

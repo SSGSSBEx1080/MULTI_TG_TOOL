@@ -677,11 +677,25 @@ export const BreastSizeCalcStudio: React.FC<{
       const camDist = 3.2;
 
       const drawWireHemisphere = (cxOff: number, rad: number, strokeCol: string, fullSphere: boolean) => {
-        for (let lat = 0; lat <= (fullSphere ? 180 : 90); lat += 18) {
+        const cProj = project3D(rotateEuler({ x: cxOff, y: 0, z: rad * 0.35 }, st.rx, st.ry), W, H, fov, camDist);
+        if (cProj.visible) {
+          const glowR = Math.max(8, rad * cProj.scale);
+          const g = ctx.createRadialGradient(cProj.sx - glowR * 0.25, cProj.sy - glowR * 0.25, 2, cProj.sx, cProj.sy, glowR);
+          g.addColorStop(0, 'rgba(255,255,255,0.22)');
+          g.addColorStop(0.55, fullSphere ? 'rgba(250,204,21,0.12)' : 'rgba(244,114,182,0.16)');
+          g.addColorStop(1, 'rgba(2,6,23,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(cProj.sx, cProj.sy, glowR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const maxTheta = fullSphere ? 180 : 90;
+        for (let lat = 0; lat <= maxTheta; lat += 18) {
           ctx.beginPath();
           let started = false;
           const th = (lat * Math.PI) / 180;
-          for (let lon = 0; lon <= 360; lon += 15) {
+          for (let lon = 0; lon <= 360; lon += 12) {
             const ph = (lon * Math.PI) / 180;
             const local = {
               x: cxOff + rad * Math.sin(th) * Math.cos(ph),
@@ -699,6 +713,31 @@ export const BreastSizeCalcStudio: React.FC<{
           }
           ctx.strokeStyle = strokeCol;
           ctx.lineWidth = 1.15;
+          ctx.stroke();
+        }
+        // Meridional ribs for full volumetric silhouette
+        for (let lon = 0; lon < 360; lon += 30) {
+          ctx.beginPath();
+          let started = false;
+          const ph = (lon * Math.PI) / 180;
+          for (let lat = 0; lat <= maxTheta; lat += 10) {
+            const th = (lat * Math.PI) / 180;
+            const local = {
+              x: cxOff + rad * Math.sin(th) * Math.cos(ph),
+              y: rad * Math.sin(th) * Math.sin(ph),
+              z: rad * Math.cos(th),
+            };
+            const wp = rotateEuler(local, st.rx, st.ry);
+            const pp = project3D(wp, W, H, fov, camDist);
+            if (!started) {
+              ctx.moveTo(pp.sx, pp.sy);
+              started = true;
+            } else {
+              ctx.lineTo(pp.sx, pp.sy);
+            }
+          }
+          ctx.strokeStyle = strokeCol;
+          ctx.lineWidth = 0.85;
           ctx.stroke();
         }
       };
