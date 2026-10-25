@@ -208,20 +208,37 @@ async def handle_smart_omni_text(message: Message) -> None:
         )
         return
 
-    # General text quick summary + quick actions
+    # Intuitive Omni-Search across Tools, Constitutions, Religions & Encyclopedia + Text Summary
+    from backend.tools.knowledge_hub import intuitive_omni_search
+
+    omni = intuitive_omni_search(raw)
     builder_txt = InlineKeyboardBuilder()
+    for t_hit in omni.get("tools", [])[:2]:
+        builder_txt.row(
+            InlineKeyboardButton(text=t_hit["title"][:40], callback_data=f"tool:open:{t_hit['tool_id']}")
+        )
     builder_txt.row(
         InlineKeyboardButton(text="⌨️ Сменить раскладку", callback_data="tool:open:layout_fixer"),
         InlineKeyboardButton(text="✨ Шрифты", callback_data="tool:open:font_styler"),
     )
     builder_txt.row(
-        InlineKeyboardButton(text="📑 Сверстать в PDF", callback_data="tool:open:text_to_pdf"),
+        InlineKeyboardButton(text="📚 Справочники", callback_data="cat:knowledge"),
         InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:home"),
     )
+
+    top_article = (omni.get("articles") or [None])[0]
+    article_block = ""
+    if top_article:
+        article_block = (
+            f"\n\n<b>{esc(top_article['title'])}</b>\n"
+            f"<i>{esc(top_article['kind'])}</i>\n"
+            f"{esc(top_article['snippet'][:380])}"
+        )
+
     await render_hud(
         message,
-        f"<b>✍️ Быстрый разбор текста</b>\n"
-        f"<blockquote>Слов: <b>{res['words']}</b> • Символов: <b>{res['chars_total']}</b> • Чтение: ~{res['reading_time_sec']} сек</blockquote>\n"
-        f"Выберите инструмент ниже или нажмите <code>/start</code>:",
+        f"<b>🔎 Поиск и разбор запроса</b>\n"
+        f"<blockquote>Слов: <b>{res['words']}</b> • Символов: <b>{res['chars_total']}</b></blockquote>"
+        f"{article_block}",
         reply_markup=builder_txt.as_markup(),
     )

@@ -1,33 +1,57 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, Compass, Globe2, GraduationCap, Scale, Search, Sparkles } from 'lucide-react';
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  Compass,
+  Copy,
+  Globe2,
+  GraduationCap,
+  Languages,
+  Scale,
+  Search,
+  Sparkles,
+} from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
-import { WorldGlobeAndMath3D } from '../three/Interactive3DScenes';
+import { Mini3DSceneBadge, WorldGlobeAndMath3D } from '../three/Interactive3DScenes';
+import { EarthWebcams3D } from './EarthWebcams3D';
 
 interface Props {
   activeTool: string;
   onSelectTool: (t: string) => void;
   onSync: () => void;
   onToast: (msg: string) => void;
+  searchSeed?: string;
 }
 
-const toolToKnowledgeTab = (tool: string): 'const' | 'religions' | 'wiki' | 'ege' | 'pop' => {
-  if (tool === 'religions_hub') return 'religions';
+const toolToKnowledgeTab = (tool: string): 'earth' | 'const' | 'religions' | 'wiki' | 'ege' | 'pop' => {
+  if (tool === 'earth_3d_cams') return 'earth';
+  if (tool === 'religions_hub' || tool === 'religions_compare') return 'religions';
   if (tool === 'multi_wiki') return 'wiki';
   if (tool === 'ege_formulas') return 'ege';
   if (tool === 'population_hub') return 'pop';
   return 'const';
 };
 
-export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
-  const [subTab, setSubTab] = useState<'const' | 'religions' | 'wiki' | 'ege' | 'pop'>(() =>
+export const KnowledgeMegaHub: React.FC<Props> = ({
+  activeTool,
+  onSelectTool,
+  onSync,
+  onToast,
+  searchSeed = '',
+}) => {
+  const [subTab, setSubTab] = useState<'earth' | 'const' | 'religions' | 'wiki' | 'ege' | 'pop'>(() =>
     toolToKnowledgeTab(activeTool)
   );
 
   const [constQuery, setConstQuery] = useState('');
   const [constItems, setConstItems] = useState<any[]>([]);
+  const [langMode, setLangMode] = useState<'both' | 'ru' | 'orig'>('both');
+  const [expandedConst, setExpandedConst] = useState<Record<string, boolean>>({ RU: true, US: true });
 
   const [relQuery, setRelQuery] = useState('');
   const [relItems, setRelItems] = useState<any[]>([]);
+  const [expandedRel, setExpandedRel] = useState<Record<string, boolean>>({ islam: true, christianity: true });
 
   const [wikiSection, setWikiSection] = useState<'all' | 'jojo' | 'concepts' | 'prog'>('all');
   const [wikiQuery, setWikiQuery] = useState('');
@@ -45,6 +69,15 @@ export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, on
   useEffect(() => {
     setSubTab(toolToKnowledgeTab(activeTool));
   }, [activeTool]);
+
+  useEffect(() => {
+    if (!searchSeed) return;
+    const tab = toolToKnowledgeTab(activeTool);
+    if (tab === 'religions') setRelQuery(searchSeed);
+    else if (tab === 'const') setConstQuery(searchSeed);
+    else if (tab === 'wiki') setWikiQuery(searchSeed);
+    else if (tab === 'ege') setEgeQuery(searchSeed);
+  }, [searchSeed, activeTool]);
 
   useEffect(() => {
     if (subTab !== 'const') return;
@@ -97,134 +130,315 @@ export const KnowledgeMegaHub: React.FC<Props> = ({ activeTool, onSelectTool, on
   };
 
   return (
-    <div className="space-y-5 min-w-0">
-      {/* Sub-navigation */}
-      <div className="hidden lg:flex flex-wrap gap-2">
-        {[
-          { id: 'const', tool: 'constitutions_hub', label: '⚖️ Конституции Стран Мира' },
-          { id: 'religions', tool: 'religions_hub', label: '🕉️ Мировые Религии' },
-          { id: 'wiki', tool: 'multi_wiki', label: '🌟 Мульти-Вики (JoJo, Понятия, ЯП)' },
-          { id: 'ege', tool: 'ege_formulas', label: '📐 Справочник Формул ЕГЭ' },
-          { id: 'pop', tool: 'population_hub', label: '🌍 Население: от Земли до Деревень' },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => {
-              setSubTab(t.id as any);
-              onSelectTool(t.tool);
-            }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition ${
-              subTab === t.id
-                ? 'bg-amber-500/20 border-amber-400/60 text-amber-200 shadow-lg shadow-amber-500/10'
-                : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/5'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-4 min-w-0">
+      {/* 0. GOOGLE EARTH 3D + PUBLIC LIVE WEBCAMS */}
+      {subTab === 'earth' && <EarthWebcams3D initialSearch={searchSeed} />}
 
-      {/* Interactive 3D Earth Globe & Lorenz Chaotic Attractor */}
-      <WorldGlobeAndMath3D
-        mode={subTab === 'ege' || subTab === 'wiki' ? 'math' : 'globe'}
-        onPickQuery={(countryName) => {
-          if (subTab === 'const') {
-            setConstQuery(countryName);
-          } else if (subTab === 'pop') {
-            setPopQuery(countryName);
-            loadPop(countryName);
-          } else if (subTab === 'religions') {
-            setRelQuery(countryName);
-          } else {
-            setSubTab('pop');
-            onSelectTool('population_hub');
-            setPopQuery(countryName);
-            loadPop(countryName);
-          }
-          onToast(`🌍 Выбрано на 3D-глобусе: ${countryName}`);
-        }}
-      />
+      {/* Interactive 3D Earth Globe & Lorenz Chaotic Attractor for Reference Tabs */}
+      {subTab !== 'earth' && (
+        <WorldGlobeAndMath3D
+          mode={subTab === 'ege' || subTab === 'wiki' ? 'math' : 'globe'}
+          onPickQuery={(countryName) => {
+            if (subTab === 'const') {
+              setConstQuery(countryName);
+            } else if (subTab === 'pop') {
+              setPopQuery(countryName);
+              loadPop(countryName);
+            } else if (subTab === 'religions') {
+              setRelQuery(countryName);
+            } else {
+              setSubTab('pop');
+              onSelectTool('population_hub');
+              setPopQuery(countryName);
+              loadPop(countryName);
+            }
+            onToast(`🌍 Выбрано на 3D-глобусе: ${countryName}`);
+          }}
+        />
+      )}
 
-      {/* 1. CONSTITUTIONS */}
+      {/* 1. BILINGUAL CONSTITUTIONS (RUSSIAN + ORIGINAL LANGUAGE) */}
       {subTab === 'const' && (
-        <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Scale className="w-5 h-5 text-amber-400" /> Сборник Конституций Государств Мира
-              </h3>
-              <p className="text-xs text-slate-400">Форма правления, структура статей, ключевые права и уникальные конституционные нормы</p>
+            <div className="flex items-center gap-2.5">
+              <Mini3DSceneBadge seed="constitutions_hub" color="#eab308" size={38} />
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Scale className="w-5 h-5 text-amber-400" /> Конституции Стран Мира (Русский + Оригинал)
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Полные тексты преамбул и фундаментальных статей на русском и языке подлинника
+                </p>
+              </div>
             </div>
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                value={constQuery}
-                onChange={(e) => setConstQuery(e.target.value)}
-                placeholder="Поиск страны (Япония, США, РФ, ФРГ...)"
-                className="w-full rounded-xl bg-slate-950 border border-white/10 pl-9 pr-3 py-2 text-xs text-white"
-              />
+
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+              <div className="flex rounded-xl bg-slate-950 p-1 border border-white/10 text-[11px]">
+                {(
+                  [
+                    { id: 'both', label: 'RU + Оригинал' },
+                    { id: 'ru', label: 'Русский' },
+                    { id: 'orig', label: 'Оригинал' },
+                  ] as const
+                ).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setLangMode(m.id)}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+                      langMode === m.id
+                        ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  value={constQuery}
+                  onChange={(e) => setConstQuery(e.target.value)}
+                  placeholder="Поиск по странам и статьям (РФ, США, ФРГ, We the People)..."
+                  className="w-full rounded-xl bg-slate-950 border border-white/10 pl-9 pr-3 py-2 text-xs text-white"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 max-h-[560px] overflow-y-auto pr-1">
-            {constItems.map((c) => (
-              <div key={c.code} className="p-4 rounded-2xl bg-slate-950/90 border border-white/10 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-bold text-sm text-white flex items-center gap-2">
-                    <span className="text-xl">{c.flag}</span> {c.country}
+          <div className="space-y-3.5">
+            {constItems.map((c, idx) => {
+              const isOpen = expandedConst[c.code] ?? idx === 0;
+              return (
+                <div
+                  key={c.code}
+                  className="p-4 rounded-2xl bg-slate-950/90 border border-white/10 space-y-3 transition hover:border-amber-400/30"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-bold text-sm sm:text-base text-white flex items-center gap-2">
+                      <span className="text-xl">{c.flag}</span> {c.country}
+                      {c.orig_lang && (
+                        <span className="text-[11px] font-normal px-2 py-0.5 rounded-md bg-white/5 text-slate-300 border border-white/10 flex items-center gap-1">
+                          <Languages className="w-3 h-3 text-sky-400" /> {c.orig_lang}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/30">
+                        {c.year} (ред. {c.updated})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedConst((prev) => ({ ...prev, [c.code]: !isOpen }))
+                        }
+                        className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-amber-200 flex items-center gap-1"
+                      >
+                        {isOpen ? (
+                          <>
+                            Свернуть статьи <ChevronUp className="w-3.5 h-3.5" />
+                          </>
+                        ) : (
+                          <>
+                            Читать полный текст <ChevronDown className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/30">
-                    Принята: {c.year} (ред. {c.updated})
-                  </span>
+
+                  <div className="text-xs text-sky-300 font-medium">
+                    {c.gov_form} • <span className="text-slate-400">{c.structure}</span>
+                  </div>
+                  <p className="text-xs text-slate-200 leading-relaxed">{c.key_principles}</p>
+
+                  {isOpen && (
+                    <div className="space-y-3 pt-2 border-t border-white/10">
+                      {(c.preamble_ru || c.preamble_orig) && (
+                        <div className="p-3 rounded-xl bg-slate-900/90 border border-indigo-500/25 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">
+                              Преамбула (Preamble)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                copyText(
+                                  `${c.country} — Преамбула\n\nRU: ${c.preamble_ru}\n\nORIG: ${c.preamble_orig}`,
+                                  onToast
+                                )
+                              }
+                              className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1"
+                            >
+                              <Copy className="w-3 h-3" /> Копировать
+                            </button>
+                          </div>
+                          <div
+                            className={`grid gap-3 ${
+                              langMode === 'both' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'
+                            }`}
+                          >
+                            {langMode !== 'orig' && c.preamble_ru && (
+                              <div className="text-xs text-slate-100 leading-relaxed bg-slate-950/70 p-2.5 rounded-lg border border-white/5">
+                                <div className="text-[10px] font-bold text-amber-300 mb-1">🇷🇺 На русском языке:</div>
+                                {c.preamble_ru}
+                              </div>
+                            )}
+                            {langMode !== 'ru' && c.preamble_orig && (
+                              <div className="text-xs text-sky-100 leading-relaxed bg-slate-950/70 p-2.5 rounded-lg border border-sky-500/15 font-serif">
+                                <div className="text-[10px] font-sans font-bold text-sky-300 mb-1">
+                                  📜 Текст оригинала ({c.orig_lang}):
+                                </div>
+                                {c.preamble_orig}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {Array.isArray(c.articles) &&
+                        c.articles.map((art: any, aIdx: number) => (
+                          <div
+                            key={aIdx}
+                            className="p-3 rounded-xl bg-slate-900/75 border border-white/10 space-y-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-amber-300">
+                                {art.num} — <span className="text-white">{art.title}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copyText(`${c.country} ${art.num}\n${art.ru}\n\n${art.orig}`, onToast)
+                                }
+                                className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 shrink-0"
+                              >
+                                <Copy className="w-3 h-3" /> Копия
+                              </button>
+                            </div>
+                            <div
+                              className={`grid gap-3 ${
+                                langMode === 'both' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'
+                              }`}
+                            >
+                              {langMode !== 'orig' && (
+                                <div className="text-xs text-slate-200 whitespace-pre-line leading-relaxed bg-slate-950/60 p-2.5 rounded-lg border border-white/5">
+                                  {art.ru}
+                                </div>
+                              )}
+                              {langMode !== 'ru' && (
+                                <div className="text-xs text-sky-100/95 whitespace-pre-line leading-relaxed bg-slate-950/60 p-2.5 rounded-lg border border-sky-500/15">
+                                  {art.orig}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/20 text-[11px] text-amber-200">
+                    💡 <b>Особенность конституции:</b> {c.unique_fact}
+                  </div>
                 </div>
-                <div className="text-xs text-sky-300 font-medium">{c.gov_form}</div>
-                <div className="text-xs text-slate-400">📜 Структура: <span className="text-slate-200">{c.structure}</span></div>
-                <p className="text-xs text-slate-200 leading-relaxed">{c.key_principles}</p>
-                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/20 text-[11px] text-amber-200">
-                  💡 <b>Уникальный факт:</b> {c.unique_fact}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* 2. WORLD RELIGIONS */}
+      {/* 2. WORLD RELIGIONS (FULL ARTICLES + ORIGINAL QUOTES) */}
       {subTab === 'religions' && (
-        <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Compass className="w-5 h-5 text-amber-400" /> Энциклопедия и Сравнение Мировых Религий
-              </h3>
-              <p className="text-xs text-slate-400">Священные книги (Библия, Коран, Тора, Трипитака, Веды, Дао Дэ Цзин), течения и философия</p>
+            <div className="flex items-center gap-2.5">
+              <Mini3DSceneBadge seed="religions_hub" color="#a855f7" size={38} />
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Compass className="w-5 h-5 text-amber-400" /> Энциклопедия Мировых Религий и Первоисточников
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Полные статьи, история, столпы вероучения и ключевые тексты на языке оригинала и на русском
+                </p>
+              </div>
             </div>
             <input
               value={relQuery}
               onChange={(e) => setRelQuery(e.target.value)}
-              placeholder="Фильтр (Коран, Буддизм, Карма, Тора...)"
+              placeholder="Поиск (Ислам, Коран, Христианство, Буддизм, Тора...)"
               className="w-full sm:w-72 rounded-xl bg-slate-950 border border-white/10 px-3.5 py-2 text-xs text-white"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {relItems.map((r) => (
-              <div key={r.id} className="p-4 rounded-2xl bg-slate-950/90 border border-white/10 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <div className="text-base font-bold text-white flex items-center gap-2">
-                    <span className="text-xl">{r.emoji}</span> {r.name}
+          <div className="grid grid-cols-1 gap-3.5">
+            {relItems.map((r) => {
+              const isOpen = expandedRel[r.id] ?? true;
+              return (
+                <div
+                  key={r.id}
+                  className="p-4 rounded-2xl bg-slate-950/90 border border-white/10 space-y-2.5 text-xs"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-base font-bold text-white flex flex-wrap items-center gap-2">
+                      <span className="text-xl">{r.emoji}</span> {r.name}
+                      {r.orig_script && (
+                        <span className="text-xs font-normal text-amber-300/90 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-400/20">
+                          {r.orig_script}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-400/30">
+                        {r.followers}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRel((p) => ({ ...p, [r.id]: !isOpen }))}
+                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10"
+                      >
+                        {isOpen ? 'Свернуть' : 'Полная статья'}
+                      </button>
+                    </div>
                   </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-400/30">
-                    {r.followers}
-                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                    <div className="p-2 rounded-lg bg-slate-900/80 border border-white/5 text-slate-400">
+                      🏛 Возникновение: <span className="text-slate-200">{r.origin}</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-900/80 border border-white/5 text-slate-400">
+                      📖 Писание: <span className="text-amber-300 font-medium">{r.scripture}</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-900/80 border border-white/5 text-slate-400">
+                      🌿 Направления: <span className="text-sky-300">{r.branches}</span>
+                    </div>
+                  </div>
+
+                  {isOpen && r.full_article_ru && (
+                    <div className="p-3 rounded-xl bg-slate-900/90 border border-white/10 text-xs text-slate-100 whitespace-pre-line leading-relaxed">
+                      {r.full_article_ru}
+                    </div>
+                  )}
+
+                  {isOpen && (r.primary_quote_orig || r.primary_quote_ru) && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 p-3 rounded-xl bg-indigo-950/30 border border-indigo-400/25">
+                      <div>
+                        <div className="text-[10px] font-bold text-sky-300 mb-1">📜 Первоисточник (оригинал):</div>
+                        <div className="text-xs text-sky-100 leading-relaxed">{r.primary_quote_orig}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-amber-300 mb-1">🇷🇺 Перевод на русский:</div>
+                        <div className="text-xs text-slate-200 leading-relaxed">{r.primary_quote_ru}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-2 rounded-lg bg-white/5 text-slate-300">
+                    🕯 <b>Традиции и практика:</b> {r.practices}
+                  </div>
                 </div>
-                <div className="text-slate-400">🏛 Возникновение: <span className="text-slate-200">{r.origin}</span></div>
-                <div className="text-slate-400">📖 Священное Писание: <span className="text-amber-300 font-medium">{r.scripture}</span></div>
-                <div className="text-slate-400">🌿 Направления: <span className="text-sky-300">{r.branches}</span></div>
-                <p className="text-slate-200 leading-relaxed pt-1">{r.core_beliefs}</p>
-                <div className="p-2 rounded-lg bg-white/5 text-slate-300">🕯 <b>Традиции и практика:</b> {r.practices}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

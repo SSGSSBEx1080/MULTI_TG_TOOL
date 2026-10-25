@@ -4,6 +4,14 @@ import hashlib
 import time
 from typing import Any
 
+from backend.tools.bilingual_corpus import (
+    PUBLIC_EARTH_WEBCAMS,
+    RELIGION_FULL_ARTICLES,
+    SLANG_AND_INTENT_ROUTES,
+    build_serendipity_wiki_cards,
+    enrich_constitution_entry,
+)
+
 # ==============================================================================
 # 1. Сборник Конституций Стран Мира
 # ==============================================================================
@@ -138,17 +146,28 @@ CONSTITUTIONS_DB: list[dict[str, Any]] = [
 
 
 def search_constitutions(query: str = "") -> list[dict[str, Any]]:
+    enriched = [enrich_constitution_entry(c) for c in CONSTITUTIONS_DB]
     q = (query or "").strip().lower()
     if not q:
-        return CONSTITUTIONS_DB
-    return [
-        c for c in CONSTITUTIONS_DB
-        if q in c["country"].lower()
-        or q in c["code"].lower()
-        or q in c["gov_form"].lower()
-        or q in c["key_principles"].lower()
-        or q in c["unique_fact"].lower()
-    ]
+        return enriched
+    out: list[dict[str, Any]] = []
+    for c in enriched:
+        haystack = " ".join(
+            [
+                c["country"],
+                c["code"],
+                c["gov_form"],
+                c["key_principles"],
+                c["unique_fact"],
+                c.get("orig_lang", ""),
+                c.get("preamble_ru", ""),
+                c.get("preamble_orig", ""),
+                " ".join(f"{a['num']} {a['title']} {a['ru']} {a['orig']}" for a in c.get("articles", [])),
+            ]
+        ).lower()
+        if q in haystack:
+            out.append(c)
+    return out
 
 
 # ==============================================================================
@@ -431,4 +450,293 @@ def query_population(search_name: str = "") -> dict[str, Any]:
         "count": len(matches),
         "places": matches[:20],
         "estimated": bool(custom_note),
+    }
+
+
+def get_enriched_religions(query: str = "") -> list[dict[str, Any]]:
+    ql = (query or "").strip().lower()
+    out: list[dict[str, Any]] = []
+    for r in RELIGIONS_DB:
+        extra = RELIGION_FULL_ARTICLES.get(r["id"], {})
+        full_ru = extra.get("full_article_ru", f"{r['core_beliefs']} Практики: {r['practices']}")
+        quote_orig = extra.get("primary_quote_orig", r["scripture"])
+        quote_ru = extra.get("primary_quote_ru", r["core_beliefs"])
+        merged = {
+            **r,
+            "orig_script": extra.get("orig_script", r["name"]),
+            "full_article_ru": full_ru,
+            "primary_quote_orig": quote_orig,
+            "primary_quote_ru": quote_ru,
+            "ru_full": full_ru + "\n\n" + quote_ru,
+            "orig_full": quote_orig,
+        }
+        hay = " ".join(
+            [
+                merged["name"],
+                merged["scripture"],
+                merged["core_beliefs"],
+                merged["branches"],
+                merged["full_article_ru"],
+                merged["orig_script"],
+                merged["primary_quote_orig"],
+            ]
+        ).lower()
+        if not ql or ql in hay:
+            out.append(merged)
+    return out
+
+
+def get_earth_webcams(query: str = "") -> list[dict[str, Any]]:
+    ql = (query or "").strip().lower()
+    if not ql:
+        return PUBLIC_EARTH_WEBCAMS
+    return [
+        cam
+        for cam in PUBLIC_EARTH_WEBCAMS
+        if ql in cam["title"].lower()
+        or ql in cam["city"].lower()
+        or ql in cam["country"].lower()
+        or ql in cam["category"].lower()
+        or ql in cam["desc"].lower()
+    ]
+
+
+def intuitive_omni_search(query: str) -> dict[str, Any]:
+    """
+    Universal top-bar search across:
+    1) Instant calculations & smart unit conversions
+    2) Tool & category routing (including colloquial/slang synonyms)
+    3) Bilingual Constitutions, World Religions, Encyclopedia Concepts, Formulas, Webcams
+    4) Guaranteed encyclopedia serendipity fallback (never returns empty even on slang/profanity like 'хуйня')
+    """
+    from backend.tools import TOOL_CATEGORIES
+    from backend.tools.smart_calc import evaluate_math
+    from backend.tools.smart_units_nlp import smart_parse_and_convert
+    from backend.tools.text_studio import fix_keyboard_layout
+
+    raw = (query or "").strip()
+    if not raw:
+        return {
+            "query": "",
+            "instant": None,
+            "instant_answer": None,
+            "tools": [],
+            "articles": build_serendipity_wiki_cards(""),
+            "fallback_used": True,
+        }
+
+    ql = raw.lower()
+    instant_answer: dict[str, str] | None = None
+    instant_front: dict[str, str] | None = None
+
+    # 1. Try instant math or unit conversion
+    try:
+        u_res = smart_parse_and_convert(raw)
+        if u_res and u_res.get("conversions"):
+            top_conv = " • ".join(f"{c['formatted']} {c['unit']}" for c in u_res["conversions"][:3])
+            instant_answer = {
+                "badge": "Мгновенная конвертация",
+                "value": top_conv,
+                "sub": f"{u_res['value']} {u_res['from_label']}",
+            }
+            instant_front = {
+                "kind": "Конвертер величин",
+                "title": f"{u_res['value']} {u_res['from_label']}",
+                "output": top_conv,
+            }
+    except Exception:
+        pass
+
+    if instant_answer is None and any(ch.isdigit() for ch in raw) and any(op in raw for op in "+-*/^()%"):
+        try:
+            m_res = evaluate_math(raw)
+            val_str = str(m_res.get("formatted") or m_res.get("result"))
+            instant_answer = {
+                "badge": "Калькулятор",
+                "value": val_str,
+                "sub": f"Точное вычисление выражения: {raw}",
+            }
+            instant_front = {
+                "kind": "Калькулятор",
+                "title": raw,
+                "output": val_str,
+            }
+        except Exception:
+            pass
+
+    # Also test keyboard-layout-fixed query (e.g. 'шсифы' / 'vjcrdf' / 'if[vfns')
+    try:
+        fx = fix_keyboard_layout(raw, "auto")
+        alt_layout = str(fx.get("result") or fx.get("en_to_ru") or "").strip().lower()
+    except Exception:
+        alt_layout = ""
+    queries_to_match = [ql] + ([alt_layout] if alt_layout and alt_layout != ql else [])
+
+    # 2. Match tools (direct + colloquial intent map)
+    matched_tools: list[dict[str, str]] = []
+    seen_tools: set[str] = set()
+
+    for keywords, cat_id, tool_id in SLANG_AND_INTENT_ROUTES:
+        if any(any(kw in cand for kw in keywords) for cand in queries_to_match):
+            for cat in TOOL_CATEGORIES:
+                if cat["id"] == cat_id:
+                    for t in cat["tools"]:
+                        if t["id"] == tool_id and t["id"] not in seen_tools:
+                            seen_tools.add(t["id"])
+                            emj = t.get("emoji", "🔹")
+                            matched_tools.append(
+                                {
+                                    "id": t["id"],
+                                    "emoji": emj,
+                                    "category_id": cat["id"],
+                                    "category_title": cat["title"],
+                                    "tool_id": t["id"],
+                                    "title": t["title"],
+                                    "desc": t["desc"],
+                                }
+                            )
+
+    for cat in TOOL_CATEGORIES:
+        for t in cat["tools"]:
+            if t["id"] in seen_tools:
+                continue
+            hay = f"{cat['title']} {t['title']} {t['desc']} {t['id']}".lower()
+            if any(cand in hay for cand in queries_to_match):
+                seen_tools.add(t["id"])
+                emj = t.get("emoji", "🔹")
+                matched_tools.append(
+                    {
+                        "id": t["id"],
+                        "emoji": emj,
+                        "category_id": cat["id"],
+                        "category_title": cat["title"],
+                        "tool_id": t["id"],
+                        "title": t["title"],
+                        "desc": t["desc"],
+                    }
+                )
+
+    # 3. Match Knowledge Articles (Religions, Constitutions, Concepts, Formulas, Webcams)
+    articles: list[dict[str, Any]] = []
+
+    for cand in queries_to_match:
+        for rel in get_enriched_religions(cand)[:3]:
+            articles.append(
+                {
+                    "id": f"rel_{rel['id']}",
+                    "kind": f"Мировые религии • {rel['orig_script']}",
+                    "title": f"{rel['emoji']} {rel['name']} ({rel['followers']})",
+                    "subtitle": rel["orig_script"],
+                    "ru_text": rel["ru_full"],
+                    "orig_text": rel["orig_full"],
+                    "orig_lang": "Оригинал",
+                    "snippet": rel["full_article_ru"][:320] + ("…" if len(rel["full_article_ru"]) > 320 else ""),
+                    "quote": rel["primary_quote_ru"],
+                    "category_id": "knowledge",
+                    "tool_id": "religions_hub",
+                    "target_category": "knowledge",
+                    "target_tool": "religions_hub",
+                    "search_hint": rel["name"],
+                }
+            )
+        for con in search_constitutions(cand)[:3]:
+            art_preview = con["articles"][0]["ru"] if con.get("articles") else con["key_principles"]
+            orig_preview = con["articles"][0]["orig"] if con.get("articles") else con.get("preamble_orig", "")
+            articles.append(
+                {
+                    "id": f"const_{con['code']}",
+                    "kind": f"Конституция • {con.get('orig_lang', con['code'])}",
+                    "title": f"{con['flag']} Конституция: {con['country']} ({con['year']})",
+                    "subtitle": f"{con['form']} • {con.get('orig_lang', con['code'])}",
+                    "ru_text": con.get("ru_full", art_preview),
+                    "orig_text": con.get("orig_full", orig_preview),
+                    "orig_lang": con.get("orig_lang", con["code"]),
+                    "snippet": art_preview,
+                    "quote": orig_preview[:200],
+                    "category_id": "knowledge",
+                    "tool_id": "constitutions_hub",
+                    "target_category": "knowledge",
+                    "target_tool": "constitutions_hub",
+                    "search_hint": con["country"],
+                }
+            )
+        for conc in CONCEPTS_WIKI_DB:
+            if cand in conc["term"].lower() or cand in conc["desc"].lower() or cand in conc["cat"].lower():
+                articles.append(
+                    {
+                        "id": f"conc_{conc['term']}",
+                        "kind": f"Энциклопедия • {conc['cat']}",
+                        "title": f"📖 {conc['term']}",
+                        "subtitle": conc["cat"],
+                        "ru_text": conc["desc"],
+                        "orig_text": "",
+                        "orig_lang": "RU",
+                        "snippet": conc["desc"],
+                        "quote": "",
+                        "category_id": "knowledge",
+                        "tool_id": "multi_wiki",
+                        "target_category": "knowledge",
+                        "target_tool": "multi_wiki",
+                        "search_hint": conc["term"],
+                    }
+                )
+        for f in search_formulas("all", cand)[:2]:
+            articles.append(
+                {
+                    "id": f"form_{f['name']}",
+                    "kind": f"Формула • {f['subj']} ({f['topic']})",
+                    "title": f"📐 {f['name']}",
+                    "subtitle": f"{f['subj']} • {f['topic']}",
+                    "ru_text": f["formula"],
+                    "orig_text": "",
+                    "orig_lang": "Math/Phys",
+                    "snippet": f["formula"],
+                    "quote": "",
+                    "category_id": "knowledge",
+                    "tool_id": "ege_formulas",
+                    "target_category": "knowledge",
+                    "target_tool": "ege_formulas",
+                    "search_hint": f["name"],
+                }
+            )
+        for cam in get_earth_webcams(cand)[:2]:
+            articles.append(
+                {
+                    "id": f"cam_{cam['id']}",
+                    "kind": f"Live-камера Земли • {cam['country']}",
+                    "title": f"{cam['flag']} {cam['title']}",
+                    "subtitle": f"{cam['city']}, {cam['country']}",
+                    "ru_text": cam["desc"],
+                    "orig_text": f"Lat {cam['lat']}°, Lon {cam['lon']}°",
+                    "orig_lang": "LIVE 3D",
+                    "snippet": cam["desc"],
+                    "quote": f"Координаты: {cam['lat']}°, {cam['lon']}°",
+                    "category_id": "knowledge",
+                    "tool_id": "earth_3d_cams",
+                    "target_category": "knowledge",
+                    "target_tool": "earth_3d_cams",
+                    "search_hint": cam["city"],
+                }
+            )
+
+    # Deduplicate articles by title
+    dedup_articles: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    for a in articles:
+        if a["title"] not in seen_titles:
+            seen_titles.add(a["title"])
+            dedup_articles.append(a)
+
+    fallback_used = False
+    if not dedup_articles:
+        fallback_used = True
+        dedup_articles = build_serendipity_wiki_cards(raw)
+
+    return {
+        "query": raw,
+        "instant": instant_front,
+        "instant_answer": instant_answer,
+        "tools": matched_tools[:8],
+        "articles": dedup_articles[:6],
+        "fallback_used": fallback_used,
     }

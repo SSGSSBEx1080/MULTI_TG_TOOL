@@ -421,3 +421,85 @@ export const useViewportActive = (ref: RefObject<HTMLElement | null>): boolean =
 
   return inView && docVisible;
 };
+
+/**
+ * Razor-sharp HiDPI / Retina Canvas synchronizer.
+ * Matches physical framebuffer to exact CSS layout pixels * devicePixelRatio (up to 2.5x)
+ * and sets a clean 2D transform so all drawing & font rendering are crystal-sharp!
+ */
+export const syncHiDPICanvas = (
+  canvas: HTMLCanvasElement,
+  fallbackW = 360,
+  fallbackH = 240
+): { ctx: CanvasRenderingContext2D | null; W: number; H: number; dpr: number } => {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { ctx: null, W: fallbackW, H: fallbackH, dpr: 1 };
+
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width > 12 ? rect.width : fallbackW;
+  const H = rect.height > 12 ? rect.height : fallbackH;
+  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2.5) : 1;
+
+  const targetW = Math.max(1, Math.round(W * dpr));
+  const targetH = Math.max(1, Math.round(H * dpr));
+
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  return { ctx, W, H, dpr };
+};
+
+export const createBox = (wx = 1, hy = 1, dz = 1): Mesh3D => {
+  const x = wx * 0.5;
+  const y = hy * 0.5;
+  const z = dz * 0.5;
+  const vertices = [
+    v3(-x, -y, -z),
+    v3(x, -y, -z),
+    v3(x, y, -z),
+    v3(-x, y, -z),
+    v3(-x, -y, z),
+    v3(x, -y, z),
+    v3(x, y, z),
+    v3(-x, y, z),
+  ];
+  const faces = [
+    [4, 5, 6, 7],
+    [1, 0, 3, 2],
+    [3, 7, 6, 2],
+    [0, 1, 5, 4],
+    [5, 1, 2, 6],
+    [0, 4, 7, 3],
+  ];
+  return { vertices, faces, edges: uniqueEdgesFromFaces(faces) };
+};
+
+export const createCylinder = (rTop = 0.5, rBot = 0.5, height = 1.6, segs = 18): Mesh3D => {
+  const vertices: Vec3[] = [];
+  const faces: number[][] = [];
+  const hh = height * 0.5;
+
+  for (let i = 0; i < segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    vertices.push(v3(Math.cos(a) * rTop, hh, Math.sin(a) * rTop));
+  }
+  for (let i = 0; i < segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    vertices.push(v3(Math.cos(a) * rBot, -hh, Math.sin(a) * rBot));
+  }
+
+  for (let i = 0; i < segs; i++) {
+    const ni = (i + 1) % segs;
+    faces.push([i, i + segs, ni + segs, ni]);
+  }
+  faces.push(Array.from({ length: segs }, (_, i) => segs - 1 - i));
+  faces.push(Array.from({ length: segs }, (_, i) => segs + i));
+
+  return { vertices, faces, edges: uniqueEdgesFromFaces(faces) };
+};
+

@@ -859,3 +859,122 @@ async def cb_open_zitraks(call: CallbackQuery) -> None:
 async def cb_zitraks_page(call: CallbackQuery) -> None:
     p_idx = int(call.data.split(":", 2)[2])
     await _render_zitraks_bot(call, p_idx)
+
+
+# ==============================================================================
+# 3D ЗЕМЛЯ И ПУБЛИЧНЫЕ ВЕБ-КАМЕРЫ, ШАХМАТЫ, ШПИОН (ЛОББИ), GUESS SIZE
+# ==============================================================================
+async def _render_earth_cams_bot(target: Message | CallbackQuery) -> None:
+    from backend.tools.knowledge_hub import get_earth_webcams
+
+    cams = get_earth_webcams("")
+    lines = [
+        f"• {c['flag']} <b>{esc(c['title'])}</b> ({c['lat']}°, {c['lon']}°)"
+        for c in cams[:6]
+    ]
+    txt = (
+        "<b>🌍 3D Земля и Публичные веб-камеры мира</b>\n"
+        "<blockquote>Интерактивный 3D-глобус, спутниковая карта и прямые эфиры с камер планеты</blockquote>\n\n"
+        + "\n".join(lines)
+    )
+    b = InlineKeyboardBuilder()
+    b.row(webapp_button("🌍 Открыть 3D-Землю и Веб-камеры", tab="earth_3d_cams"))
+    b.row(
+        InlineKeyboardButton(text="⬅️ К разделу", callback_data="nav:cat:knowledge"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    await render_hud(target, txt, reply_markup=b.as_markup())
+
+
+@router.message(Command("earth", "cams"))
+async def cmd_earth_cams(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "earth_3d_cams", "knowledge", "bot", "open")
+    await _render_earth_cams_bot(message)
+
+
+@router.callback_query(F.data == "tool:open:earth_3d_cams")
+async def cb_open_earth_cams(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "earth_3d_cams", "knowledge", "bot", "open")
+    await _render_earth_cams_bot(call)
+
+
+async def _render_arcade_launch_bot(target: Message | CallbackQuery, tool_id: str, title: str, desc: str) -> None:
+    b = InlineKeyboardBuilder()
+    b.row(webapp_button(f"🎮 Запустить: {title}", tab=tool_id))
+    b.row(
+        InlineKeyboardButton(text="⬅️ Все игры", callback_data="nav:cat:arcade"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="nav:home"),
+    )
+    await render_hud(
+        target,
+        f"<b>{esc(title)}</b>\n<blockquote>{esc(desc)}</blockquote>\n\n"
+        "Нажмите кнопку ниже для запуска интерактивного 3D-режима в Mini App:",
+        reply_markup=b.as_markup(),
+    )
+
+
+@router.message(Command("chess"))
+async def cmd_chess(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "chess_academy", "arcade", "bot", "open")
+    await _render_arcade_launch_bot(
+        message,
+        "chess_academy",
+        "♟️ Шахматы: Игра и Обучение",
+        "3D/2D партия с ИИ (3 уровня) или вдвоём, разбор дебютов и тактические задачи.",
+    )
+
+
+@router.callback_query(F.data == "tool:open:chess_academy")
+async def cb_open_chess(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "chess_academy", "arcade", "bot", "open")
+    await _render_arcade_launch_bot(
+        call,
+        "chess_academy",
+        "♟️ Шахматы: Игра и Обучение",
+        "3D/2D партия с ИИ (3 уровня) или вдвоём, разбор дебютов и тактические задачи.",
+    )
+
+
+@router.message(Command("spy"))
+async def cmd_spy(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "spy_lobby", "arcade", "bot", "open")
+    await _render_arcade_launch_bot(
+        message,
+        "spy_lobby",
+        "🕵️ Шпион (Онлайн-лобби и Компания)",
+        "Создайте комнату по 5-буквенному коду для друзей или играйте на одном устройстве (22 локации).",
+    )
+
+
+@router.callback_query(F.data == "tool:open:spy_lobby")
+async def cb_open_spy(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "spy_lobby", "arcade", "bot", "open")
+    await _render_arcade_launch_bot(
+        call,
+        "spy_lobby",
+        "🕵️ Шпион (Онлайн-лобби и Компания)",
+        "Создайте комнату по 5-буквенному коду для друзей или играйте на одном устройстве (22 локации).",
+    )
+
+
+@router.message(Command("guess"))
+async def cmd_guess_size(message: Message) -> None:
+    await db.record_tool_use(message.from_user.id, "guess_size", "arcade", "bot", "open")
+    await _render_arcade_launch_bot(
+        message,
+        "guess_size",
+        "📐 Guess Size (Угадай размер)",
+        "Интерактивное 3D-сравнение реальных размеров объектов и рекорды точности.",
+    )
+
+
+@router.callback_query(F.data == "tool:open:guess_size")
+async def cb_open_guess_size(call: CallbackQuery) -> None:
+    await db.record_tool_use(call.from_user.id, "guess_size", "arcade", "bot", "open")
+    await _render_arcade_launch_bot(
+        call,
+        "guess_size",
+        "📐 Guess Size (Угадай размер)",
+        "Интерактивное 3D-сравнение реальных размеров объектов и рекорды точности.",
+    )
+

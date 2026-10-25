@@ -205,30 +205,6 @@ export const CyberDevHub: React.FC<Props> = ({
   if (activeCategory === 'security') {
     return (
       <div className="space-y-5 min-w-0">
-        <div className="hidden lg:flex flex-wrap gap-2">
-          {[
-            { id: 'pass', tool: 'pass_forge', label: '🛡️ Генератор Паролей' },
-            { id: 'aes', tool: 'aes_cipher', label: '🧬 Шифратор AES-256 NX1' },
-            { id: 'hash', tool: 'hash_lab', label: '#️⃣ Мульти-Хеш & HMAC' },
-            { id: 'jwt', tool: 'jwt_totp', label: '⏱️ JWT & 2FA TOTP' },
-          ].map((t) => (
-            <button
-              key={t.id}
-              onClick={() => {
-                setSecTab(t.id as any);
-                onSelectTool(t.tool);
-              }}
-              className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition ${
-                secTab === t.id
-                  ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
-                  : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/5'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
         {secTab === 'pass' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             <div className="lg:col-span-5 rounded-2xl border border-white/10 bg-slate-900/70 p-5 space-y-4">
@@ -600,30 +576,6 @@ export const CyberDevHub: React.FC<Props> = ({
 
   return (
     <div className="space-y-5 min-w-0">
-      <div className="hidden lg:flex flex-wrap gap-2">
-        {[
-          { id: 'json', tool: 'json_yaml', label: '🧩 JSON ↔ YAML ↔ CSV' },
-          { id: 'regex', tool: 'regex_lab', label: '🎯 Regex Лаборатория' },
-          { id: 'codec', tool: 'encoders', label: '📡 Base64 / Base58 / Морзе' },
-          { id: 'cron', tool: 'cron_uuid', label: '⚙️ Cron & UUID v7 / Time' },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => {
-              setDevTab(t.id as any);
-              onSelectTool(t.tool);
-            }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-medium border transition ${
-              devTab === t.id
-                ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/5'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {devTab === 'json' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 space-y-3">

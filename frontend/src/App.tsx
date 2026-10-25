@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Columns2,
   LayoutGrid,
@@ -29,7 +29,46 @@ const AdminControlHub = lazy(() =>
 
 type ViewMode = 'miniapp' | 'split' | 'bot' | 'admin';
 
+const SIDEBAR_SEED_KEY = 'mtt_sidebar_seed_v1';
+const LOCAL_CAT_USAGE_KEY = 'mtt_cat_usage_v1';
+
+function getOrCreateSidebarSeed(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_SEED_KEY);
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    const created = Math.floor(Math.random() * 2147483640) + 17;
+    localStorage.setItem(SIDEBAR_SEED_KEY, String(created));
+    return created;
+  } catch {
+    return 94827163;
+  }
+}
+
+function readLocalCatUsage(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(LOCAL_CAT_USAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function hashCatSeed(seed: number, catId: string): number {
+  let h = seed >>> 0;
+  for (let i = 0; i < catId.length; i++) {
+    h = Math.imul(h ^ catId.charCodeAt(i), 2654435761);
+  }
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
 export const App: React.FC = () => {
+  const rootRef = useRef<HTMLDivElement>(null);
   const params = new URLSearchParams(window.location.search);
   const startParam =
     params.get('tool') ||
@@ -57,9 +96,24 @@ export const App: React.FC = () => {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [habits, setHabits] = useState<HabitItem[]>([]);
+  const [sidebarSeed] = useState<number>(() => getOrCreateSidebarSeed());
+  const [serverCatUsage, setServerCatUsage] = useState<Record<string, number>>({});
+  const [localCatUsage, setLocalCatUsage] = useState<Record<string, number>>(() => readLocalCatUsage());
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  const bumpCategoryUsage = useCallback((catId: string) => {
+    setLocalCatUsage((prev) => {
+      const next = { ...prev, [catId]: (prev[catId] || 0) + 1 };
+      try {
+        localStorage.setItem(LOCAL_CAT_USAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore storage quota
+      }
+      return next;
+    });
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -71,6 +125,28 @@ export const App: React.FC = () => {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Subtle GPU-only mouse 3D parallax (updates CSS vars without React re-renders)
+  useEffect(() => {
+    let raf = 0;
+    const onMove = (e: MouseEvent) => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const el = rootRef.current;
+        if (!el) return;
+        const nx = (e.clientX / Math.max(1, window.innerWidth) - 0.5) * 2;
+        const ny = (e.clientY / Math.max(1, window.innerHeight) - 0.5) * 2;
+        el.style.setProperty('--px', nx.toFixed(3));
+        el.style.setProperty('--py', ny.toFixed(3));
+      });
+    };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
   const loadWorkspace = useCallback(async () => {
     try {
       const ws = await apiGet('/api/workspace/state');
@@ -79,10 +155,33 @@ export const App: React.FC = () => {
       setNotes(ws.notes || []);
       setTodos(ws.todos || []);
       setHabits(ws.habits || []);
+      if (ws.category_usage && typeof ws.category_usage === 'object') {
+        setServerCatUsage(ws.category_usage);
+      }
     } catch {
       // ignore transient startup
     }
   }, []);
+
+  const combinedCatUsage = useMemo(() => {
+    const out: Record<string, number> = { ...serverCatUsage };
+    for (const [k, v] of Object.entries(localCatUsage)) {
+      out[k] = (out[k] || 0) + v;
+    }
+    return out;
+  }, [serverCatUsage, localCatUsage]);
+
+  // Per-user randomized sidebar order that rises upward the more a category is used
+  const orderedCategories = useMemo(() => {
+    if (categories.length === 0) return [];
+    const uidSalt = (profile?.user_id || 0) ^ sidebarSeed;
+    return [...categories].sort((a, b) => {
+      const ua = combinedCatUsage[a.id] || 0;
+      const ub = combinedCatUsage[b.id] || 0;
+      if (ub !== ua) return ub - ua;
+      return hashCatSeed(uidSalt, a.id) - hashCatSeed(uidSalt, b.id);
+    });
+  }, [categories, combinedCatUsage, profile?.user_id, sidebarSeed]);
 
   useEffect(() => {
     try {
@@ -99,23 +198,32 @@ export const App: React.FC = () => {
         const cats: ToolCategory[] = res.categories || [];
         setCategories(cats);
         if (cats.length > 0) {
-          const param = startParam || activeCategory;
-          const byCat = cats.find((c) => c.id === param);
-          if (byCat) {
-            setActiveCategory(byCat.id);
-            if (byCat.tools[0]) setActiveTool(byCat.tools[0].id);
-            return;
-          }
-          for (const cat of cats) {
-            const matchedTool = cat.tools.find((t) => t.id === param);
-            if (matchedTool) {
-              setActiveCategory(cat.id);
-              setActiveTool(matchedTool.id);
+          if (startParam) {
+            const byCat = cats.find((c) => c.id === startParam);
+            if (byCat) {
+              setActiveCategory(byCat.id);
+              if (byCat.tools[0]) setActiveTool(byCat.tools[0].id);
               return;
             }
+            for (const cat of cats) {
+              const matchedTool = cat.tools.find((t) => t.id === startParam);
+              if (matchedTool) {
+                setActiveCategory(cat.id);
+                setActiveTool(matchedTool.id);
+                return;
+              }
+            }
           }
-          setActiveCategory(cats[0].id);
-          if (cats[0].tools[0]) setActiveTool(cats[0].tools[0].id);
+          // Default to user's top / personalized first category
+          const localUsage = readLocalCatUsage();
+          const sorted = [...cats].sort((a, b) => {
+            const ua = localUsage[a.id] || 0;
+            const ub = localUsage[b.id] || 0;
+            if (ub !== ua) return ub - ua;
+            return hashCatSeed(sidebarSeed, a.id) - hashCatSeed(sidebarSeed, b.id);
+          });
+          setActiveCategory(sorted[0].id);
+          if (sorted[0].tools[0]) setActiveTool(sorted[0].tools[0].id);
         }
       })
       .catch(() => {});
@@ -185,6 +293,7 @@ export const App: React.FC = () => {
 
   const handleSelectCategory = (catId: string) => {
     setActiveCategory(catId);
+    bumpCategoryUsage(catId);
     const cat = categories.find((c) => c.id === catId);
     if (cat?.tools[0]) {
       setActiveTool(cat.tools[0].id);
@@ -198,6 +307,7 @@ export const App: React.FC = () => {
   const handleSelectTool = (catId: string, toolId: string) => {
     setActiveCategory(catId);
     setActiveTool(toolId);
+    bumpCategoryUsage(catId);
     setMobileDrillOpen(true);
     if (viewMode === 'bot' || viewMode === 'admin') {
       setViewMode('miniapp');
@@ -249,6 +359,7 @@ export const App: React.FC = () => {
 
   return (
     <div
+      ref={rootRef}
       className="relative min-h-screen flex flex-col bg-[#060913] text-slate-100 overflow-x-clip"
       style={
         {
@@ -257,17 +368,19 @@ export const App: React.FC = () => {
         } as React.CSSProperties
       }
     >
-      {/* Multi-layered GPU-accelerated Ambient Aurora + Cyber-Grid Backdrop */}
+      {/* Multi-layered GPU-accelerated 3D Parallax Ambient Aurora + Cyber-Grid Backdrop */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
-        <div
-          className="aurora-blob-a absolute -top-28 -left-24 w-[62vw] max-w-[680px] h-[52vh] max-h-[540px] rounded-full blur-[110px] opacity-25 transition-colors duration-700"
-          style={{ backgroundColor: primaryGlow }}
-        />
-        <div
-          className="aurora-blob-b absolute -bottom-32 -right-20 w-[58vw] max-w-[640px] h-[48vh] max-h-[500px] rounded-full blur-[120px] opacity-20 transition-colors duration-700"
-          style={{ backgroundColor: secondaryGlow }}
-        />
-        <div className="cyber-grid-bg absolute inset-0" />
+        <div className="parallax-layer-deep absolute inset-0">
+          <div
+            className="aurora-blob-a absolute -top-28 -left-24 w-[62vw] max-w-[680px] h-[52vh] max-h-[540px] rounded-full blur-[110px] opacity-25 transition-colors duration-700"
+            style={{ backgroundColor: primaryGlow }}
+          />
+          <div
+            className="aurora-blob-b absolute -bottom-32 -right-20 w-[58vw] max-w-[640px] h-[48vh] max-h-[500px] rounded-full blur-[120px] opacity-20 transition-colors duration-700"
+            style={{ backgroundColor: secondaryGlow }}
+          />
+        </div>
+        <div className="cyber-grid-bg parallax-layer-mid absolute inset-0" />
       </div>
 
       {/* Top Browser Shell (Hidden inside native Telegram WebApp) */}
@@ -361,7 +474,8 @@ export const App: React.FC = () => {
               <div className="xl:col-span-8 min-w-0">
                 <MiniAppStudio
                   isNativeTma={isNativeTma}
-                  categories={categories}
+                  categories={orderedCategories}
+                  categoryUsage={combinedCatUsage}
                   activeCategory={activeCategory}
                   activeTool={activeTool}
                   mobileDrillOpen={mobileDrillOpen}
@@ -395,7 +509,8 @@ export const App: React.FC = () => {
           {viewMode === 'miniapp' && (
             <MiniAppStudio
               isNativeTma={isNativeTma}
-              categories={categories}
+              categories={orderedCategories}
+              categoryUsage={combinedCatUsage}
               activeCategory={activeCategory}
               activeTool={activeTool}
               mobileDrillOpen={mobileDrillOpen}
@@ -416,7 +531,7 @@ export const App: React.FC = () => {
 
           {viewMode === 'admin' && (
             <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-5 pb-20 lg:pb-8">
-              <AdminControlHub categories={categories} onToast={showToast} />
+              <AdminControlHub categories={orderedCategories} onToast={showToast} />
             </div>
           )}
         </Suspense>
@@ -426,7 +541,7 @@ export const App: React.FC = () => {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        categories={categories}
+        categories={orderedCategories}
         onSelectTool={(c, t) => {
           handleSelectTool(c, t);
           setPaletteOpen(false);

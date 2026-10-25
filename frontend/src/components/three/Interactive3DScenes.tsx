@@ -4,7 +4,9 @@ import {
   Mesh3D,
   TESSERACT_EDGES,
   Vec3,
+  createBox,
   createCube,
+  createCylinder,
   createDodecahedron,
   createIcosahedron,
   createOctahedron,
@@ -22,6 +24,7 @@ import {
   scale3,
   shadeBlinnPhong,
   sub3,
+  syncHiDPICanvas,
   useViewportActive,
   v3,
 } from '../../lib/engine3d';
@@ -110,18 +113,35 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const active = useViewportActive(wrapRef);
 
-  const [geoMode, setGeoMode] = useState<'tesseract' | 'icosa' | 'torus'>('tesseract');
+  const [geoMode, setGeoMode] = useState<'tesseract' | 'gyro' | 'icosa' | 'torus'>('tesseract');
   const [autoSpin, setAutoSpin] = useState(true);
 
-  const rotRef = useRef({ rx: 0.35, ry: 0.55, vx: 0, vy: 0.009, t4d: 0 });
+  const rotRef = useRef({ rx: 0.32, ry: 0.58, vx: 0, vy: 0.008, t4d: 0 });
   const dragRef = useRef({ down: false, x: 0, y: 0, moved: false });
   const hitNodesRef = useRef<{ id: string; sx: number; sy: number; r: number; z: number }[]>([]);
 
   const meshes = useMemo(
     () => ({
-      icosa: createIcosahedron(0.95),
-      torus: createTorus(0.78, 0.28, 20, 11),
+      icosa: createIcosahedron(0.96),
+      dodeca: createDodecahedron(1.06),
+      octa: createOctahedron(0.66),
+      torus: createTorus(0.8, 0.27, 24, 12),
     }),
+    []
+  );
+
+  const starField = useMemo(
+    () =>
+      Array.from({ length: 38 }, (_, i) => {
+        const phi = i * 2.39996;
+        const r = 1.9 + (i % 7) * 0.22;
+        return {
+          x: Math.cos(phi) * r,
+          y: (((i * 37) % 100) / 50 - 1) * 1.45,
+          z: Math.sin(phi) * r,
+          s: 0.8 + (i % 3) * 0.45,
+        };
+      }),
     []
   );
 
@@ -134,17 +154,16 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, compact ? 320 : 284, compact ? 186 : 210);
+      if (!ctx) return;
 
-      const W = cvs.width;
-      const H = cvs.height;
       const st = rotRef.current;
 
       if (!dragRef.current.down) {
         if (autoSpin) {
-          st.ry += 0.008;
-          st.t4d += 0.014;
+          st.ry += 0.0075;
+          st.t4d += 0.015;
         }
         st.rx += st.vx;
         st.ry += st.vy;
@@ -152,39 +171,76 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
         st.vy *= 0.92;
         st.rx = Math.max(-1.35, Math.min(1.35, st.rx));
       } else {
-        st.t4d += 0.006;
+        st.t4d += 0.007;
       }
 
       ctx.clearRect(0, 0, W, H);
 
-      // Subtle radial core glow
       const [cr, cg, cb] = hexToRgb(accentColor);
-      const grad = ctx.createRadialGradient(W * 0.5, H * 0.5, 6, W * 0.5, H * 0.5, W * 0.44);
-      grad.addColorStop(0, `rgba(${cr},${cg},${cb},0.24)`);
-      grad.addColorStop(0.6, 'rgba(15,23,42,0.12)');
-      grad.addColorStop(1, 'rgba(8,12,22,0)');
+      const pulse = 0.5 + 0.5 * Math.sin(st.t4d * 2.2);
+
+      // Deep volumetric nebula core glow
+      const grad = ctx.createRadialGradient(W * 0.5, H * 0.5, 4, W * 0.5, H * 0.5, W * 0.52);
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${0.32 + pulse * 0.08})`);
+      grad.addColorStop(0.45, 'rgba(30,41,82,0.18)');
+      grad.addColorStop(1, 'rgba(5,8,18,0)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, W, H);
 
-      const fov = compact ? 225 : 250;
-      const camDist = 4.3;
+      const fov = compact ? 228 : 252;
+      const camDist = 4.35;
 
-      // Orbital ring
-      ctx.beginPath();
-      for (let i = 0; i <= 64; i++) {
-        const ang = (i / 64) * Math.PI * 2;
-        const rp = rotateEuler({ x: Math.cos(ang) * 1.68, y: Math.sin(ang) * 0.35, z: Math.sin(ang) * 1.68 }, st.rx, st.ry);
-        const pp = project3D(rp, W, H, fov, camDist);
-        if (i === 0) ctx.moveTo(pp.sx, pp.sy);
-        else ctx.lineTo(pp.sx, pp.sy);
+      // 3D Starfield parallax layer
+      for (const star of starField) {
+        const sp = rotateEuler(star, st.rx * 0.45, st.ry * 0.45);
+        const pp = project3D(sp, W, H, fov, camDist + 0.8);
+        if (!pp.visible) continue;
+        const alpha = Math.max(0.12, Math.min(0.65, (sp.z + 2.5) / 5));
+        ctx.fillStyle = `rgba(226,232,240,${alpha})`;
+        ctx.beginPath();
+        ctx.arc(pp.sx, pp.sy, star.s, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.22)`;
-      ctx.lineWidth = 1;
-      ctx.stroke();
 
-      // Central 3D / 4D geometry
+      // Dual inclined orbital rings
+      for (let ringIdx = 0; ringIdx < 2; ringIdx++) {
+        ctx.beginPath();
+        const tilt = ringIdx === 0 ? 0.34 : -0.42;
+        const rad = ringIdx === 0 ? 1.72 : 1.44;
+        for (let i = 0; i <= 72; i++) {
+          const ang = (i / 72) * Math.PI * 2;
+          const rp = rotateEuler(
+            { x: Math.cos(ang) * rad, y: Math.sin(ang) * tilt, z: Math.sin(ang) * rad },
+            st.rx,
+            st.ry + ringIdx * 0.6
+          );
+          const pp = project3D(rp, W, H, fov, camDist);
+          if (i === 0) ctx.moveTo(pp.sx, pp.sy);
+          else ctx.lineTo(pp.sx, pp.sy);
+        }
+        ctx.strokeStyle =
+          ringIdx === 0 ? `rgba(${cr},${cg},${cb},0.28)` : 'rgba(56,189,248,0.16)';
+        ctx.lineWidth = ringIdx === 0 ? 1.15 : 0.9;
+        ctx.stroke();
+      }
+
+      // Central 3D / 4D Reactor Geometry
       if (geoMode === 'tesseract') {
-        const verts3d = projectTesseract4DTo3D(st.t4d, st.t4d * 0.7, st.t4d * 0.45, 0.62).map((p) =>
+        // Outer translucent dodecahedral containment cage
+        const cageProj = meshes.dodeca.vertices
+          .map((p) => rotateEuler(p, st.rx * 0.7, -st.ry * 0.6, st.t4d * 0.2))
+          .map((p) => project3D(p, W, H, fov, camDist));
+        ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.16)`;
+        ctx.lineWidth = 0.8;
+        for (const [a, b] of meshes.dodeca.edges) {
+          if (!cageProj[a].visible || !cageProj[b].visible) continue;
+          ctx.beginPath();
+          ctx.moveTo(cageProj[a].sx, cageProj[a].sy);
+          ctx.lineTo(cageProj[b].sx, cageProj[b].sy);
+          ctx.stroke();
+        }
+
+        const verts3d = projectTesseract4DTo3D(st.t4d, st.t4d * 0.72, st.t4d * 0.48, 0.62).map((p) =>
           rotateEuler(p, st.rx, st.ry)
         );
         const proj = verts3d.map((p) => project3D(p, W, H, fov, camDist));
@@ -198,35 +254,72 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
           ctx.moveTo(pa.sx, pa.sy);
           ctx.lineTo(pb.sx, pb.sy);
           ctx.strokeStyle = isInner
-            ? 'rgba(56,189,248,0.88)'
-            : `rgba(${cr},${cg},${cb},0.65)`;
-          ctx.lineWidth = isInner ? 1.7 : 1.2;
+            ? 'rgba(56,189,248,0.92)'
+            : `rgba(${cr},${cg},${cb},0.72)`;
+          ctx.lineWidth = isInner ? 1.55 : 1.15;
           ctx.stroke();
         }
         proj.forEach((p, idx) => {
           if (!p.visible) return;
           ctx.fillStyle = idx & 8 ? '#f8fafc' : '#38bdf8';
           ctx.beginPath();
-          ctx.arc(p.sx, p.sy, Math.max(1.8, p.scale * 0.032), 0, Math.PI * 2);
+          ctx.arc(p.sx, p.sy, Math.max(1.8, p.scale * 0.03), 0, Math.PI * 2);
           ctx.fill();
         });
+      } else if (geoMode === 'gyro') {
+        // 3-Axis Astrolabe Gyroscope + Octahedron Singularity Core
+        drawShadedMesh(ctx, meshes.octa, -st.rx, st.ry * 1.4, st.t4d * 0.8, W, H, fov, camDist, accentColor, 0.85);
+        const gyroSpecs = [
+          { r: 0.92, ax: st.t4d * 1.3, ay: st.ry, az: 0.2, col: `rgba(${cr},${cg},${cb},0.85)` },
+          { r: 1.12, ax: st.rx + 1.1, ay: -st.t4d * 1.05, az: 0.7, col: 'rgba(56,189,248,0.8)' },
+          { r: 1.28, ax: 0.5, ay: st.ry * 0.8, az: st.t4d * 0.9, col: 'rgba(244,114,182,0.72)' },
+        ];
+        gyroSpecs.forEach((g, gi) => {
+          ctx.beginPath();
+          for (let i = 0; i <= 60; i++) {
+            const a = (i / 60) * Math.PI * 2;
+            const gp = rotateEuler({ x: Math.cos(a) * g.r, y: Math.sin(a) * g.r, z: 0 }, g.ax, g.ay, g.az);
+            const pp = project3D(gp, W, H, fov, camDist);
+            if (i === 0) ctx.moveTo(pp.sx, pp.sy);
+            else ctx.lineTo(pp.sx, pp.sy);
+          }
+          ctx.strokeStyle = g.col;
+          ctx.lineWidth = 1.65;
+          ctx.stroke();
+
+          // Photon bead racing on gyroscope ring
+          const beadAngle = st.t4d * (2.2 + gi * 0.6);
+          const bp = rotateEuler(
+            { x: Math.cos(beadAngle) * g.r, y: Math.sin(beadAngle) * g.r, z: 0 },
+            g.ax,
+            g.ay,
+            g.az
+          );
+          const bProj = project3D(bp, W, H, fov, camDist);
+          if (bProj.visible) {
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(bProj.sx, bProj.sy, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
       } else if (geoMode === 'icosa') {
-        drawShadedMesh(ctx, meshes.icosa, st.rx, st.ry, st.t4d * 0.3, W, H, fov, camDist, accentColor, 0.75);
+        drawShadedMesh(ctx, meshes.icosa, st.rx, st.ry, st.t4d * 0.35, W, H, fov, camDist, accentColor, 0.82);
       } else {
-        drawShadedMesh(ctx, meshes.torus, st.rx + 0.5, st.ry, st.t4d * 0.4, W, H, fov, camDist, accentColor, 0.72);
+        drawShadedMesh(ctx, meshes.torus, st.rx + 0.52, st.ry, st.t4d * 0.45, W, H, fov, camDist, accentColor, 0.78);
       }
 
-      // 14 Interactive Orbital Category Satellites
+      // Interactive Orbital Category Satellites (all 15 categories)
       const hits: { id: string; sx: number; sy: number; r: number; z: number }[] = [];
       const count = categories.length;
       const satList = categories
         .map((cat, idx) => {
           const phi = (idx / Math.max(1, count)) * Math.PI * 2;
-          const yWave = Math.sin(phi * 2 + st.t4d * 0.5) * 0.52;
+          const yWave = Math.sin(phi * 2 + st.t4d * 0.55) * 0.54;
           const base = {
-            x: Math.cos(phi) * 1.68,
+            x: Math.cos(phi) * 1.72,
             y: yWave,
-            z: Math.sin(phi) * 1.68,
+            z: Math.sin(phi) * 1.72,
           };
           const wp = rotateEuler(base, st.rx, st.ry);
           const pp = project3D(wp, W, H, fov, camDist);
@@ -237,35 +330,64 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
       for (const s of satList) {
         if (!s.pp.visible) continue;
         const isCurrent = s.cat.id === activeCategory;
-        const nodeR = Math.max(9, s.pp.scale * (isCurrent ? 0.19 : 0.145));
+        const nodeR = Math.max(9.5, s.pp.scale * (isCurrent ? 0.195 : 0.142));
         const [nr, ng, nb] = hexToRgb(s.cat.color || '#38bdf8');
 
         if (isCurrent) {
-          // Energy beam from core to active category satellite
+          // Curved plasma arc from core to active satellite
           ctx.beginPath();
           ctx.moveTo(W * 0.5, H * 0.5);
-          ctx.lineTo(s.pp.sx, s.pp.sy);
-          ctx.strokeStyle = `rgba(${nr},${ng},${nb},0.55)`;
-          ctx.lineWidth = 1.6;
+          ctx.quadraticCurveTo(
+            (W * 0.5 + s.pp.sx) * 0.5,
+            (H * 0.5 + s.pp.sy) * 0.5 - 14,
+            s.pp.sx,
+            s.pp.sy
+          );
+          ctx.strokeStyle = `rgba(${nr},${ng},${nb},0.72)`;
+          ctx.lineWidth = 1.8;
           ctx.stroke();
+
+          // Outer Saturn halo on active category
+          ctx.beginPath();
+          ctx.arc(s.pp.sx, s.pp.sy, nodeR + 3.5 + pulse * 1.8, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${nr},${ng},${nb},0.48)`;
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+
+        // 3D sphere shading on node
+        const sphereGrad = ctx.createRadialGradient(
+          s.pp.sx - nodeR * 0.3,
+          s.pp.sy - nodeR * 0.3,
+          nodeR * 0.12,
+          s.pp.sx,
+          s.pp.sy,
+          nodeR
+        );
+        if (isCurrent) {
+          sphereGrad.addColorStop(0, '#ffffff');
+          sphereGrad.addColorStop(0.35, `rgba(${nr},${ng},${nb},0.98)`);
+          sphereGrad.addColorStop(1, `rgba(${Math.round(nr * 0.45)},${Math.round(ng * 0.45)},${Math.round(nb * 0.45)},0.96)`);
+        } else {
+          const depthAlpha = s.wp.z > 0 ? 0.92 : 0.64;
+          sphereGrad.addColorStop(0, `rgba(${nr},${ng},${nb},${depthAlpha * 0.45})`);
+          sphereGrad.addColorStop(1, `rgba(10,15,30,${depthAlpha})`);
         }
 
         ctx.beginPath();
         ctx.arc(s.pp.sx, s.pp.sy, nodeR, 0, Math.PI * 2);
-        ctx.fillStyle = isCurrent
-          ? `rgba(${nr},${ng},${nb},0.92)`
-          : `rgba(15,23,42,${s.wp.z > 0 ? 0.9 : 0.6})`;
+        ctx.fillStyle = sphereGrad;
         ctx.fill();
-        ctx.lineWidth = isCurrent ? 2 : 1;
+        ctx.lineWidth = isCurrent ? 1.8 : 1;
         ctx.strokeStyle = isCurrent ? '#ffffff' : `rgba(${nr},${ng},${nb},0.65)`;
         ctx.stroke();
 
-        ctx.font = `${Math.round(nodeR * 0.95)}px sans-serif`;
+        ctx.font = `${Math.round(nodeR * 0.92)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(s.cat.emoji, s.pp.sx, s.pp.sy + 0.5);
 
-        hits.push({ id: s.cat.id, sx: s.pp.sx, sy: s.pp.sy, r: nodeR + 5, z: s.wp.z });
+        hits.push({ id: s.cat.id, sx: s.pp.sx, sy: s.pp.sy, r: nodeR + 6, z: s.wp.z });
       }
       hitNodesRef.current = hits;
 
@@ -274,7 +396,7 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [active, autoSpin, geoMode, categories, activeCategory, accentColor, compact, meshes]);
+  }, [active, autoSpin, geoMode, categories, activeCategory, accentColor, compact, meshes, starField]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -300,10 +422,8 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
     if (!wasTap || !canvasRef.current) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
-    const scaleX = canvasRef.current.width / Math.max(1, rect.width);
-    const scaleY = canvasRef.current.height / Math.max(1, rect.height);
-    const cx = (e.clientX - rect.left) * scaleX;
-    const cy = (e.clientY - rect.top) * scaleY;
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
 
     // Pick front-most hit satellite
     const candidates = hitNodesRef.current
@@ -317,15 +437,16 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
   return (
     <div
       ref={wrapRef}
-      className="rounded-2xl bg-slate-950/90 border border-indigo-500/25 p-2.5 space-y-2 select-none"
+      className="rounded-2xl bg-slate-950/90 border border-indigo-500/25 p-2.5 space-y-2 select-none shadow-[0_12px_34px_rgba(2,6,23,0.65)]"
     >
-      <div className="flex items-center justify-between gap-1.5 px-1">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between gap-1 px-0.5">
+        <div className="flex items-center gap-1 flex-wrap">
           {(
             [
               { id: 'tesseract', label: '4D Куб' },
-              { id: 'icosa', label: 'Икосаэдр' },
-              { id: 'torus', label: '3D Тор' },
+              { id: 'gyro', label: 'Гироскоп' },
+              { id: 'icosa', label: 'Кристалл' },
+              { id: 'torus', label: 'Тор' },
             ] as const
           ).map((m) => (
             <button
@@ -334,7 +455,7 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
               onClick={() => setGeoMode(m.id)}
               className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition ${
                 geoMode === m.id
-                  ? 'bg-indigo-500/30 border-indigo-400/60 text-indigo-200'
+                  ? 'bg-indigo-500/30 border-indigo-400/60 text-indigo-100 shadow-sm'
                   : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
               }`}
             >
@@ -345,7 +466,7 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
         <button
           type="button"
           onClick={() => setAutoSpin((s) => !s)}
-          className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+          className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 shrink-0"
           title={autoSpin ? 'Пауза вращения' : 'Авто-вращение'}
         >
           {autoSpin ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
@@ -354,22 +475,21 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
 
       <canvas
         ref={canvasRef}
-        width={compact ? 320 : 280}
-        height={compact ? 175 : 195}
+        style={{ height: compact ? 184 : 208 }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={() => {
           dragRef.current.down = false;
         }}
-        className="w-full h-auto rounded-xl bg-[#070b14] cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-xl bg-[#050813] cursor-grab active:cursor-grabbing touch-none block border border-white/[0.05]"
       />
 
       <div className="flex items-center justify-between px-1 text-[10px] text-slate-400">
-        <span className="truncate">Вращайте сцену • Тап по узлу — открыть раздел</span>
+        <span className="truncate">{activeCatObj ? `${activeCatObj.emoji} ${activeCatObj.title}` : 'Вращайте 3D-ядро'}</span>
         {activeCatObj && (
-          <span className="text-indigo-300 font-semibold shrink-0 ml-1">
-            {activeCatObj.emoji} {activeCatObj.tools.length}
+          <span className="text-indigo-300 font-mono font-semibold shrink-0 ml-1">
+            {activeCatObj.tools.length} инстр.
           </span>
         )}
       </div>
@@ -457,10 +577,9 @@ export const ZodiacCelestial3D: React.FC<Zodiac3DProps> = ({
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
-      const W = cvs.width;
-      const H = cvs.height;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 560, 235);
+      if (!ctx) return;
       pulse += 0.035;
 
       const cam = camRef.current;
@@ -650,8 +769,8 @@ export const ZodiacCelestial3D: React.FC<Zodiac3DProps> = ({
     camRef.current.dragging = false;
     if (!wasTap || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const cx = (e.clientX - rect.left) * (canvasRef.current.width / Math.max(1, rect.width));
-    const cy = (e.clientY - rect.top) * (canvasRef.current.height / Math.max(1, rect.height));
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
     const hit = hitSignsRef.current
       .filter((h) => Math.hypot(cx - h.sx, cy - h.sy) <= h.r)
       .sort((a, b) => b.z - a.z)[0];
@@ -679,15 +798,14 @@ export const ZodiacCelestial3D: React.FC<Zodiac3DProps> = ({
       </div>
       <canvas
         ref={canvasRef}
-        width={560}
-        height={235}
+        style={{ height: 235 }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={() => {
           camRef.current.dragging = false;
         }}
-        className="w-full h-auto max-h-[250px] rounded-xl bg-[#070b16] border border-white/5 cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-xl bg-[#070b16] border border-white/5 cursor-grab active:cursor-grabbing touch-none block"
       />
     </div>
   );
@@ -774,11 +892,9 @@ export const PhysicsLab3D: React.FC<Physics3DProps> = ({ calcId, values }) => {
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
-
-      const W = cvs.width;
-      const H = cvs.height;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 560, 220);
+      if (!ctx) return;
       if (!paused) tSim += 0.025;
 
       const { rx, ry } = camRef.current;
@@ -1095,8 +1211,7 @@ export const PhysicsLab3D: React.FC<Physics3DProps> = ({ calcId, values }) => {
 
       <canvas
         ref={canvasRef}
-        width={560}
-        height={220}
+        style={{ height: 220 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture?.(e.pointerId);
           camRef.current.down = true;
@@ -1118,7 +1233,7 @@ export const PhysicsLab3D: React.FC<Physics3DProps> = ({ calcId, values }) => {
         onPointerCancel={() => {
           camRef.current.down = false;
         }}
-        className="w-full h-auto max-h-[240px] rounded-xl bg-[#070c18] border border-white/5 cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-xl bg-[#070c18] border border-white/5 cursor-grab active:cursor-grabbing touch-none block"
       />
     </div>
   );
@@ -1174,11 +1289,9 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
-
-      const W = cvs.width;
-      const H = cvs.height;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 560, 215);
+      if (!ctx) return;
       tick += 1;
 
       const cam = camRef.current;
@@ -1301,8 +1414,8 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
     camRef.current.down = false;
     if (!wasTap || scene !== 'globe' || !onPickQuery || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const cx = (e.clientX - rect.left) * (canvasRef.current.width / Math.max(1, rect.width));
-    const cy = (e.clientY - rect.top) * (canvasRef.current.height / Math.max(1, rect.height));
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
     const hit = hitBeaconsRef.current
       .filter((b) => Math.hypot(cx - b.sx, cy - b.sy) <= b.r)
       .sort((a, b) => b.z - a.z)[0];
@@ -1342,8 +1455,7 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
 
       <canvas
         ref={canvasRef}
-        width={560}
-        height={215}
+        style={{ height: 215 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture?.(e.pointerId);
           camRef.current.down = true;
@@ -1365,7 +1477,7 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
         onPointerCancel={() => {
           camRef.current.down = false;
         }}
-        className="w-full h-auto max-h-[230px] rounded-xl bg-[#070b15] border border-white/5 cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-xl bg-[#070b15] border border-white/5 cursor-grab active:cursor-grabbing touch-none block"
       />
     </div>
   );
@@ -1426,10 +1538,9 @@ export const PolyhedralDice3D: React.FC<Dice3DProps> = ({ onRollResult }) => {
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
-      const W = cvs.width;
-      const H = cvs.height;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 420, 185);
+      if (!ctx) return;
       const p = physRef.current;
 
       p.rx += p.vx;
@@ -1527,10 +1638,9 @@ export const PolyhedralDice3D: React.FC<Dice3DProps> = ({ onRollResult }) => {
 
       <canvas
         ref={canvasRef}
-        width={420}
-        height={185}
+        style={{ height: 185 }}
         onClick={() => triggerRoll(sides)}
-        className="w-full h-auto max-h-[195px] rounded-xl bg-[#080c17] cursor-pointer touch-manipulation block"
+        className="w-full rounded-xl bg-[#080c17] cursor-pointer touch-manipulation block"
       />
     </div>
   );
@@ -1557,10 +1667,9 @@ export const CryptoStateCube3D: React.FC<CryptoCubeProps> = ({ entropyBits }) =>
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
-      const W = cvs.width;
-      const H = cvs.height;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 340, 165);
+      if (!ctx) return;
 
       const strength = Math.min(1, Math.max(0.15, entropyBits / 128));
       phase += 0.012 + strength * 0.018;
@@ -1644,8 +1753,7 @@ export const CryptoStateCube3D: React.FC<CryptoCubeProps> = ({ entropyBits }) =>
       </div>
       <canvas
         ref={canvasRef}
-        width={340}
-        height={165}
+        style={{ height: 165 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture?.(e.pointerId);
           camRef.current.down = true;
@@ -1667,7 +1775,7 @@ export const CryptoStateCube3D: React.FC<CryptoCubeProps> = ({ entropyBits }) =>
         onPointerCancel={() => {
           camRef.current.down = false;
         }}
-        className="w-full h-auto max-h-[175px] rounded-xl bg-[#070d16] cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-xl bg-[#070d16] cursor-grab active:cursor-grabbing touch-none block"
       />
     </div>
   );
@@ -1701,10 +1809,9 @@ export const PartyGlass3D: React.FC<PartyGlassProps> = ({ fillRatio, label }) =>
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
-      const W = cvs.width;
-      const H = cvs.height;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 340, 165);
+      if (!ctx) return;
       t += 0.05;
 
       const cam = camRef.current;
@@ -1813,8 +1920,7 @@ export const PartyGlass3D: React.FC<PartyGlassProps> = ({ fillRatio, label }) =>
       </div>
       <canvas
         ref={canvasRef}
-        width={340}
-        height={165}
+        style={{ height: 165 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture?.(e.pointerId);
           camRef.current.down = true;
@@ -1837,7 +1943,7 @@ export const PartyGlass3D: React.FC<PartyGlassProps> = ({ fillRatio, label }) =>
         onPointerCancel={() => {
           camRef.current.down = false;
         }}
-        className="w-full h-auto max-h-[175px] rounded-xl bg-[#080c16] cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-xl bg-[#080c16] cursor-grab active:cursor-grabbing touch-none block"
       />
     </div>
   );
@@ -1879,10 +1985,9 @@ export const NetworkTopology3D: React.FC<{ cidr: string; usableHosts?: number }>
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
-      const W = cvs.width;
-      const H = cvs.height;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 460, 165);
+      if (!ctx) return;
       pulse += 0.04;
       if (!camRef.current.down) camRef.current.ry += 0.006;
 
@@ -1936,8 +2041,7 @@ export const NetworkTopology3D: React.FC<{ cidr: string; usableHosts?: number }>
       </div>
       <canvas
         ref={canvasRef}
-        width={460}
-        height={165}
+        style={{ height: 165 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture?.(e.pointerId);
           camRef.current.down = true;
@@ -1959,7 +2063,7 @@ export const NetworkTopology3D: React.FC<{ cidr: string; usableHosts?: number }>
         onPointerCancel={() => {
           camRef.current.down = false;
         }}
-        className="w-full h-auto max-h-[175px] rounded-lg bg-[#070b16] cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-lg bg-[#070b16] cursor-grab active:cursor-grabbing touch-none block"
       />
     </div>
   );
@@ -1987,10 +2091,9 @@ export const HabitRing3D: React.FC<{ doneCount: number; totalCount: number }> = 
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
-      const W = cvs.width;
-      const H = cvs.height;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 460, 145);
+      if (!ctx) return;
       spin += 0.01;
       if (!camRef.current.down) camRef.current.ry += 0.005;
 
@@ -2001,7 +2104,7 @@ export const HabitRing3D: React.FC<{ doneCount: number; totalCount: number }> = 
       drawShadedMesh(ctx, torus, camRef.current.rx, camRef.current.ry, spin, W, H, 220, 4.2, col, 0.8);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px monospace';
+      ctx.font = 'bold 14px "JetBrains Mono", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${pct}%`, W / 2, H / 2);
@@ -2023,8 +2126,7 @@ export const HabitRing3D: React.FC<{ doneCount: number; totalCount: number }> = 
       </div>
       <canvas
         ref={canvasRef}
-        width={460}
-        height={145}
+        style={{ height: 145 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture?.(e.pointerId);
           camRef.current.down = true;
@@ -2046,7 +2148,7 @@ export const HabitRing3D: React.FC<{ doneCount: number; totalCount: number }> = 
         onPointerCancel={() => {
           camRef.current.down = false;
         }}
-        className="w-full h-auto max-h-[155px] rounded-lg bg-[#070d16] cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-lg bg-[#070d16] cursor-grab active:cursor-grabbing touch-none block"
       />
     </div>
   );
@@ -2112,11 +2214,10 @@ export const Universes3DScene: React.FC<Universes3DProps> = ({
 
     const render = () => {
       const cvs = canvasRef.current;
-      const ctx = cvs?.getContext('2d');
-      if (!cvs || !ctx) return;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 560, 195);
+      if (!ctx) return;
 
-      const W = cvs.width;
-      const H = cvs.height;
       const speedBoost = 1 + (progressPct / 100) * 0.85;
       if (!paused) {
         t += 0.018 * speedBoost;
@@ -2362,8 +2463,7 @@ export const Universes3DScene: React.FC<Universes3DProps> = ({
 
       <canvas
         ref={canvasRef}
-        width={560}
-        height={195}
+        style={{ height: 195 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture?.(e.pointerId);
           camRef.current.down = true;
@@ -2385,11 +2485,331 @@ export const Universes3DScene: React.FC<Universes3DProps> = ({
         onPointerCancel={() => {
           camRef.current.down = false;
         }}
-        className="w-full h-auto max-h-[205px] rounded-xl cursor-grab active:cursor-grabbing touch-none block"
+        className="w-full rounded-xl cursor-grab active:cursor-grabbing touch-none block"
       />
     </div>
   );
 };
+
+// ============================================================================
+// 11. UBIQUITOUS MINI 3D HOLOGRAPHIC BADGE FOR EVERY SUB-TOOL & CARD
+// ============================================================================
+export const Mini3DSceneBadge: React.FC<{
+  seed: string;
+  color?: string;
+  size?: number;
+}> = ({ seed, color = '#6366f1', size = 40 }) => {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const active = useViewportActive(wrapRef);
+  const boostRef = useRef(0);
+
+  const variant = useMemo(() => {
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+    const shapes = ['icosa', 'octa', 'torus', 'cube', 'tesseract', 'tetra'] as const;
+    return {
+      shape: shapes[h % shapes.length],
+      phase: (h % 360) * (Math.PI / 180),
+      speed: 0.014 + (h % 7) * 0.002,
+    };
+  }, [seed]);
+
+  const mesh = useMemo(() => {
+    switch (variant.shape) {
+      case 'octa':
+        return createOctahedron(1.22);
+      case 'torus':
+        return createTorus(0.92, 0.34, 14, 8);
+      case 'cube':
+        return createCube(1.18);
+      case 'tetra':
+        return createTetrahedron(1.28);
+      default:
+        return createIcosahedron(1.18);
+    }
+  }, [variant.shape]);
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    let t = variant.phase;
+
+    const render = () => {
+      const cvs = canvasRef.current;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, size, size);
+      if (!ctx) return;
+
+      t += variant.speed + boostRef.current;
+      boostRef.current *= 0.92;
+
+      ctx.clearRect(0, 0, W, H);
+      const [r, g, b] = hexToRgb(color);
+      const grad = ctx.createRadialGradient(W * 0.5, H * 0.5, 2, W * 0.5, H * 0.5, W * 0.5);
+      grad.addColorStop(0, `rgba(${r},${g},${b},0.28)`);
+      grad.addColorStop(1, 'rgba(6,10,22,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      if (variant.shape === 'tesseract') {
+        const pts = projectTesseract4DTo3D(t, t * 0.7, t * 0.4, 0.72).map((p) =>
+          project3D(rotateEuler(p, 0.45, t * 0.8), W, H, size * 1.45, 4.1)
+        );
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.88)`;
+        ctx.lineWidth = 1.05;
+        for (const [a, c] of TESSERACT_EDGES) {
+          if (!pts[a].visible || !pts[c].visible) continue;
+          ctx.beginPath();
+          ctx.moveTo(pts[a].sx, pts[a].sy);
+          ctx.lineTo(pts[c].sx, pts[c].sy);
+          ctx.stroke();
+        }
+      } else {
+        drawShadedMesh(
+          ctx,
+          mesh,
+          0.48 + Math.sin(t * 0.6) * 0.25,
+          t,
+          t * 0.35,
+          W,
+          H,
+          size * 1.38,
+          4.1,
+          color,
+          0.84,
+          'rgba(255,255,255,0.42)'
+        );
+      }
+
+      raf = requestAnimationFrame(render);
+    };
+
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [active, color, mesh, size, variant]);
+
+  return (
+    <div
+      ref={wrapRef}
+      onPointerEnter={() => {
+        boostRef.current = 0.085;
+      }}
+      onClick={() => {
+        boostRef.current = 0.14;
+      }}
+      style={{ width: size, height: size }}
+      className="rounded-xl bg-slate-950/85 border border-white/10 shrink-0 overflow-hidden shadow-inner cursor-pointer"
+      title="Интерактивная 3D-проекция"
+    >
+      <canvas ref={canvasRef} style={{ width: size, height: size }} className="block" />
+    </div>
+  );
+};
+
+// ============================================================================
+// 12. 3D REAL-SCALE OBJECT COMPARATOR (FOR ANATOMICAL CALC & GUESS SIZE GAME)
+// ============================================================================
+export interface ScaleObjectSpec {
+  label: string;
+  sizeCm: number;
+  widthCm?: number;
+  shape?: 'anatomical' | 'cylinder' | 'box' | 'card' | 'phone' | 'sphere';
+  color: string;
+  hideValue?: boolean;
+}
+
+export const RealScaleComparison3D: React.FC<{
+  leftObj: ScaleObjectSpec;
+  rightObj: ScaleObjectSpec;
+  title?: string;
+  heightPx?: number;
+}> = ({ leftObj, rightObj, title = '3D-стенд сравнения в реальном масштабе 1:1', heightPx = 228 }) => {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const active = useViewportActive(wrapRef);
+  const camRef = useRef({ rx: 0.28, ry: -0.36, down: false, lx: 0, ly: 0 });
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    let spin = 0;
+
+    const buildShapedMesh = (spec: ScaleObjectSpec, normScale: number): Mesh3D[] => {
+      const h = Math.max(0.22, spec.sizeCm * normScale);
+      const w = Math.max(0.16, (spec.widthCm || spec.sizeCm * 0.28) * normScale);
+
+      if (spec.shape === 'anatomical') {
+        // Stylized humorous 3D rocket-totem sculpture (base spheres + column + dome)
+        const shaft = createCylinder(w * 0.44, w * 0.48, h * 0.78, 16);
+        const tip = createCylinder(w * 0.14, w * 0.52, h * 0.26, 16);
+        const shiftShaft: Mesh3D = {
+          ...shaft,
+          vertices: shaft.vertices.map((v) => ({ x: v.x, y: v.y - h * 0.08, z: v.z })),
+        };
+        const shiftTip: Mesh3D = {
+          ...tip,
+          vertices: tip.vertices.map((v) => ({ x: v.x, y: v.y + h * 0.42, z: v.z })),
+        };
+        const baseL = createIcosahedron(w * 0.46);
+        const baseR = createIcosahedron(w * 0.46);
+        return [
+          {
+            ...baseL,
+            vertices: baseL.vertices.map((v) => ({ x: v.x - w * 0.36, y: v.y - h * 0.42, z: v.z + w * 0.12 })),
+          },
+          {
+            ...baseR,
+            vertices: baseR.vertices.map((v) => ({ x: v.x + w * 0.36, y: v.y - h * 0.42, z: v.z + w * 0.12 })),
+          },
+          shiftShaft,
+          shiftTip,
+        ];
+      }
+      if (spec.shape === 'cylinder') {
+        return [createCylinder(w * 0.5, w * 0.5, h, 18)];
+      }
+      if (spec.shape === 'sphere') {
+        return [createIcosahedron(h * 0.5)];
+      }
+      if (spec.shape === 'card' || spec.shape === 'phone') {
+        return [createBox(w, h, Math.max(0.06, w * 0.12))];
+      }
+      return [createBox(w, h, w * 0.65)];
+    };
+
+    const render = () => {
+      const cvs = canvasRef.current;
+      if (!cvs) return;
+      const { ctx, W, H } = syncHiDPICanvas(cvs, 540, heightPx);
+      if (!ctx) return;
+
+      spin += 0.008;
+      const ry = camRef.current.down ? camRef.current.ry : camRef.current.ry + Math.sin(spin) * 0.24;
+      const rx = camRef.current.rx;
+
+      ctx.fillStyle = '#060a15';
+      ctx.fillRect(0, 0, W, H);
+
+      const fov = 250;
+      const camDist = 4.6;
+      const floorY = -1.02;
+
+      // 3D metric calibration grid on floor
+      ctx.strokeStyle = 'rgba(56,189,248,0.14)';
+      ctx.lineWidth = 1;
+      for (let gx = -2.2; gx <= 2.21; gx += 0.44) {
+        const p1 = project3D(rotateEuler(v3(gx, floorY, -1.4), rx, ry), W, H, fov, camDist);
+        const p2 = project3D(rotateEuler(v3(gx, floorY, 1.4), rx, ry), W, H, fov, camDist);
+        if (p1.visible && p2.visible) {
+          ctx.beginPath();
+          ctx.moveTo(p1.sx, p1.sy);
+          ctx.lineTo(p2.sx, p2.sy);
+          ctx.stroke();
+        }
+      }
+      for (let gz = -1.4; gz <= 1.41; gz += 0.46) {
+        const p1 = project3D(rotateEuler(v3(-2.2, floorY, gz), rx, ry), W, H, fov, camDist);
+        const p2 = project3D(rotateEuler(v3(2.2, floorY, gz), rx, ry), W, H, fov, camDist);
+        if (p1.visible && p2.visible) {
+          ctx.beginPath();
+          ctx.moveTo(p1.sx, p1.sy);
+          ctx.lineTo(p2.sx, p2.sy);
+          ctx.stroke();
+        }
+      }
+
+      const maxCm = Math.max(leftObj.sizeCm, rightObj.sizeCm, 1);
+      const normScale = 1.75 / maxCm;
+
+      const drawSpecAt = (spec: ScaleObjectSpec, offsetX: number) => {
+        const parts = buildShapedMesh(spec, normScale);
+        const h3d = Math.max(0.22, spec.sizeCm * normScale);
+        const centerY = floorY + h3d * 0.5;
+
+        for (const part of parts) {
+          const shifted: Mesh3D = {
+            ...part,
+            vertices: part.vertices.map((v) => ({
+              x: v.x + offsetX,
+              y: v.y + centerY,
+              z: v.z,
+            })),
+          };
+          drawShadedMesh(ctx, shifted, rx, ry, 0, W, H, fov, camDist, spec.color, 0.88);
+        }
+
+        // Laser height ruler bracket & crisp label
+        const topP = project3D(rotateEuler(v3(offsetX, floorY + h3d + 0.12, 0), rx, ry), W, H, fov, camDist);
+        const botP = project3D(rotateEuler(v3(offsetX, floorY - 0.14, 0), rx, ry), W, H, fov, camDist);
+        if (topP.visible) {
+          ctx.font = '700 11px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#f8fafc';
+          const sizeTxt = spec.hideValue
+            ? '? см'
+            : spec.sizeCm >= 100
+            ? `${(spec.sizeCm / 100).toFixed(2)} м`
+            : `${spec.sizeCm.toFixed(1)} см`;
+          ctx.fillText(sizeTxt, topP.sx, Math.max(16, topP.sy - 6));
+        }
+        if (botP.visible) {
+          ctx.font = '600 11px "Rubik", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#cbd5e1';
+          ctx.fillText(spec.label.slice(0, 26), botP.sx, Math.min(H - 8, botP.sy + 12));
+        }
+      };
+
+      drawSpecAt(leftObj, -0.95);
+      drawSpecAt(rightObj, 0.95);
+
+      raf = requestAnimationFrame(render);
+    };
+
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [active, leftObj, rightObj, heightPx]);
+
+  return (
+    <div
+      ref={wrapRef}
+      className="rounded-2xl border border-indigo-500/25 bg-slate-950/90 p-3 space-y-2 select-none"
+    >
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="font-semibold text-indigo-200">{title}</span>
+        <span className="text-[10px] text-slate-400">Вращайте мышью / пальцем</span>
+      </div>
+      <canvas
+        ref={canvasRef}
+        style={{ height: heightPx }}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          camRef.current.down = true;
+          camRef.current.lx = e.clientX;
+          camRef.current.ly = e.clientY;
+        }}
+        onPointerMove={(e) => {
+          if (!camRef.current.down) return;
+          const dx = e.clientX - camRef.current.lx;
+          const dy = e.clientY - camRef.current.ly;
+          camRef.current.lx = e.clientX;
+          camRef.current.ly = e.clientY;
+          camRef.current.ry += dx * 0.012;
+          camRef.current.rx = Math.max(-0.85, Math.min(1.05, camRef.current.rx + dy * 0.011));
+        }}
+        onPointerUp={() => {
+          camRef.current.down = false;
+        }}
+        onPointerCancel={() => {
+          camRef.current.down = false;
+        }}
+        className="w-full rounded-xl bg-[#060a15] border border-white/[0.06] cursor-grab active:cursor-grabbing touch-none block"
+      />
+    </div>
+  );
+};
+
 
 
 

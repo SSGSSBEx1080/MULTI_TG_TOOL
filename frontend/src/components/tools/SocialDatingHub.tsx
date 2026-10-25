@@ -290,32 +290,6 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
 
   return (
     <div className="space-y-5 min-w-0">
-      {/* Sub-tabs (Desktop only — mobile already has sticky sub-tool strip) */}
-      <div className="hidden lg:flex flex-wrap gap-2">
-        {[
-          { id: 'top', tool: 'leaderboard_hub', label: '🏆 Топ Игроков & Визиты Профилей' },
-          { id: 'altushka', tool: 'altushka_chat', label: '🖤 Альтушки 18+ (Дейтинг-Чат)' },
-          { id: 'bibinto', tool: 'bibinto_rate', label: '💎 Bibinto (Оцени 1–10)' },
-          { id: 'turing', tool: 'turing_game', label: '🤖 Человек или ИИ?' },
-          { id: 'anon', tool: 'anon_chat', label: '🎭 Анонимный Чат' },
-          { id: 'author', tool: 'author_links', label: '🕶️ Ссылки & Поддержка' },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => {
-              setSubTab(t.id as any);
-              onSelectTool(t.tool);
-            }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition ${
-              subTab === t.id
-                ? 'bg-rose-500/25 border-rose-400/60 text-rose-200 shadow-lg shadow-rose-500/10'
-                : 'bg-slate-900/60 border-white/10 text-slate-300 hover:bg-white/5'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
 
       {/* 1. LEADERBOARD & CLICKABLE USER PROFILES */}
       {subTab === 'top' && (
