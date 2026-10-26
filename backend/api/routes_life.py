@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -90,14 +90,18 @@ async def sleep(req: SleepReq) -> dict[str, Any]:
 
 class BouquetReq(BaseModel):
     stems: list[dict[str, Any]] = Field(default_factory=list, max_length=30)
-    wrapping: float = Field(default=8, ge=0, le=100000)
-    labor: float = Field(default=12, ge=0, le=100000)
-    markup_pct: float = Field(default=25, ge=0, le=300)
+    wrapping: float = Field(default=0, ge=0, le=100000, allow_inf_nan=False)
+    labor: float = Field(default=0, ge=0, le=100000, allow_inf_nan=False)
+    markup_pct: float = Field(default=0, ge=0, le=300, allow_inf_nan=False)
+    currency: Literal["RUB", "EUR", "USD", "GBP", "KZT"] = "RUB"
 
 
 @router.post("/api/life/bouquet")
 async def bouquet(req: BouquetReq) -> dict[str, Any]:
-    return calculate_flower_bouquet(req.stems, req.wrapping, req.labor, req.markup_pct)
+    try:
+        return calculate_flower_bouquet(req.stems, req.wrapping, req.labor, req.markup_pct, req.currency)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/api/life/chat")

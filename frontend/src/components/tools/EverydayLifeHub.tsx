@@ -71,7 +71,11 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
   const [wake, setWake] = useState('07:30');
   const [latency, setLatency] = useState(15);
   const [sleep, setSleep] = useState<any>(null);
-  const [bouquetRows, setBouquetRows] = useState([{ name: 'Роза', count: 9, price: 250 }, { name: 'Эвкалипт', count: 3, price: 180 }]);
+  const [bouquetRows, setBouquetRows] = useState([{ name: 'Роза', count: 1, price: 0 }]);
+  const [bouquetWrap, setBouquetWrap] = useState(0);
+  const [bouquetLabor, setBouquetLabor] = useState(0);
+  const [bouquetMarkup, setBouquetMarkup] = useState(0);
+  const [bouquetCurrency, setBouquetCurrency] = useState<'RUB'|'EUR'|'USD'|'GBP'|'KZT'>('RUB');
   const [bouquet, setBouquet] = useState<any>(null);
   const [gameMode, setGameMode] = useState<'cities'|'names'|'words'>('cities');
   const [gameEntry, setGameEntry] = useState('');
@@ -202,7 +206,11 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
     document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 0);
   };
   const runSleep = async () => { try { setSleep(await apiPost('/api/life/sleep', {wake_time:wake, latency_min:latency})); } catch (e:any) { onToast(e.message); } };
-  const runBouquet = async () => { try { setBouquet(await apiPost('/api/life/bouquet', {stems:bouquetRows, wrapping:8, labor:12, markup_pct:25})); } catch (e:any) { onToast(e.message); } };
+  const runBouquet = async () => {
+    setBouquet(null);
+    try { setBouquet(await apiPost('/api/life/bouquet', {stems:bouquetRows, wrapping:bouquetWrap, labor:bouquetLabor, markup_pct:bouquetMarkup, currency:bouquetCurrency})); }
+    catch (e:any) { onToast(e.message); }
+  };
   const submitChat = async (ev: React.FormEvent) => { ev.preventDefault(); if (!chatText.trim() || chatBusy) return; setChatBusy(true); try { setChat(await apiPost('/api/life/chat', {user_id:userId, topic:chatTopic, text:chatText, reply_to_id:replyTo?.id || 0})); setChatText(''); setReplyTo(null); } catch(e:any) { onToast(e.message); } finally { setChatBusy(false); } };
   const reactChat = async (id:number, emoji:string) => { try { setChat(await apiPost(`/api/life/chat/${id}/reaction`, {user_id:userId, topic:chatTopic, emoji})); } catch(e:any) { onToast(e.message); } };
   const chatAction = async (id:number, action:string, text='') => { try { setChat(await apiPost(`/api/life/chat/${id}/action`, {user_id:userId, topic:chatTopic, action, text})); } catch(e:any) { onToast(e.message); } };
@@ -314,8 +322,35 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
     </div>;
   }
 
-  if (selected('flower_bouquet_calc')) return <div className="space-y-4">{header('ФЛОРИСТИКА · СМЕТА','Калькулятор букета','Оценка себестоимости по числу стеблей, закупочной цене, упаковке, работе и наценке. Можно менять строки и значения.')}
-    <div className={card}>{bouquetRows.map((r,i)=><div className="mb-2 grid grid-cols-[1fr_75px_95px_auto] gap-2" key={i}><input className={field} value={r.name} onChange={e=>setBouquetRows(v=>v.map((x,j)=>j===i?{...x,name:e.target.value}:x))}/><input className={field} type="number" min="0" value={r.count} onChange={e=>setBouquetRows(v=>v.map((x,j)=>j===i?{...x,count:+e.target.value}:x))}/><input className={field} type="number" min="0" value={r.price} onChange={e=>setBouquetRows(v=>v.map((x,j)=>j===i?{...x,price:+e.target.value}:x))}/><button className={btn} onClick={()=>setBouquetRows(v=>v.filter((_,j)=>i!==j))}>×</button></div>)}<div className="mt-3 flex flex-wrap gap-2"><button className={btn} disabled={bouquetRows.length>=30} onClick={()=>setBouquetRows(v=>v.length<30?[...v,{name:'Новый цветок',count:1,price:200}]:v)}>＋ Добавить стебли ({bouquetRows.length}/30)</button><button className={`${btn} border-emerald-400/30 bg-emerald-500/10`} onClick={runBouquet}><Flower2 className="h-4 w-4"/>Пересчитать смету</button></div>{bouquet&&<div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Цветы',bouquet.flowers],['Упаковка',bouquet.wrapping],['Работа',bouquet.labor],['Итого с наценкой',bouquet.suggested_price]].map(([a,b])=><div className="rounded-xl bg-slate-950 p-3" key={a}><span className="text-xs text-slate-500">{a}</span><b className="mt-1 block text-lg text-white">{b} ₽</b></div>)}</div>}{bouquet&&<p className="mt-2 text-xs text-slate-500">{bouquet.note} Символика цветов зависит от страны, эпохи и личного контекста; цветок не имеет одного универсального значения.</p>}</div>
+  if (selected('flower_bouquet_calc')) return <div className="space-y-4">
+    {header('ФЛОРИСТИКА · СМЕТА','Калькулятор букета','Составьте смету из своих закупочных цен. Введите валюту и все прямые расходы; наценка считается от себестоимости, не является обещанием чистой прибыли.')}
+    <section className={card}>
+      <div className="hidden gap-2 px-1 pb-2 text-[11px] text-slate-500 sm:grid sm:grid-cols-[minmax(0,1fr)_90px_130px_auto]"><span>Цветок / материал</span><span>Стеблей</span><span>Цена за штуку</span><span /></div>
+      <div className="space-y-2">{bouquetRows.map((row,index)=><div className="grid grid-cols-[minmax(0,1fr)_64px_86px_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_90px_130px_auto]" key={index}>
+        <input className={field} value={row.name} maxLength={40} aria-label={`Название позиции ${index+1}`} placeholder="Роза, зелень…" onChange={e=>{setBouquet(null);setBouquetRows(items=>items.map((item,i)=>i===index?{...item,name:e.target.value}:item))}} />
+        <input className={field} type="number" min="0" max="300" step="1" value={row.count} aria-label={`Количество стеблей, строка ${index+1}`} onChange={e=>{const count=Number(e.target.value);if(!Number.isFinite(count))return;setBouquet(null);setBouquetRows(items=>items.map((item,i)=>i===index?{...item,count:Math.max(0,Math.min(300,Math.trunc(count)))}:item))}} />
+        <input className={field} type="number" min="0" max="100000" step="0.01" value={row.price} aria-label={`Закупочная цена за штуку, строка ${index+1}`} onChange={e=>{const price=Number(e.target.value);if(!Number.isFinite(price))return;setBouquet(null);setBouquetRows(items=>items.map((item,i)=>i===index?{...item,price:Math.max(0,Math.min(100000,price))}:item))}} />
+        <button type="button" className={`${btn} !px-2`} aria-label={`Удалить позицию ${index+1}`} disabled={bouquetRows.length<=1} onClick={()=>{setBouquet(null);setBouquetRows(items=>items.filter((_,i)=>i!==index))}}>×</button>
+      </div>)}</div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="text-xs text-slate-400">Упаковка и расходники<input className={`${field} mt-1`} type="number" min="0" max="100000" step="0.01" value={bouquetWrap} onChange={e=>{setBouquetWrap(Math.max(0,Math.min(100000,Number(e.target.value)||0)));setBouquet(null)}}/></label>
+        <label className="text-xs text-slate-400">Работа / сборка<input className={`${field} mt-1`} type="number" min="0" max="100000" step="0.01" value={bouquetLabor} onChange={e=>{setBouquetLabor(Math.max(0,Math.min(100000,Number(e.target.value)||0)));setBouquet(null)}}/></label>
+        <label className="text-xs text-slate-400">Наценка, %<input className={`${field} mt-1`} type="number" min="0" max="300" step="0.5" value={bouquetMarkup} onChange={e=>{setBouquetMarkup(Math.max(0,Math.min(300,Number(e.target.value)||0)));setBouquet(null)}}/></label>
+        <label className="text-xs text-slate-400">Валюта введённых цен<select className={`${field} mt-1`} value={bouquetCurrency} onChange={e=>{setBouquetCurrency(e.target.value as typeof bouquetCurrency);setBouquet(null)}}>{[['RUB','Российский рубль'],['EUR','Евро'],['USD','Доллар США'],['GBP','Фунт стерлингов'],['KZT','Казахстанский тенге']].map(([code,name])=><option key={code} value={code}>{name} ({code})</option>)}</select></label>
+      </div>
+      <p className="mt-3 text-xs text-slate-500">Стартовые цены равны нулю: внесите свои фактические закупочные значения. Пересчёта валют по курсу нет — все суммы считаются в выбранной валюте.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" className={btn} disabled={bouquetRows.length>=30} onClick={()=>{setBouquet(null);setBouquetRows(items=>items.length<30?[...items,{name:'',count:1,price:0}]:items)}}>＋ Добавить позицию ({bouquetRows.length}/30)</button>
+        <button type="button" className={`${btn} border-emerald-400/30 bg-emerald-500/10`} onClick={runBouquet}><Flower2 className="h-4 w-4"/>Рассчитать смету</button>
+        <button type="button" className={btn} onClick={()=>{setBouquetRows([{name:'Роза',count:1,price:0}]);setBouquetWrap(0);setBouquetLabor(0);setBouquetMarkup(0);setBouquetCurrency('RUB');setBouquet(null)}}>Сбросить форму</button>
+      </div>
+    </section>
+    {bouquet&&<section className={card}>
+      <h3 className="font-bold text-white">Результат · {bouquet.currency}</h3>
+      <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[480px] text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="pb-2">Позиция</th><th className="pb-2 text-right">Кол-во</th><th className="pb-2 text-right">За штуку</th><th className="pb-2 text-right">Сумма</th></tr></thead><tbody>{bouquet.items.map((item:any,index:number)=><tr key={`${item.name}-${index}`} className="border-t border-white/5"><td className="py-2 text-slate-200">{item.name}</td><td className="py-2 text-right text-slate-400">{item.count}</td><td className="py-2 text-right text-slate-400">{new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(item.unit_price)}</td><td className="py-2 text-right text-white">{new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(item.line_total)}</td></tr>)}</tbody></table></div>
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">{[['Цветы',bouquet.flowers],['Упаковка',bouquet.wrapping],['Работа',bouquet.labor],['Прямые расходы',bouquet.subtotal],['Сумма наценки',bouquet.markup_amount],['Цена с наценкой',bouquet.suggested_price]].map(([label,amount])=><div className="rounded-xl bg-slate-950 p-3" key={label}><span className="text-xs text-slate-500">{label}</span><b className="mt-1 block text-base text-white">{new Intl.NumberFormat('ru-RU',{style:'currency',currency:bouquet.currency,maximumFractionDigits:2}).format(Number(amount))}</b></div>)}</div>
+      <p className="mt-3 text-xs leading-relaxed text-slate-400">{bouquet.note}</p>
+    </section>}
   </div>;
 
   if (selected('unit_alphabet_catalog')) return <UnitConverter units={catalog.units||[]} onToast={onToast}/>;
@@ -382,16 +417,84 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
 };
 
 function MatterPhaseLab() {
-  const [material,setMaterial]=useState('water'); const [temp,setTemp]=useState(24);
-  const materials:any={water:{name:'Вода',triple:0,boil:100,unit:'°C',solid:'лёд Ih; при высоком давлении существуют другие фазы',liquid:'жидкая вода',gas:'водяной пар',plasma:'ионизованный пар при крайне высокой энергии'},nitrogen:{name:'Азот',triple:-210,boil:-196,unit:'°C',solid:'твёрдый азот',liquid:'жидкий азот',gas:'газообразный азот',plasma:'ионизованный азот'},iron:{name:'Железо (приближённо, 1 атм)',triple:1538,boil:2862,unit:'°C',solid:'твёрдое железо',liquid:'расплав железа',gas:'пар железа',plasma:'плазма железа'}};
-  const m=materials[material]; const state=temp<m.triple?'твёрдое':temp<m.boil?'жидкое':'газ';
-  return <div className="space-y-4"><header><div className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-cyan-300">ФИЗИКА · ФАЗОВЫЕ ПЕРЕХОДЫ</div><h2 className="text-xl font-black text-white">Состояние вещества</h2><p className="mt-2 text-sm text-slate-400">Учебная диаграмма при упрощённом давлении. Реальные фазовые границы зависят от давления, примесей и истории образца.</p></header><section className={card}><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-slate-400">Материал<select className={`${field} mt-1`} value={material} onChange={e=>setMaterial(e.target.value)}>{Object.entries(materials).map(([k,v]:any)=><option value={k} key={k}>{v.name}</option>)}</select></label><label className="text-xs text-slate-400">Температура: {temp} °C<input className="mt-3 w-full accent-cyan-400" type="range" min={material==='iron'?0:-260} max={material==='iron'?4000:1500} value={temp} onChange={e=>setTemp(+e.target.value)}/></label></div><div className="mt-5 grid grid-cols-4 gap-2">{['Твёрдое','Жидкое','Газ','Плазма'].map((x,i)=><div className={`rounded-xl border p-3 text-center ${x.toLowerCase()===state?'border-cyan-300/40 bg-cyan-500/10':'border-white/5 bg-slate-950/60'}`} key={x}><div className="text-xl">{['🧊','💧','💨','⚡'][i]}</div><div className="mt-1 text-[10px] text-slate-400">{x}</div></div>)}</div><div className="mt-4 rounded-xl bg-slate-950 p-4"><b className="text-lg text-cyan-100">{m[state==='твёрдое'?'solid':state==='жидкое'?'liquid':'gas']}</b><p className="mt-2 text-xs text-slate-400">Для перехода в плазму вещество нужно ионизовать; бытовой ползунок не является экспериментом. Кварк-глюонная плазма создаётся в столкновениях тяжёлых ионов при экстремальной температуре порядка триллионов K и существует ничтожное время. «Лёд 212» — не универсальное название фазы; лёд VII — высокобарическая кристаллическая фаза.</p></div></section></div>;
+  type Material={name:string;melting:number;boiling:number;minimum:number;maximum:number;detail:string;special?:string};
+  const materials:Record<string,Material>={
+    water:{name:'Вода (1 атм)',melting:0,boiling:100,minimum:-100,maximum:1000,detail:'При обычном давлении лёд плавится около 0 °C, а вода кипит около 100 °C. Растворённые вещества и давление меняют точки перехода.'},
+    nitrogen:{name:'Азот (1 атм)',melting:-210,boiling:-195.8,minimum:-260,maximum:500,detail:'Криогенная жидкость существует лишь в узком интервале около 14 °C между плавлением и кипением при 1 атм.'},
+    oxygen:{name:'Кислород (1 атм)',melting:-218.79,boiling:-182.96,minimum:-260,maximum:500,detail:'Жидкий кислород — криогенная жидкость; обращаться с ним можно только в оснащённой профессиональной среде.'},
+    ethanol:{name:'Этанол (1 атм)',melting:-114.1,boiling:78.37,minimum:-180,maximum:700,detail:'Точки перехода приведены для чистого этанола около 1 атм. Смеси воды и этанола имеют иное поведение.'},
+    mercury:{name:'Ртуть (1 атм)',melting:-38.83,boiling:356.73,minimum:-100,maximum:1000,detail:'Ртуть токсична при контакте и вдыхании паров. Значения здесь — справочные; не нагревать и не использовать в опытах.'},
+    iron:{name:'Железо (1 атм, ориентир)',melting:1538,boiling:2862,minimum:0,maximum:4000,detail:'Для металлов реальные свойства зависят от чистоты, сплава и атмосферы. Не использовать диаграмму для проектирования плавильных работ.'},
+    copper:{name:'Медь (1 атм)',melting:1084.6,boiling:2562,minimum:0,maximum:4000,detail:'Ориентировочные температуры чистой меди при нормальном давлении; сплавы ведут себя иначе.'},
+    carbon_dioxide:{name:'Углекислый газ (1 атм)',melting:0,boiling:0,minimum:-200,maximum:100,detail:'При 1 атм CO₂ не имеет устойчивой жидкой фазы: сухой лёд сублимирует примерно при −78.5 °C.',special:'sublimation'},
+  };
+  const [material,setMaterial]=useState('water');
+  const [temp,setTemp]=useState(24);
+  const selectedMaterial=materials[material];
+  const state=selectedMaterial.special==='sublimation'
+    ? (temp < -78.5 ? 'solid' : 'gas')
+    : temp < selectedMaterial.melting ? 'solid' : temp < selectedMaterial.boiling ? 'liquid' : 'gas';
+  const phaseText={solid:'Твёрдая фаза',liquid:'Жидкая фаза',gas:'Газовая фаза'}[state];
+  const phaseTiles=[['solid','Твёрдое','🧊'],['liquid','Жидкое','💧'],['gas','Газ','💨'],['plasma','Плазма','⚡']] as const;
+  const formatTemp=(value:number)=>`${new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(value)} °C`;
+  return <div className="space-y-4">
+    <header><div className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-cyan-300">ФИЗИКА · ФАЗОВЫЕ СОСТОЯНИЯ</div><h2 className="text-xl font-black text-white">Как меняется состояние вещества</h2><p className="mt-2 text-sm text-slate-400">Интерактивная справочная модель для выбранных чистых веществ около 1 атм. Она показывает твёрдую, жидкую и газовую фазы по приближённым точкам перехода; не моделирует давление, примеси, кинетику или долю ионизации.</p></header>
+    <section className={card}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs text-slate-400">Вещество<select className={`${field} mt-1`} value={material} onChange={e=>{const next=e.target.value;setMaterial(next);setTemp(value=>Math.max(materials[next].minimum,Math.min(materials[next].maximum,value)))}}>{Object.entries(materials).map(([id,item])=><option value={id} key={id}>{item.name}</option>)}</select></label>
+        <label className="text-xs text-slate-400">Температура<input className={`${field} mt-1`} type="number" min={selectedMaterial.minimum} max={selectedMaterial.maximum} step="any" value={temp} onChange={e=>{const value=Number(e.target.value);if(Number.isFinite(value))setTemp(Math.max(selectedMaterial.minimum,Math.min(selectedMaterial.maximum,value)))}}/><input aria-label="Температура в градусах Цельсия" className="mt-3 w-full accent-cyan-400" type="range" min={selectedMaterial.minimum} max={selectedMaterial.maximum} step={selectedMaterial.maximum-selectedMaterial.minimum>500?1:0.1} value={temp} onChange={e=>setTemp(Number(e.target.value))}/><span className="mt-1 block text-[11px] text-slate-500">{formatTemp(temp)}</span></label>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{phaseTiles.map(([key,label,icon])=><div key={key} className={`rounded-xl border p-3 text-center ${key===state?'border-cyan-300/40 bg-cyan-500/10':'border-white/5 bg-slate-950/60'} ${key==='plasma'?'opacity-60':''}`} aria-current={key===state?'true':undefined}><div className="text-xl">{icon}</div><div className="mt-1 text-[10px] text-slate-300">{label}</div>{key==='plasma'&&<div className="mt-1 text-[9px] text-slate-500">не вычисляется</div>}</div>)}</div>
+      <div className="mt-4 rounded-xl bg-slate-950 p-4"><div className="text-xs text-slate-500">Состояние в модели</div><b className="mt-1 block text-lg text-cyan-100">{selectedMaterial.special==='sublimation'?'Твёрдая фаза — сублимация — газ':phaseText}</b><p className="mt-2 text-sm leading-relaxed text-slate-300">{selectedMaterial.detail}</p>{selectedMaterial.special==='sublimation'?<p className="mt-2 text-xs text-slate-400">При температуре ниже −78,5 °C модель показывает твёрдый CO₂, выше — газообразный; жидкую фазу при 1 атм не показывает.</p>:<div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400"><span>Плавление: {formatTemp(selectedMaterial.melting)}</span><span>Кипение: {formatTemp(selectedMaterial.boiling)}</span></div>}<p className="mt-3 border-t border-white/5 pt-3 text-xs leading-relaxed text-amber-100/70">Плазма — ионизованный газ, а не просто четвёртый температурный интервал с универсальной границей. Одной температуры недостаточно, чтобы определить степень ионизации; эта модель её не предсказывает. Не проводить опасные опыты с криогенными веществами, ртутью или расплавами.</p></div>
+    </section>
+  </div>;
 }
 
 function OpticsCalculator() {
-  const [power,setPower]=useState(2); const [objectDistance,setObjectDistance]=useState(50); const [focalLength,setFocalLength]=useState(500); const [aperture,setAperture]=useState(80);
-  const f=power===0?Infinity:100/power; const image=power===0?Infinity:objectDistance*f/(objectDistance-f); const magnification=focalLength/10; const exitPupil=aperture/magnification;
-  return <div className="space-y-4"><header><div className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-cyan-300">ОПТИКА · УЧЕБНЫЙ КАЛЬКУЛЯТОР</div><h2 className="text-xl font-black text-white">Линзы, очки и телескопы</h2><p className="mt-2 text-sm text-slate-400">Модель тонкой линзы и геометрическое увеличение телескопа. Не используйте для назначения очков или расчёта оружейного прицела.</p></header><section className={card}><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-slate-400">Оптическая сила линзы: {power} дптр<input className="mt-3 w-full accent-cyan-400" type="range" min="-10" max="10" step=".25" value={power} onChange={e=>setPower(+e.target.value)}/></label><label className="text-xs text-slate-400">Расстояние до объекта: {objectDistance} см<input className="mt-3 w-full accent-cyan-400" type="range" min="10" max="200" value={objectDistance} onChange={e=>setObjectDistance(+e.target.value)}/></label><label className="text-xs text-slate-400">Фокусное расстояние объектива: {focalLength} мм<input className="mt-3 w-full accent-cyan-400" type="range" min="100" max="2000" step="25" value={focalLength} onChange={e=>setFocalLength(+e.target.value)}/></label><label className="text-xs text-slate-400">Апертура телескопа: {aperture} мм<input className="mt-3 w-full accent-cyan-400" type="range" min="30" max="300" step="10" value={aperture} onChange={e=>setAperture(+e.target.value)}/></label></div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Фокус линзы',Number.isFinite(f)?`${Math.abs(f).toFixed(1)} см`:'∞'],['Фокус объектива',`${(focalLength/1000).toFixed(2)} м`],['Увеличение при окуляре 10 мм',`${magnification.toFixed(1)}×`],['Выходной зрачок',`${exitPupil.toFixed(1)} мм`]].map(([a,b])=><div className="rounded-xl bg-slate-950 p-3" key={a}><span className="text-[10px] text-slate-500">{a}</span><b className="mt-1 block text-lg text-white">{b}</b></div>)}</div><p className="mt-3 text-xs text-slate-500">Тонкая линза: 1/f = 1/do + 1/di. Для примера при f = {Number.isFinite(f)?`${Math.abs(f).toFixed(1)} см`:'∞ при 0 дптр'} и do = {objectDistance} см изображение di ≈ {Number.isFinite(image)&&objectDistance>f?Math.abs(image).toFixed(1)+' см':'не определяется этой простой моделью'} (знак/виртуальность зависят от геометрии). Диоптрии очков назначает офтальмолог/оптометрист после проверки зрения.</p></section></div>;
+  const [mode,setMode]=useState<'lens'|'telescope'>('lens');
+  const [power,setPower]=useState(2);
+  const [objectDistance,setObjectDistance]=useState(50);
+  const [objectiveFocal,setObjectiveFocal]=useState(500);
+  const [eyepieceFocal,setEyepieceFocal]=useState(10);
+  const [aperture,setAperture]=useState(80);
+  const [apparentField,setApparentField]=useState(50);
+  const focalCm=power===0?null:100/power;
+  const denominator=focalCm===null?null:objectDistance-focalCm;
+  const atFocus=denominator!==null&&Math.abs(denominator)<1e-9;
+  const imageDistance=atFocus?null:focalCm===null?-objectDistance:(focalCm*objectDistance)/(denominator as number);
+  const magnification=imageDistance===null?null:-imageDistance/objectDistance;
+  const telescopeMagnification=objectiveFocal/eyepieceFocal;
+  const exitPupil=aperture/telescopeMagnification;
+  const trueField=apparentField/telescopeMagnification;
+  const resolutionArcsec=116/aperture;
+  const bounded=(value:string,min:number,max:number,current:number)=>{
+    if(value.trim()==='')return current;
+    const number=Number(value);
+    return Number.isFinite(number)?Math.max(min,Math.min(max,number)):current;
+  };
+  const numberField=(label:string,value:number,min:number,max:number,step:number,onChange:(n:number)=>void,unit:string)=><label className="block text-xs text-slate-400">{label}<div className="mt-1 flex items-center gap-2"><input className={field} type="number" min={min} max={max} step={step} value={value} onChange={e=>onChange(bounded(e.target.value,min,max,value))}/><span className="shrink-0 text-slate-500">{unit}</span></div></label>;
+  const format=(value:number,digits=2)=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:digits}).format(value);
+  return <div className="space-y-4">
+    <header><div className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-cyan-300">ОПТИКА · ИНТЕРАКТИВНЫЕ МОДЕЛИ</div><h2 className="text-xl font-black text-white">Тонкая линза и телескоп</h2><p className="mt-2 text-sm text-slate-400">Два раздельных расчёта из введённых параметров: знак оптической силы важен для линзы, а увеличение телескопа задаётся фокусными расстояниями. Это учебная оптика, не подбор очков и не гарантия качества изображения.</p></header>
+    <div className="flex flex-wrap gap-2"><button type="button" className={`${btn} ${mode==='lens'?'border-cyan-300/40 bg-cyan-500/10 text-cyan-100':''}`} onClick={()=>setMode('lens')}>Тонкая линза</button><button type="button" className={`${btn} ${mode==='telescope'?'border-cyan-300/40 bg-cyan-500/10 text-cyan-100':''}`} onClick={()=>setMode('telescope')}>Телескоп</button></div>
+    {mode==='lens'?<section className={card}>
+      <h3 className="font-bold text-white">Формула тонкой линзы</h3><p className="mt-1 text-xs text-slate-500">1/f = 1/u + 1/v; диоптрия D = 1/f(м). u — положительное расстояние до реального объекта, v сохраняет знак для реального или мнимого изображения.</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">{numberField('Оптическая сила',power,-20,20,0.25,setPower,'дптр')}{numberField('Расстояние до объекта',objectDistance,1,10000,1,setObjectDistance,'см')}</div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl bg-slate-950 p-3"><span className="text-[10px] text-slate-500">Фокусное расстояние f</span><b className="mt-1 block text-lg text-white">{focalCm===null?'∞ (0 дптр)':`${format(focalCm)} см`}</b></div>
+        <div className="rounded-xl bg-slate-950 p-3"><span className="text-[10px] text-slate-500">Положение изображения v</span><b className="mt-1 block text-lg text-white">{atFocus?'на бесконечности':`${format(imageDistance as number)} см`}</b></div>
+        <div className="rounded-xl bg-slate-950 p-3"><span className="text-[10px] text-slate-500">Тип изображения</span><b className="mt-1 block text-lg text-white">{atFocus?'уходит в бесконечность':(imageDistance as number)>0?'действительное':'мнимое'}</b></div>
+        <div className="rounded-xl bg-slate-950 p-3"><span className="text-[10px] text-slate-500">Поперечное увеличение</span><b className="mt-1 block text-lg text-white">{magnification===null?'—':`${format(Math.abs(magnification),3)}× · ${magnification<0?'перевёрнутое':'прямое'}`}</b></div>
+      </div>
+      {focalCm!==null&&<p className="mt-3 text-xs text-slate-400">Знак f: {focalCm>0?'положительный — собирающая линза': 'отрицательный — рассеивающая линза'}. Знак v: {atFocus?'предельный случай':(imageDistance as number)>0?'положительный — действительное изображение':'отрицательный — мнимое изображение'}.</p>}
+    </section>:<section className={card}>
+      <h3 className="font-bold text-white">Угловое увеличение телескопа</h3><p className="mt-1 text-xs text-slate-500">Приближение для системы Кеплера: увеличение ≈ f объектива / f окуляра. Реальная резкость, поле и контраст зависят от оптики, коллимации и атмосферы.</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{numberField('Фокус объектива',objectiveFocal,50,5000,10,setObjectiveFocal,'мм')}{numberField('Фокус окуляра',eyepieceFocal,2,100,0.5,setEyepieceFocal,'мм')}{numberField('Диаметр апертуры',aperture,20,1000,5,setAperture,'мм')}{numberField('Видимое поле окуляра',apparentField,30,110,1,setApparentField,'°')}</div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{[['Угловое увеличение',`${format(telescopeMagnification,1)}×`],['Выходной зрачок',`${format(exitPupil,2)} мм`],['Истинное поле (грубая оценка)',`${format(trueField,2)}°`],['Предел Доуза (идеальные условия)',`${format(resolutionArcsec,2)}″`]].map(([label,value])=><div key={label} className="rounded-xl bg-slate-950 p-3"><span className="text-[10px] text-slate-500">{label}</span><b className="mt-1 block text-lg text-white">{value}</b></div>)}</div>
+      <p className="mt-3 text-xs leading-relaxed text-slate-400">Поле рассчитано приближённо как видимое поле / увеличение; для широкоугольной оптики это упрощение. Предел Доуза — теоретический ориентир для разрешения двух близких точечных объектов, не обещание наблюдаемой детализации. Слишком высокое увеличение не добавляет объективу разрешения.</p>
+    </section>}
+    <p className="rounded-xl border border-amber-300/15 bg-amber-300/[.04] p-3 text-xs leading-relaxed text-amber-100/70">Не используйте этот калькулятор для назначения очков, контактных линз или медицинской оценки зрения. Рецепт на коррекцию подбирает специалист после обследования.</p>
+  </div>;
 }
 
 function AnatomyReference({rows,kind}:{rows:any[];kind:string}) {
@@ -414,14 +517,135 @@ function UnitConverter({units,onToast}:{units:any[];onToast:(s:string)=>void}) {
 }
 
 function CookingGuide({recipes,onToast}:{recipes:any[];onToast:(s:string)=>void}) {
-  const [query,setQuery]=useState(''); const [category,setCategory]=useState(''); const [servings,setServings]=useState<Record<string,number>>({}); const [expanded,setExpanded]=useState<string>(''); const [scaled,setScaled]=useState<any>({});
+  const [query,setQuery]=useState('');
+  const [category,setCategory]=useState('');
+  const [servings,setServings]=useState<Record<string,number>>({});
+  const [expanded,setExpanded]=useState<string>('');
+  const [scaled,setScaled]=useState<Record<string,any>>({});
+  const [mealPlan,setMealPlan]=useState<Record<string,number>>({});
+  const [planLoaded,setPlanLoaded]=useState(false);
+  const [planCanPersist,setPlanCanPersist]=useState(false);
+  const [planStorageError,setPlanStorageError]=useState(false);
+  const detailRequestRef=React.useRef<Record<string,number>>({});
   const categories=Array.from(new Set(recipes.map((r:any)=>r.category))).sort((a:any,b:any)=>a.localeCompare(b,'ru'));
-  const visible=recipes.filter((r:any)=>(!category||r.category===category)&&(!query||`${r.name} ${r.tags.join(' ')} ${r.category} ${r.ingredients.map((i:any)=>i.name).join(' ')}`.toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru'))));
-  const show=async(recipe:any)=>{setExpanded(expanded===recipe.id?'':recipe.id);if(expanded===recipe.id)return;try{const n=servings[recipe.id]??recipe.servings;const detail=await apiGet(`/api/life/recipes/${recipe.id}?servings=${n}`);setScaled((s:any)=>({...s,[recipe.id]:detail}))}catch(e:any){onToast(e.message)}};
-  const rescale=async(recipe:any,n:number)=>{setServings(v=>({...v,[recipe.id]:n}));try{const detail=await apiGet(`/api/life/recipes/${recipe.id}?servings=${n}`);setScaled((s:any)=>({...s,[recipe.id]:detail}))}catch(e:any){onToast(e.message)}};
-  return <div className="space-y-4"><header><div className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-orange-300">КУЛИНАРИЯ · РЕЦЕПТЫ</div><h2 className="text-xl font-black text-white">Рецепты и базовые техники</h2><p className="mt-2 text-sm text-slate-400">Фильтруйте по категории и ингредиентным меткам; количество ингредиентов масштабируется по числу порций. Пищевая ценность ориентировочная, аллергены и приготовление проверяйте самостоятельно.</p></header>
-    <section className={card}><div className="grid gap-2 sm:grid-cols-[1fr_220px]"><input className={field} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Поиск рецепта или метки…"/><select className={field} value={category} onChange={e=>setCategory(e.target.value)}><option value="">Все категории</option>{categories.map((x:any)=><option key={x}>{x}</option>)}</select></div><p className="mt-3 text-xs text-slate-500">Найдено {visible.length} из {recipes.length}</p></section>
-    <div className="grid gap-3 sm:grid-cols-2">{visible.map((r:any)=><article className={card} key={r.id}><div className="flex items-start justify-between gap-3"><div><span className="text-[10px] uppercase tracking-wider text-orange-200">{r.category} · {r.time_min} мин</span><h3 className="mt-1 font-bold text-white">{r.name}</h3></div><button className={btn} onClick={()=>show(r)}>{expanded===r.id?'Свернуть':'Открыть'}</button></div><div className="mt-2 flex flex-wrap gap-1">{r.tags.map((tag:string)=><span className="rounded-full bg-white/[.06] px-2 py-1 text-[10px] text-slate-400" key={tag}>{tag}</span>)}</div>{expanded===r.id&&<div className="mt-4 border-t border-white/5 pt-3"><label className="flex items-center gap-3 text-xs text-slate-400">Порций<input className={`${field} max-w-32`} type="number" min="0.25" max="20" step="0.25" value={servings[r.id]??r.servings} onChange={e=>rescale(r,Math.max(.25,Math.min(20,Number(e.target.value))))}/></label><h4 className="mt-4 text-xs font-bold text-amber-100">Ингредиенты</h4><ul className="mt-1 space-y-1">{(scaled[r.id]?.ingredients||r.ingredients).map((x:any)=><li className="text-sm text-slate-300" key={x.name}>• {x.name} — {x.grams} г</li>)}</ul><h4 className="mt-4 text-xs font-bold text-cyan-100">Приготовление</h4><ol className="mt-1 list-inside list-decimal space-y-1">{r.steps.map((step:string,i:number)=><li className="text-sm leading-relaxed text-slate-400" key={i}>{step}</li>)}</ol>{scaled[r.id]?.nutrition&&<div className="mt-4 rounded-xl bg-slate-950 p-3"><b className="text-sm text-white">Оценка на весь выбранный объём</b><div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-4"><span>{scaled[r.id].nutrition.kcal} ккал</span><span>Б {scaled[r.id].nutrition.protein_g} г</span><span>Ж {scaled[r.id].nutrition.fat_g} г</span><span>У {scaled[r.id].nutrition.carbs_g} г</span></div><p className="mt-2 text-[10px] text-slate-500">{scaled[r.id].note}</p></div>}<p className="mt-3 text-xs text-amber-100/70">{r.note}</p></div>}</article>)}</div></div>;
+
+  useEffect(()=>{
+    if(!recipes.length)return;
+    try{
+      const raw=localStorage.getItem('multi-recipe-meal-plan-v1');
+      const parsed:unknown=raw?JSON.parse(raw):{};
+      if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('Invalid meal plan');
+      const restored:Record<string,number>={};
+      for(const [id,amount] of Object.entries(parsed as Record<string,unknown>)){
+        const recipe=recipes.find((item:any)=>item.id===id);
+        if(recipe&&typeof amount==='number'&&Number.isFinite(amount)&&amount>=0.25&&amount<=20)restored[id]=amount;
+      }
+      setMealPlan(restored);setPlanCanPersist(true);
+    }catch{setPlanStorageError(true)}
+    finally{setPlanLoaded(true)}
+  },[recipes]);
+
+  useEffect(()=>{
+    if(!planLoaded||!planCanPersist)return;
+    try{localStorage.setItem('multi-recipe-meal-plan-v1',JSON.stringify(mealPlan));setPlanStorageError(false)}
+    catch{setPlanStorageError(true)}
+  },[mealPlan,planLoaded,planCanPersist]);
+
+  const visible=recipes.filter((r:any)=>
+    (!category||r.category===category)
+    &&(!query||`${r.name} ${r.tags.join(' ')} ${r.category} ${r.ingredients.map((i:any)=>i.name).join(' ')}`.toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru')))
+  );
+  const shoppingList=useMemo(()=>{
+    const aggregate=new Map<string,{name:string;grams:number;recipes:Set<string>}>();
+    for(const recipe of recipes){
+      const portions=mealPlan[recipe.id];
+      if(!Number.isFinite(portions)||portions<0.25||portions>20)continue;
+      const factor=portions/Number(recipe.servings||1);
+      for(const ingredient of recipe.ingredients||[]){
+        const name=String(ingredient.name||'').trim();
+        const grams=Number(ingredient.grams)*factor;
+        if(!name||!Number.isFinite(grams)||grams<=0)continue;
+        const key=name.toLocaleLowerCase('ru');
+        const row=aggregate.get(key)||{name,grams:0,recipes:new Set<string>()};
+        row.grams+=grams;row.recipes.add(recipe.name);aggregate.set(key,row);
+      }
+    }
+    return [...aggregate.values()].sort((a,b)=>a.name.localeCompare(b.name,'ru')).map(row=>({...row,grams:Math.round(row.grams*10)/10,usedIn:[...row.recipes]}));
+  },[recipes,mealPlan]);
+  const plannedRecipes=recipes.filter((recipe:any)=>mealPlan[recipe.id]!==undefined);
+  const plannedPortions=plannedRecipes.reduce((sum:number,recipe:any)=>sum+mealPlan[recipe.id],0);
+
+  const setRecipePortions=(recipe:any,amount:number)=>{
+    if(!Number.isFinite(amount))return;
+    const safe=Math.round(Math.max(0.25,Math.min(20,amount))*4)/4;
+    setServings((current)=>({...current,[recipe.id]:safe}));
+    if(mealPlan[recipe.id]!==undefined)setMealPlan((current)=>({...current,[recipe.id]:safe}));
+  };
+  const fetchDetail=async(recipe:any,amount:number)=>{
+    const requestId=(detailRequestRef.current[recipe.id]||0)+1;
+    detailRequestRef.current[recipe.id]=requestId;
+    try{
+      const detail=await apiGet(`/api/life/recipes/${recipe.id}?servings=${amount}`);
+      if(detailRequestRef.current[recipe.id]===requestId)setScaled((current)=>({...current,[recipe.id]:detail}));
+    }catch(e:any){if(detailRequestRef.current[recipe.id]===requestId)onToast(e.message)}
+  };
+  const toggleRecipe=(recipe:any)=>{
+    if(expanded===recipe.id){setExpanded('');return}
+    setExpanded(recipe.id);
+    void fetchDetail(recipe,servings[recipe.id]??recipe.servings);
+  };
+  const toggleMealPlan=(recipe:any)=>{
+    if(mealPlan[recipe.id]!==undefined){setMealPlan((current)=>{const next={...current};delete next[recipe.id];return next});return}
+    const amount=servings[recipe.id]??recipe.servings;
+    setServings((current)=>({...current,[recipe.id]:amount}));
+    setMealPlan((current)=>({...current,[recipe.id]:amount}));
+  };
+  const changePlannedPortions=(recipe:any,raw:string)=>{
+    const amount=Number(raw);
+    if(!Number.isFinite(amount)||amount<0.25||amount>20)return;
+    const safe=Math.round(amount*4)/4;
+    setMealPlan((current)=>({...current,[recipe.id]:safe}));
+    setServings((current)=>({...current,[recipe.id]:safe}));
+  };
+  const clearMealPlan=()=>{
+    if(!plannedRecipes.length||!window.confirm('Очистить весь сохранённый план блюд на этом устройстве?'))return;
+    setMealPlan({});
+  };
+  const exportShoppingList=()=>{
+    if(!shoppingList.length)return;
+    const cell=(value:string|number)=>{
+      let text=String(value).replace(/[\r\n]+/g,' ');
+      if(/^[\s]*[=+\-@]/.test(text))text=`'${text}`;
+      return `"${text.replaceAll('"','""')}"`;
+    };
+    const rows=[['Продукт','Количество, г','В каких блюдах'],...shoppingList.map((row)=>[row.name,row.grams,row.usedIn.join(', ')])];
+    const content=`\uFEFF${rows.map((row)=>row.map(cell).join(';')).join('\r\n')}`;
+    const url=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));
+    const link=document.createElement('a');link.href=url;link.download='shopping-list.csv';document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),0);
+  };
+
+  return <div className="space-y-4">
+    <header><div className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] text-orange-300">КУЛИНАРИЯ · РЕЦЕПТЫ</div><h2 className="text-xl font-black text-white">Рецепты, план блюд и список покупок</h2><p className="mt-2 text-sm text-slate-400">Ищите рецепты и масштабируйте порции. Добавьте несколько блюд в план: повторяющиеся ингредиенты объединятся по названию, а список покупок можно сохранить в CSV. Пищевая ценность ориентировочная; учитывайте маркировку аллергенов и безопасное приготовление.</p></header>
+
+    <section className={card}>
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-bold text-white">План и список покупок</h3><p className="mt-1 text-xs text-slate-500">Сохраняется локально в этом браузере · ингредиенты объединяются по названию и указаны в граммах</p></div><div className="flex flex-wrap gap-2"><button type="button" className={btn} onClick={exportShoppingList} disabled={!shoppingList.length}>Экспорт списка CSV</button><button type="button" className={`${btn} border-rose-300/15 text-rose-200`} onClick={clearMealPlan} disabled={!plannedRecipes.length}>Очистить план</button></div></div>
+      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-400"><span>Блюд: {plannedRecipes.length}</span><span>Плановых порций: {plannedPortions.toLocaleString('ru-RU',{maximumFractionDigits:2})}</span><span>Ингредиентов: {shoppingList.length}</span></div>
+      {plannedRecipes.length===0?<p className="mt-3 rounded-xl border border-dashed border-white/10 p-4 text-center text-sm text-slate-500">План пуст. Нажмите «Добавить в план» у нужных рецептов.</p>:<div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="space-y-2">{plannedRecipes.map((recipe:any)=><div key={recipe.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-950 p-3"><span className="min-w-0 flex-1 text-sm font-medium text-white">{recipe.name}</span><label className="flex items-center gap-2 text-xs text-slate-400">Порций<input className={`${field} w-24`} type="number" min="0.25" max="20" step="0.25" value={mealPlan[recipe.id]} onChange={e=>changePlannedPortions(recipe,e.target.value)}/></label><button type="button" className="rounded-lg px-2 py-1 text-xs text-rose-200 hover:bg-rose-400/10" aria-label={`Убрать ${recipe.name} из плана`} onClick={()=>toggleMealPlan(recipe)}>Убрать</button></div>)}</div>
+        <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl bg-slate-950 p-3">{shoppingList.map((row)=><div key={row.name} className="flex items-start justify-between gap-3 border-b border-white/5 py-2 last:border-0"><div className="min-w-0"><b className="text-sm text-slate-200">{row.name}</b><div className="mt-0.5 text-[10px] text-slate-500">{row.usedIn.join(' · ')}</div></div><span className="shrink-0 font-mono text-sm text-amber-200">{row.grams} г</span></div>)}</div>
+      </div>}
+      {planStorageError&&<p role="status" className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/[.06] p-3 text-xs text-amber-100">Не удалось открыть или сохранить план в браузере. Не перезаписываю повреждённые данные автоматически; список можно выгрузить в CSV, если он виден на экране.</p>}
+    </section>
+
+    <section className={card}><div className="grid gap-2 sm:grid-cols-[1fr_220px]"><input className={field} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Поиск рецепта, ингредиента или метки…" aria-label="Поиск рецептов"/><select className={field} value={category} onChange={e=>setCategory(e.target.value)}><option value="">Все категории</option>{categories.map((item:any)=><option key={item} value={item}>{item}</option>)}</select></div><p className="mt-3 text-xs text-slate-500">Найдено {visible.length} из {recipes.length}</p></section>
+
+    {!recipes.length?<p className="rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-400">Загружаю локальный каталог рецептов…</p>:visible.length===0?<p className="rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-400">Ничего не найдено. Измените запрос или категорию.</p>:<div className="grid gap-3 sm:grid-cols-2">{visible.map((recipe:any)=><article className={card} key={recipe.id}>
+      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="text-[10px] uppercase tracking-wider text-orange-200">{recipe.category} · {recipe.time_min} мин · базово {recipe.servings} порц.</span><h3 className="mt-1 font-bold text-white">{recipe.name}</h3></div><button type="button" className={btn} onClick={()=>toggleRecipe(recipe)}>{expanded===recipe.id?'Свернуть':'Рецепт'}</button></div>
+      <div className="mt-2 flex flex-wrap gap-1">{(recipe.tags||[]).map((tag:string)=><span className="rounded-full bg-white/[.06] px-2 py-1 text-[10px] text-slate-400" key={tag}>{tag}</span>)}</div>
+      <div className="mt-3 flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs text-slate-400">Порций<input className={`${field} w-24`} type="number" min="0.25" max="20" step="0.25" value={servings[recipe.id]??recipe.servings} onChange={e=>{const amount=Number(e.target.value);if(Number.isFinite(amount)&&amount>=0.25&&amount<=20)setRecipePortions(recipe,amount)}}/></label><button type="button" disabled={!planLoaded} className={`${btn} ${mealPlan[recipe.id]!==undefined?'border-emerald-400/30 bg-emerald-500/10 text-emerald-100':''}`} onClick={()=>toggleMealPlan(recipe)}>{mealPlan[recipe.id]!==undefined?'✓ В плане · убрать':'＋ Добавить в план'}</button>{expanded===recipe.id&&<button type="button" className={btn} onClick={()=>void fetchDetail(recipe,servings[recipe.id]??recipe.servings)}>Пересчитать БЖУ</button>}</div>
+      {expanded===recipe.id&&<div className="mt-4 border-t border-white/5 pt-3"><h4 className="text-xs font-bold text-amber-100">Ингредиенты на {servings[recipe.id]??recipe.servings} порций</h4><ul className="mt-1 space-y-1">{recipe.ingredients.map((ingredient:any)=>{const grams=ingredient.grams*(servings[recipe.id]??recipe.servings)/recipe.servings;return <li className="text-sm text-slate-300" key={ingredient.name}>• {ingredient.name} — {Math.round(grams*10)/10} г</li>})}</ul><h4 className="mt-4 text-xs font-bold text-cyan-100">Приготовление</h4><ol className="mt-1 list-inside list-decimal space-y-1">{recipe.steps.map((step:string,index:number)=><li className="text-sm leading-relaxed text-slate-400" key={`${recipe.id}-step-${index}`}>{step}</li>)}</ol>{scaled[recipe.id]?.servings===(servings[recipe.id]??recipe.servings)&&scaled[recipe.id]?.nutrition&&<div className="mt-4 rounded-xl bg-slate-950 p-3"><b className="text-sm text-white">Ориентировочно на выбранный объём</b><div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-4"><span>{scaled[recipe.id].nutrition.kcal} ккал</span><span>Б {scaled[recipe.id].nutrition.protein_g} г</span><span>Ж {scaled[recipe.id].nutrition.fat_g} г</span><span>У {scaled[recipe.id].nutrition.carbs_g} г</span></div><p className="mt-2 text-[10px] text-slate-500">{scaled[recipe.id].note}</p></div>}<p className="mt-3 text-xs text-amber-100/70">{recipe.note}</p></div>}
+    </article>)}</div>}
+  </div>;
 }
 
 function CitizenshipGuide() {
