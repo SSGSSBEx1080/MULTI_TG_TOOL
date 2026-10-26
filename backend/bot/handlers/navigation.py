@@ -9,7 +9,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backend.bot.handlers.helpers import esc, progress_bar, render_hud
 from backend.bot.gamepiada import gamepiada_announcement
-from backend.bot.keyboards import category_kb, main_menu_kb
+from backend.bot.keyboards import category_kb, main_menu_kb, webapp_button
+from backend.bot.tool_catalog import count_tool_entries, search_tools
 from backend.database import db
 from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
 
@@ -23,7 +24,7 @@ def _build_welcome_text(profile: dict[str, Any]) -> str:
         f"<b>MULTI_TG_TOOL</b>\n"
         f"<blockquote>👤 {name}  •  Уровень {rank['level']} ({rank['xp']} XP)  •  Запусков: {profile.get('tools_used', 0)}</blockquote>\n\n"
         f"{gamepiada_announcement()}\n\n"
-        f"Выберите нужный раздел в меню ниже или откройте приложение.\n"
+        f"В каталоге <b>{len(TOOL_CATEGORIES)} разделов и {count_tool_entries()} инструментов</b>. Откройте раздел или найдите нужное командой <code>/tools фото</code>.\n"
         f"Также можно отправить в чат фото, PDF, математический пример или величину для перевода (например: <code>75 кг в фунты</code>)."
     )
 
@@ -74,6 +75,100 @@ async def cb_refresh_gamepiada_countdown(
     )
 
 
+TOOL_SEARCH_PAGE_SIZE = 6
+
+
+def _tool_search_keyboard(results: list[dict[str, Any]], page: int, page_count: int):
+    builder = InlineKeyboardBuilder()
+    start = page * TOOL_SEARCH_PAGE_SIZE
+    for tool in results[start : start + TOOL_SEARCH_PAGE_SIZE]:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{tool['emoji']} {tool['title'][:34]}",
+                callback_data=f"tool:open:{tool['id']}",
+            ),
+            webapp_button("📱 App", tab=tool["id"]),
+        )
+
+    navigation: list[InlineKeyboardButton] = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"toolsearch:page:{page - 1}"))
+    if page + 1 < page_count:
+        navigation.append(InlineKeyboardButton(text="Ещё ➡️", callback_data=f"toolsearch:page:{page + 1}"))
+    if navigation:
+        builder.row(*navigation)
+    builder.row(
+        InlineKeyboardButton(text="🧹 Сбросить поиск", callback_data="toolsearch:clear"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:home"),
+    )
+    return builder.as_markup()
+
+
+async def _render_tool_search(
+    target: Message | CallbackQuery,
+    state: FSMContext,
+    query: str = "",
+    page: int = 0,
+) -> None:
+    query = query.strip()[:80]
+    results = search_tools(query)
+    page_count = max(1, (len(results) + TOOL_SEARCH_PAGE_SIZE - 1) // TOOL_SEARCH_PAGE_SIZE)
+    page = max(0, min(page, page_count - 1))
+    await state.update_data(tool_catalog_query=query, tool_catalog_page=page)
+
+    if results:
+        start = page * TOOL_SEARCH_PAGE_SIZE
+        shown = results[start : start + TOOL_SEARCH_PAGE_SIZE]
+        rows = "\n".join(
+            f"{item['emoji']} <b>{esc(item['title'])}</b> · {esc(item['category_title'])}\n"
+            f"<i>{esc(item['desc'][:130])}</i>"
+            for item in shown
+        )
+        scope = f"Совпадений: <b>{len(results)}</b> из {count_tool_entries()} инструментов"
+        position = f"Страница {page + 1}/{page_count}"
+        body = f"{rows}\n\n{scope} · {position}"
+    else:
+        body = (
+            f"Совпадений по запросу <code>{esc(query)}</code> не найдено.\n\n"
+            "Попробуйте короче: <code>калькулятор</code>, <code>игры</code>, <code>фото</code>, <code>здоровье</code>."
+        )
+        page_count = 1
+        page = 0
+        await state.update_data(tool_catalog_page=0)
+
+    prefix = "<b>🔎 Поиск по каталогу бота</b>\n"
+    query_line = f"Запрос: <code>{esc(query)}</code>\n\n" if query else "<i>Все разделы и инструменты в одном каталоге.</i>\n\n"
+    await render_hud(
+        target,
+        f"{prefix}{query_line}{body}\n\nНажмите на строку, чтобы открыть бот-инструмент, или «📱 App» для полноэкранной версии.",
+        reply_markup=_tool_search_keyboard(results, page, page_count),
+    )
+
+
+@router.message(Command("tools"))
+async def cmd_tool_search(message: Message, state: FSMContext) -> None:
+    query = (message.text or "").partition(" ")[2].strip()
+    await _render_tool_search(message, state, query)
+
+
+@router.callback_query(F.data == "nav:tools")
+async def cb_tool_search(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await _render_tool_search(callback, state)
+
+
+@router.callback_query(F.data.startswith("toolsearch:page:"))
+async def cb_tool_search_page(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    page = int(callback.data.rsplit(":", 1)[-1])
+    await _render_tool_search(callback, state, str(data.get("tool_catalog_query", "")), page)
+
+
+@router.callback_query(F.data == "toolsearch:clear")
+async def cb_tool_search_clear(callback: CallbackQuery, state: FSMContext) -> None:
+    await _render_tool_search(callback, state, "", 0)
+
+
 @router.callback_query(F.data.startswith("nav:cat:"))
 async def cb_category(
     callback: CallbackQuery,
@@ -88,7 +183,8 @@ async def cb_category(
         for t in cat["tools"]
     )
     text = (
-        f"<b>{cat['emoji']} {esc(cat['title'])}</b>\n\n"
+        f"<b>{cat['emoji']} {esc(cat['title'])}</b>\n"
+        f"<blockquote>{len(cat['tools'])} инструментов · кнопка слева открывает чат-версию, справа — полноценный экран приложения</blockquote>\n\n"
         f"{tools_lines}"
     )
     await render_hud(callback, text, reply_markup=category_kb(cat_id, user_favorites))
@@ -175,7 +271,8 @@ async def show_profile(
 async def show_help(event: Message | CallbackQuery) -> None:
     text = (
         "<b>📖 Список команд</b>\n\n"
-        "• <code>/start</code> — главное меню (17 разделов, 81 инструмент)\n"
+        f"• <code>/start</code> — главное меню ({len(TOOL_CATEGORIES)} разделов, {count_tool_entries()} инструментов)\n"
+        f"• <code>/tools</code> или <code>/tools запрос</code> — найти любой инструмент, например <code>/tools фото</code>\n"
         "• <code>/earth</code> — 3D Земля и живые веб-камеры мира\n"
         "• <code>/chess</code> — шахматная академия, дебюты и ИИ\n"
         "• <code>/spy</code> и <code>/guess</code> — игра «Шпион» и «Угадай кто?»\n"

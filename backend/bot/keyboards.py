@@ -49,9 +49,10 @@ def main_menu_kb(favorites_count: int = 0, now: datetime | None = None) -> Inlin
         InlineKeyboardButton(text="👤 Профиль", callback_data="nav:profile"),
     )
     builder.row(
-        InlineKeyboardButton(text="🔍 Инлайн-поиск", switch_inline_query_current_chat="256 * 16"),
+        InlineKeyboardButton(text="🔎 Найти инструмент", callback_data="nav:tools"),
         InlineKeyboardButton(text="📖 Команды", callback_data="nav:help"),
     )
+    builder.row(InlineKeyboardButton(text="⚡ Быстро в чате · калькулятор / поиск", switch_inline_query_current_chat="256 * 16"))
     return builder.as_markup()
 
 
@@ -62,9 +63,10 @@ def category_kb(category_id: str, user_favorites: list[str]) -> InlineKeyboardMa
         star = "★ " if tool["id"] in user_favorites else ""
         builder.row(
             InlineKeyboardButton(
-                text=f"{tool['emoji']} {star}{tool['title']}",
+                text=f"{tool['emoji']} {star}{tool['title'][:48]}",
                 callback_data=f"tool:open:{tool['id']}",
-            )
+            ),
+            _webapp_button("📱 Приложение", tab=tool["id"]),
         )
     builder.row(_webapp_button(f"📱 Открыть «{cat['title']}» в приложении", tab=category_id))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="nav:home"))
@@ -82,6 +84,8 @@ def tool_back_kb(
     if extra_rows:
         for row in extra_rows:
             builder.row(*row)
+    if tool_id in TOOLS_BY_ID:
+        builder.row(_webapp_button("📱 Полная версия инструмента", tab=tool_id))
     fav_text = "★ В избранном" if is_fav else "☆ В избранное"
     builder.row(
         InlineKeyboardButton(text=fav_text, callback_data=f"fav:toggle:{tool_id}"),
