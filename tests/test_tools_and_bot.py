@@ -22,6 +22,7 @@ from backend.tools.knowledge_hub import (
     search_constitutions,
     search_formulas,
 )
+from backend.tools.mega_expansion_v5 import calculate_fuel_trip, compare_tires, compute_world_timezones
 from backend.tools.omni_detector import smart_omni_detect
 from backend.tools.party_and_fun import (
     LIGURIA_TEXT,
@@ -52,6 +53,46 @@ def test_author_links_are_pinned_to_official_destinations() -> None:
     normalized = db._normalize_author({"title": "Project", "links": [{"label": "Injected", "url": "https://example.invalid"}]})
     assert [link["url"] for link in normalized["links"]] == [link["url"] for link in DEFAULT_AUTHOR_INFO["links"]]
     assert len(normalized["links"]) == 4
+
+
+def test_fuel_trip_costs_are_explicit_and_inputs_are_not_silently_clamped() -> None:
+    result = calculate_fuel_trip(100, 10, 2, passengers=2, tolls_rub=50, round_trip=True)
+    assert result["total_distance_km"] == 200
+    assert result["liters_needed"] == 20
+    assert result["fuel_cost"] == 40
+    assert result["tolls_cost"] == 100
+    assert result["total_cost"] == 140
+    assert result["per_person"] == 70
+
+    for args in [(-1, 8, 60), (100, 0, 60), (100, 8, float("nan"))]:
+        with pytest.raises(ValueError):
+            calculate_fuel_trip(*args)
+    with pytest.raises(ValueError):
+        calculate_fuel_trip(100, 8, 60, passengers=1.5)
+
+
+def test_tire_specs_reject_impossible_dimensions() -> None:
+    assert compare_tires("205/55 R16", "215/60 R16")["old"]["diameter_mm"] == 631.9
+    for spec in ("205/999 R16", "205/55 R99", "999/55 R16"):
+        with pytest.raises(ValueError):
+            compare_tires("205/55 R16", spec)
+
+
+def test_world_time_planner_uses_dst_and_reports_local_day_changes() -> None:
+    winter = compute_world_timezones(12, "2026-01-15")
+    summer = compute_world_timezones(12, "2026-07-15")
+    winter_frankfurt = next(city for city in winter["cities"] if city["city"] == "Франкфурт / Берлин")
+    summer_frankfurt = next(city for city in summer["cities"] if city["city"] == "Франкфурт / Берлин")
+    assert (winter_frankfurt["time"], winter_frankfurt["utc_offset"]) == ("10:00", "UTC+01:00")
+    assert (summer_frankfurt["time"], summer_frankfurt["utc_offset"]) == ("11:00", "UTC+02:00")
+
+    tokyo = next(city for city in compute_world_timezones(23, "2026-01-15")["cities"] if city["city"] == "Токио / Сеул")
+    assert tokyo["date"] == "2026-01-16"
+    assert tokyo["day_offset"] == 1
+    with pytest.raises(ValueError):
+        compute_world_timezones(24, "2026-01-15")
+    with pytest.raises(ValueError):
+        compute_world_timezones(12, "15-01-2026")
 
 
 def test_qr_and_barcode_engine() -> None:
@@ -1073,7 +1114,12 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             assert (await client.post("/api/v2/v5/workout-1rm", json={"weight_kg": 100, "reps": 5})).status_code == 200
             assert (await client.post("/api/v2/v5/running-pace", json={"distance_km": 10, "time_minutes": 48})).status_code == 200
             assert (await client.post("/api/v2/v5/fuel-trip", json={"distance_km": 500, "consumption_l_100": 8.0, "fuel_price": 62})).status_code == 200
+            assert (await client.post("/api/v2/v5/fuel-trip", json={"distance_km": -5})).status_code == 422
             assert (await client.post("/api/v2/v5/tires-compare", json={"old_spec": "205/55 R16", "new_spec": "215/60 R16"})).status_code == 200
+            assert (await client.post("/api/v2/v5/tires-compare", json={"old_spec": "205/55 R16", "new_spec": "205/999 R16"})).status_code == 400
+            winter_tz = (await client.get("/api/v2/v5/world-time?msk_hour=12&local_date=2026-01-15")).json()
+            assert next(city for city in winter_tz["cities"] if city["city"] == "Франкфурт / Берлин")["utc_offset"] == "UTC+01:00"
+            assert (await client.get("/api/v2/v5/world-time?msk_hour=12&local_date=2026-99-99")).status_code == 400
             assert (await client.get("/api/v2/v5/plate-codes?q=777")).json()["count"] >= 1
             assert len((await client.get("/api/v2/v5/world-time?msk_hour=14")).json()["cities"]) >= 10
             assert (await client.post("/api/v2/v5/finance-pro", json={"mode": "loan", "principal": 2000000, "annual_rate_pct": 16, "months": 36})).status_code == 200
@@ -1145,6 +1191,14 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             assert pc_ok.status_code == 200 and pc_ok.json()["compatible"] is True
             pc_bad = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r7_9800x3d", "mb_id": "b760m_d4", "ram_id": "ddr5_32_6000"})
             assert pc_bad.status_code == 200 and pc_bad.json()["compatible"] is False
+            pc_compare = await client.post("/api/v6/pc/compare", json={
+                "left": {"cpu_id": "i5_6500", "gpu_id": "gtx_1050ti", "mb_id": "h110_lga1151"},
+                "right": {"cpu_id": "r7_9800x3d", "gpu_id": "rtx_5090", "mb_id": "x870e_tomahawk", "ram_id": "ddr5_64_6000", "cooler_id": "aio_360", "ssd_id": "t705_2tb", "psu_id": "psu_1200", "case_id": "full_tower"},
+            })
+            assert pc_compare.status_code == 200
+            assert pc_compare.json()["left"]["total_price_rub"] < pc_compare.json()["right"]["total_price_rub"]
+            assert pc_compare.json()["price_delta_rub"] > 0 and pc_compare.json()["cheaper_side"] == "left"
+            assert pc_compare.json()["left"]["selected"]["cpu"]["id"] == "i5_6500"
 
             assert (await client.get("/api/v6/cars/catalog?q=Porsche")).json()["matched"] >= 1
             assert (await client.get("/api/v6/materials/catalog")).status_code == 200

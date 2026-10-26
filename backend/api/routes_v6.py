@@ -238,6 +238,29 @@ async def api_v6_pc_evaluate(req: PcEvalReq, request: Request) -> dict[str, Any]
     return res
 
 
+class PcCompareReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    left: PcEvalReq
+    right: PcEvalReq
+
+
+@router.post("/api/v6/pc/compare")
+async def api_v6_pc_compare(req: PcCompareReq, request: Request) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    left = evaluate_pc_build(**req.left.model_dump(exclude={"user_id"}))
+    right = evaluate_pc_build(**req.right.model_dump(exclude={"user_id"}))
+    delta = int(right["total_price_rub"] - left["total_price_rub"])
+    result = {
+        "left": left,
+        "right": right,
+        "price_delta_rub": delta,
+        "cheaper_side": "left" if delta > 0 else "right" if delta < 0 else "equal",
+        "note": "Сравнение использует один и тот же справочник и модельные оценки для обеих сборок; FPS и цены ориентировочные.",
+    }
+    await db.record_tool_use(uid, "pc_build_compare", "pc_materials_style", "miniapp", f"{left['total_price_rub']}:{right['total_price_rub']} RUB", xp_gain=4)
+    return result
+
+
 @router.get("/api/v6/cars/catalog")
 async def api_v6_cars_catalog(q: str = "", body_class: str = "") -> dict[str, Any]:
     return search_car_models(query=q, body_class=body_class)

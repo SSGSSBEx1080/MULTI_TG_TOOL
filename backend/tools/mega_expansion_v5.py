@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import colorsys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 import math
 import re
 from typing import Any
+from zoneinfo import ZoneInfo
 
 # ==============================================================================
 # 1. HEALTH, MACROS, SLEEP, 1RM PLATES & RUNNING PACE
@@ -234,11 +235,27 @@ def calculate_fuel_trip(
     tolls_rub: float = 0.0,
     round_trip: bool = False,
 ) -> dict[str, Any]:
-    dist = max(1.0, float(distance_km)) * (2.0 if round_trip else 1.0)
-    cons = max(0.5, min(60.0, float(consumption_l_100)))
-    price = max(0.0, float(fuel_price))
-    pax = max(1, min(60, int(passengers)))
-    tolls = max(0.0, float(tolls_rub)) * (2.0 if round_trip else 1.0)
+    dist_one_way = float(distance_km)
+    cons = float(consumption_l_100)
+    price = float(fuel_price)
+    tolls_one_way = float(tolls_rub)
+    if not all(math.isfinite(value) for value in (dist_one_way, cons, price, tolls_one_way)):
+        raise ValueError("Все значения поездки должны быть конечными числами")
+    if not 0 < dist_one_way <= 100_000:
+        raise ValueError("Расстояние должно быть больше 0 и не более 100 000 км")
+    if not 0 < cons <= 60:
+        raise ValueError("Расход должен быть больше 0 и не более 60 л/100 км")
+    if not 0 <= price <= 1_000:
+        raise ValueError("Цена топлива должна быть от 0 до 1 000 ₽/л")
+    if not 0 <= tolls_one_way <= 10_000_000:
+        raise ValueError("Платные дороги должны стоить от 0 до 10 000 000 ₽")
+    if isinstance(passengers, bool) or int(passengers) != passengers or not 1 <= int(passengers) <= 60:
+        raise ValueError("Число пассажиров должно быть целым от 1 до 60")
+
+    multiplier = 2.0 if round_trip else 1.0
+    dist = dist_one_way * multiplier
+    pax = int(passengers)
+    tolls = tolls_one_way * multiplier
 
     liters = (dist / 100.0) * cons
     fuel_cost = liters * price
@@ -261,9 +278,17 @@ def _parse_tire_spec(spec: str) -> dict[str, float]:
     width = float(m.group(1))
     profile = float(m.group(2))
     rim_in = float(m.group(3))
+    if not 80 <= width <= 500:
+        raise ValueError("Ширина шины должна быть от 80 до 500 мм")
+    if not 20 <= profile <= 100:
+        raise ValueError("Профиль шины должен быть от 20 до 100%")
+    if not 8 <= rim_in <= 32:
+        raise ValueError("Диаметр диска должен быть от 8 до 32 дюймов")
     sidewall_mm = width * (profile / 100.0)
     rim_mm = rim_in * 25.4
     diam_mm = rim_mm + 2.0 * sidewall_mm
+    if not 250 <= diam_mm <= 1_800:
+        raise ValueError("Расчётный внешний диаметр шины должен быть от 250 до 1 800 мм")
     return {
         "width_mm": width,
         "profile_pct": profile,
@@ -291,7 +316,8 @@ def compare_tires(old_spec: str, new_spec: str) -> dict[str, Any]:
         "diameter_diff_pct": round(pct_diff, 2),
         "real_speed_at_100kmh": real_speed_at_100,
         "compatible": safe,
-        "verdict": "Безопасная замена (разница диаметра ≤ 3%)" if safe else "Внимание: отличие > 3%, проверьте арки и подвеску",
+        "verdict": "Разница диаметра в пределах общего ориентира 3%" if safe else "Разница больше 3% — тщательно проверьте допустимость размера",
+        "fitment_note": "Порог 3% — только предварительный ориентир. Он не подтверждает совместимость с автомобилем: проверьте допуски производителя, ширину диска, индексы нагрузки/скорости и зазоры.",
     }
 
 
@@ -393,48 +419,81 @@ def search_plate_codes(query: str = "") -> dict[str, Any]:
     return {"query": query, "count": len(items), "results": items[:35]}
 
 
-WORLD_CITY_OFFSETS: list[tuple[str, str, float]] = [
-    ("Калининград", "🇷🇺", 2.0),
-    ("Франкфурт / Берлин", "🇩🇪", 1.0),
-    ("Москва / СПб", "🇷🇺", 3.0),
-    ("Дубай", "🇦🇪", 4.0),
-    ("Екатеринбург", "🇷🇺", 5.0),
-    ("Алматы / Астана", "🇰🇿", 5.0),
-    ("Новосибирск", "🇷🇺", 7.0),
-    ("Пекин / Сингапур", "🇨🇳", 8.0),
-    ("Токио / Сеул", "🇯🇵", 9.0),
-    ("Владивосток", "🇷🇺", 10.0),
-    ("Лондон (UTC)", "🇬🇧", 0.0),
-    ("Нью-Йорк", "🇺🇸", -5.0),
-    ("Сан-Франциско", "🇺🇸", -8.0),
+WORLD_CITY_ZONES: list[tuple[str, str, str]] = [
+    ("Калининград", "🇷🇺", "Europe/Kaliningrad"),
+    ("Франкфурт / Берлин", "🇩🇪", "Europe/Berlin"),
+    ("Москва / Санкт-Петербург", "🇷🇺", "Europe/Moscow"),
+    ("Дубай", "🇦🇪", "Asia/Dubai"),
+    ("Екатеринбург", "🇷🇺", "Asia/Yekaterinburg"),
+    ("Алматы / Астана", "🇰🇿", "Asia/Almaty"),
+    ("Новосибирск", "🇷🇺", "Asia/Novosibirsk"),
+    ("Пекин / Сингапур", "🇨🇳", "Asia/Shanghai"),
+    ("Токио / Сеул", "🇯🇵", "Asia/Tokyo"),
+    ("Владивосток", "🇷🇺", "Asia/Vladivostok"),
+    ("Лондон", "🇬🇧", "Europe/London"),
+    ("Нью-Йорк", "🇺🇸", "America/New_York"),
+    ("Сан-Франциско", "🇺🇸", "America/Los_Angeles"),
 ]
+MOSCOW_ZONE = ZoneInfo("Europe/Moscow")
 
 
-def compute_world_timezones(msk_hour_float: float | None = None) -> dict[str, Any]:
-    now_utc = datetime.now(timezone.utc)
-    if msk_hour_float is not None:
-        h = int(msk_hour_float) % 24
-        m = int(round((msk_hour_float - int(msk_hour_float)) * 60)) % 60
-        base_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=h - 3, minutes=m)
+def compute_world_timezones(
+    msk_hour_float: float | None = None,
+    local_date: str | None = None,
+) -> dict[str, Any]:
+    if local_date:
+        try:
+            selected_date = date.fromisoformat(local_date)
+        except ValueError as exc:
+            raise ValueError("Дата должна быть в формате ГГГГ-ММ-ДД") from exc
     else:
-        base_utc = now_utc
+        selected_date = datetime.now(MOSCOW_ZONE).date()
+
+    if msk_hour_float is None:
+        base_moscow = datetime.now(MOSCOW_ZONE).replace(second=0, microsecond=0)
+        if local_date:
+            base_moscow = base_moscow.replace(year=selected_date.year, month=selected_date.month, day=selected_date.day)
+    else:
+        hour_value = float(msk_hour_float)
+        if not math.isfinite(hour_value) or not 0 <= hour_value < 24:
+            raise ValueError("Время МСК должно быть в диапазоне от 0 до 24 часов")
+        whole_hour = int(hour_value)
+        minute = int(round((hour_value - whole_hour) * 60))
+        base_moscow = datetime(selected_date.year, selected_date.month, selected_date.day, tzinfo=MOSCOW_ZONE)
+        base_moscow += timedelta(hours=whole_hour, minutes=minute)
 
     cities = []
-    for city, flag, offset in WORLD_CITY_OFFSETS:
-        local_dt = base_utc + timedelta(hours=offset)
+    for city, flag, zone_name in WORLD_CITY_ZONES:
+        local_dt = base_moscow.astimezone(ZoneInfo(zone_name))
+        offset_minutes = int(local_dt.utcoffset().total_seconds() // 60) if local_dt.utcoffset() else 0
+        sign = "+" if offset_minutes >= 0 else "-"
+        abs_offset = abs(offset_minutes)
+        offset_label = f"UTC{sign}{abs_offset // 60:02d}:{abs_offset % 60:02d}"
         hr = local_dt.hour
         status = "Рабочие часы" if 9 <= hr <= 19 else ("Вечер / Утро" if 7 <= hr <= 22 else "Ночь")
+        day_offset = (local_dt.date() - base_moscow.date()).days
         cities.append(
             {
                 "city": city,
                 "flag": flag,
-                "utc_offset": f"UTC{offset:+g}",
+                "timezone": zone_name,
+                "utc_offset": offset_label,
+                "utc_offset_minutes": offset_minutes,
                 "time": local_dt.strftime("%H:%M"),
+                "date": local_dt.date().isoformat(),
+                "day_offset": day_offset,
                 "hour": hr,
                 "status": status,
             }
         )
-    return {"cities": cities}
+    return {
+        "base": {
+            "timezone": "Europe/Moscow",
+            "date": base_moscow.date().isoformat(),
+            "time": base_moscow.strftime("%H:%M"),
+        },
+        "cities": cities,
+    }
 
 
 # ==============================================================================

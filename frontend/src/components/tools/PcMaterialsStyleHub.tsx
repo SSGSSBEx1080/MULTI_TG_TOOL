@@ -20,6 +20,77 @@ import { apiGet, apiPost, copyText } from '../../lib/api';
 
 import { CarComparison3D, Mini3DSceneBadge, PcBuilderShowcase3D, RouteGlobe3D } from '../three/Interactive3DScenes';
 
+const PC_SAVED_BUILDS_KEY = 'multi-tg-tool.pc-saved-builds.v1';
+const PC_SAVED_BUILDS_LIMIT = 12;
+const PC_BUILD_PART_KEYS = ['cpu', 'gpu', 'mb', 'ram', 'cooler', 'ssd', 'hdd', 'psu', 'case'] as const;
+type PcBuildPartKey = (typeof PC_BUILD_PART_KEYS)[number];
+type PcBuildParts = Record<PcBuildPartKey, string>;
+type SavedPcBuild = {
+  id: string;
+  name: string;
+  parts: PcBuildParts;
+  createdAt: string;
+  updatedAt: string;
+  snapshotPriceRub: number | null;
+};
+type PcComparison = {
+  left: any;
+  right: any;
+  price_delta_rub: number;
+  cheaper_side: 'left' | 'right' | 'equal';
+  note: string;
+};
+
+const PC_PART_CATALOG_KEYS: Record<PcBuildPartKey, string> = {
+  cpu: 'cpus', gpu: 'gpus', mb: 'motherboards', ram: 'rams', cooler: 'coolers',
+  ssd: 'ssds', hdd: 'hdds', psu: 'psus', case: 'cases',
+};
+
+const isPcBuildParts = (value: unknown): value is PcBuildParts => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return PC_BUILD_PART_KEYS.every((key) => typeof candidate[key] === 'string' && candidate[key].length > 0);
+};
+
+const normalizeSavedPcBuild = (value: unknown): SavedPcBuild | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const name = typeof candidate.name === 'string' ? candidate.name.trim().slice(0, 60) : '';
+  const parts = candidate.parts;
+  if (!name || !isPcBuildParts(parts)) return null;
+  const createdAt = typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString();
+  const updatedAt = typeof candidate.updatedAt === 'string' ? candidate.updatedAt : createdAt;
+  const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : `pc-${Date.now().toString(36)}`;
+  const price = candidate.snapshotPriceRub === null || candidate.snapshotPriceRub === undefined
+    ? Number.NaN
+    : Number(candidate.snapshotPriceRub);
+  return {
+    id,
+    name,
+    parts: Object.fromEntries(PC_BUILD_PART_KEYS.map((key) => [key, parts[key]])) as PcBuildParts,
+    createdAt,
+    updatedAt,
+    snapshotPriceRub: Number.isFinite(price) && price >= 0 ? price : null,
+  };
+};
+
+const readSavedPcBuilds = (): SavedPcBuild[] => {
+  try {
+    const raw = window.localStorage.getItem(PC_SAVED_BUILDS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeSavedPcBuild).filter((item): item is SavedPcBuild => item !== null).slice(0, PC_SAVED_BUILDS_LIMIT);
+  } catch {
+    return [];
+  }
+};
+
+const makePcBuildId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `pc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+};
+
 const PC_BUILD_PRESETS = [
   { id: 'office-apu', name: 'Офис / апгрейд', note: 'Вторичный рынок · встроенная графика', parts: { cpu: 'r5_5600g', gpu: 'gpu_none', mb: 'b550_tuf', ram: 'ddr4_16_3200', cooler: 'stock_am4', ssd: 'sata_480', hdd: 'hdd_1tb', psu: 'psu_450', case: 'budget_mini' } },
   { id: 'legacy-entry', name: 'Старый игровой ПК', note: 'Недорогая 1080p-сборка / б/у', parts: { cpu: 'i5_6500', gpu: 'gtx_1050ti', mb: 'h110_lga1151', ram: 'ddr4_16_2133', cooler: 'stock_intel', ssd: 'sata_480', hdd: 'hdd_none', psu: 'psu_450', case: 'used_office_case' } },
@@ -65,6 +136,29 @@ export const PcMaterialsStyleHub: React.FC<{
   const [evalLoading, setEvalLoading] = useState(false);
   const [evalError, setEvalError] = useState('');
   const evalRequestId = useRef(0);
+  const [savedPcBuilds, setSavedPcBuilds] = useState<SavedPcBuild[]>(readSavedPcBuilds);
+  const [savedBuildName, setSavedBuildName] = useState('');
+  const [compareLeftId, setCompareLeftId] = useState('');
+  const [compareRightId, setCompareRightId] = useState('');
+  const [pcComparison, setPcComparison] = useState<PcComparison | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+  const importBuildInputRef = useRef<HTMLInputElement>(null);
+  const compareRequestId = useRef(0);
+
+  useEffect(() => {
+    const first = savedPcBuilds[0];
+    if (!first) {
+      setCompareLeftId('');
+      setCompareRightId('');
+      return;
+    }
+    const leftId = savedPcBuilds.some((build) => build.id === compareLeftId) ? compareLeftId : first.id;
+    const rightIsValid = savedPcBuilds.some((build) => build.id === compareRightId && build.id !== leftId);
+    setCompareLeftId(leftId);
+    setCompareRightId(rightIsValid ? compareRightId : savedPcBuilds.find((build) => build.id !== leftId)?.id || '');
+  }, [savedPcBuilds, compareLeftId, compareRightId]);
 
   // Materials State
   const [matData, setMatData] = useState<any>(null);
@@ -152,11 +246,209 @@ export const PcMaterialsStyleHub: React.FC<{
 
   const estimatePresetPrice = (preset: (typeof PC_BUILD_PRESETS)[number]) => {
     if (!catalog) return 0;
-    const groups: Record<string, string> = { cpu: 'cpus', gpu: 'gpus', mb: 'motherboards', ram: 'rams', cooler: 'coolers', ssd: 'ssds', hdd: 'hdds', psu: 'psus', case: 'cases' };
     return Object.entries(preset.parts).reduce((sum, [part, id]) => {
-      const item = catalog[groups[part]]?.find((candidate: any) => candidate.id === id);
+      const item = catalog[PC_PART_CATALOG_KEYS[part as PcBuildPartKey]]?.find((candidate: any) => candidate.id === id);
       return sum + (Number(item?.price_rub) || 0);
     }, 0);
+  };
+
+  const currentPcParts = (): PcBuildParts => ({
+    cpu: cpuId, gpu: gpuId, mb: mbId, ram: ramId, cooler: coolerId,
+    ssd: ssdId, hdd: hddId, psu: psuId, case: caseId,
+  });
+
+  const persistSavedPcBuilds = (next: SavedPcBuild[]) => {
+    try {
+      window.localStorage.setItem(PC_SAVED_BUILDS_KEY, JSON.stringify(next));
+      compareRequestId.current += 1;
+      setCompareLoading(false);
+      setPcComparison(null);
+      setCompareError('');
+      setSavedPcBuilds(next);
+      return true;
+    } catch {
+      onToast('Не удалось сохранить сборки в браузере. Проверьте свободное место и настройки хранилища.');
+      return false;
+    }
+  };
+
+  const missingPartsForBuild = (parts: PcBuildParts) => PC_BUILD_PART_KEYS.filter((key) =>
+    !catalog?.[PC_PART_CATALOG_KEYS[key]]?.some((item: any) => item.id === parts[key]),
+  );
+
+  const applySavedPcBuild = (build: SavedPcBuild) => {
+    const missing = missingPartsForBuild(build.parts);
+    if (missing.length) {
+      onToast(`Сборка «${build.name}» содержит детали, отсутствующие в текущем каталоге: ${missing.join(', ')}.`);
+      return;
+    }
+    setCpuId(build.parts.cpu); setGpuId(build.parts.gpu); setMbId(build.parts.mb);
+    setRamId(build.parts.ram); setCoolerId(build.parts.cooler); setSsdId(build.parts.ssd);
+    setHddId(build.parts.hdd); setPsuId(build.parts.psu); setCaseId(build.parts.case);
+    onToast(`Загружена сохранённая сборка «${build.name}».`);
+  };
+
+  const saveCurrentPcBuild = () => {
+    const name = savedBuildName.trim().slice(0, 60);
+    if (!name) {
+      onToast('Укажите название сборки перед сохранением.');
+      return;
+    }
+    const now = new Date().toISOString();
+    const existing = savedPcBuilds.find((build) => build.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (!existing && savedPcBuilds.length >= PC_SAVED_BUILDS_LIMIT) {
+      onToast(`Можно хранить не более ${PC_SAVED_BUILDS_LIMIT} сборок. Удалите старую или экспортируйте резервную копию.`);
+      return;
+    }
+    const saved: SavedPcBuild = {
+      id: existing?.id || makePcBuildId(),
+      name,
+      parts: currentPcParts(),
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      snapshotPriceRub: Number.isFinite(Number(evalRes?.total_price_rub)) ? Number(evalRes.total_price_rub) : null,
+    };
+    const next = existing
+      ? savedPcBuilds.map((build) => build.id === existing.id ? saved : build)
+      : [saved, ...savedPcBuilds];
+    if (persistSavedPcBuilds(next)) {
+      setSavedBuildName('');
+      if (!existing && savedPcBuilds.length === 0) setCompareLeftId(saved.id);
+      if (!existing && savedPcBuilds.length === 1) setCompareRightId(saved.id);
+      onToast(existing ? `Сборка «${name}» обновлена.` : `Сборка «${name}» сохранена на этом устройстве.`);
+    }
+  };
+
+  const removeSavedPcBuild = (build: SavedPcBuild) => {
+    const next = savedPcBuilds.filter((item) => item.id !== build.id);
+    if (!persistSavedPcBuilds(next)) return;
+    if (compareLeftId === build.id) setCompareLeftId(next[0]?.id || '');
+    if (compareRightId === build.id) setCompareRightId(next[1]?.id || '');
+    setPcComparison(null);
+    onToast(`Сборка «${build.name}» удалена.`);
+  };
+
+  const downloadPcJson = (filename: string, data: unknown) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const exportSavedPcBuild = (build: SavedPcBuild) => {
+    downloadPcJson(`pc-build-${build.name.trim().replace(/[^\p{L}\p{N}-]+/gu, '-').slice(0, 40) || 'saved'}.json`, {
+      schema_version: 1,
+      kind: 'multi-tg-pc-build',
+      name: build.name,
+      parts: build.parts,
+      exported_at: new Date().toISOString(),
+    });
+  };
+
+  const exportAllSavedPcBuilds = () => {
+    if (!savedPcBuilds.length) {
+      onToast('Сначала сохраните хотя бы одну сборку.');
+      return;
+    }
+    downloadPcJson('multi-tg-pc-builds-backup.json', {
+      schema_version: 1,
+      kind: 'multi-tg-pc-builds',
+      exported_at: new Date().toISOString(),
+      builds: savedPcBuilds.map(({ name, parts, snapshotPriceRub }) => ({ name, parts, snapshotPriceRub })),
+    });
+  };
+
+  const importSavedPcBuilds = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 64 * 1024) {
+      onToast('Файл резервной копии слишком большой: максимум 64 КБ.');
+      return;
+    }
+    setImportLoading(true);
+    try {
+      const payload: unknown = JSON.parse(await file.text());
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Неверный формат JSON.');
+      const data = payload as Record<string, unknown>;
+      if (data.schema_version !== 1) throw new Error('Поддерживается только резервная копия версии 1.');
+      const candidates = data.kind === 'multi-tg-pc-builds'
+        ? data.builds
+        : data.kind === 'multi-tg-pc-build' ? [data] : null;
+      if (!Array.isArray(candidates) || candidates.length === 0 || candidates.length > PC_SAVED_BUILDS_LIMIT) {
+        throw new Error('В файле нет сборок или их количество превышает лимит.');
+      }
+      const imported = candidates.map((candidate) => {
+        if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+        const item = candidate as Record<string, unknown>;
+        if (!isPcBuildParts(item.parts) || typeof item.name !== 'string' || !item.name.trim()) return null;
+        return normalizeSavedPcBuild({ ...item, id: makePcBuildId(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      });
+      if (imported.some((item) => item === null)) throw new Error('Одна или несколько сборок имеют неполные данные.');
+      const validBuilds = imported as SavedPcBuild[];
+      const missing = validBuilds.flatMap((build) => missingPartsForBuild(build.parts));
+      if (missing.length) throw new Error(`Каталог не содержит некоторые детали: ${Array.from(new Set(missing)).join(', ')}.`);
+      const merged = [...savedPcBuilds];
+      for (const build of validBuilds) {
+        const baseName = build.name.slice(0, 54);
+        let name = baseName;
+        let suffix = 2;
+        while (merged.some((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+          name = `${baseName.slice(0, 54 - String(suffix).length)} (${suffix})`;
+          suffix += 1;
+        }
+        merged.push({ ...build, name });
+      }
+      if (merged.length > PC_SAVED_BUILDS_LIMIT) {
+        throw new Error(`Импорт превысит лимит ${PC_SAVED_BUILDS_LIMIT}. Удалите лишние сборки и повторите.`);
+      }
+      if (persistSavedPcBuilds(merged)) {
+        setCompareLeftId((value) => value || validBuilds[0].id);
+        setCompareRightId((value) => value || validBuilds[1]?.id || '');
+        onToast(`Импортировано сборок: ${validBuilds.length}.`);
+      }
+    } catch (error: any) {
+      onToast(error?.message || 'Не удалось прочитать файл сборок.');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const compareSavedPcBuilds = async () => {
+    const left = savedPcBuilds.find((build) => build.id === compareLeftId);
+    const right = savedPcBuilds.find((build) => build.id === compareRightId);
+    if (!left || !right) {
+      setCompareError('Выберите две сохранённые сборки для сравнения.');
+      setPcComparison(null);
+      return;
+    }
+    if (left.id === right.id) {
+      setCompareError('Для сравнения выберите две разные сборки.');
+      setPcComparison(null);
+      return;
+    }
+    const id = ++compareRequestId.current;
+    setCompareLoading(true);
+    setCompareError('');
+    setPcComparison(null);
+    const apiParts = (parts: PcBuildParts) => ({
+      cpu_id: parts.cpu, gpu_id: parts.gpu, mb_id: parts.mb, ram_id: parts.ram,
+      cooler_id: parts.cooler, ssd_id: parts.ssd, hdd_id: parts.hdd, psu_id: parts.psu, case_id: parts.case,
+    });
+    try {
+      const result = await apiPost('/api/v6/pc/compare', { left: apiParts(left.parts), right: apiParts(right.parts) });
+      if (id === compareRequestId.current) setPcComparison(result as PcComparison);
+    } catch (error: any) {
+      if (id === compareRequestId.current) setCompareError(error?.message || 'Не удалось сравнить сохранённые сборки.');
+    } finally {
+      if (id === compareRequestId.current) setCompareLoading(false);
+    }
   };
 
   return (
@@ -201,6 +493,87 @@ export const PcMaterialsStyleHub: React.FC<{
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">{PC_BUILD_PRESETS.map((preset) => <button key={preset.id} type="button" onClick={() => applyPcPreset(preset)} className="group min-w-0 rounded-xl border border-white/10 bg-slate-950/80 p-3 text-left transition hover:-translate-y-0.5 hover:border-indigo-300/40 hover:bg-indigo-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300"><span className="flex items-start justify-between gap-2"><span className="min-w-0"><b className="block truncate text-xs text-white">{preset.name}</b><span className="mt-1 block text-[10px] leading-relaxed text-slate-400">{preset.note}</span></span><span className="shrink-0 font-mono text-[10px] font-bold text-amber-200">≈ {estimatePresetPrice(preset).toLocaleString('ru-RU')} ₽</span></span><span className="mt-2 flex flex-wrap gap-1">{[preset.parts.cpu, preset.parts.gpu, preset.parts.ram].map((id) => <span key={id} className="max-w-full truncate rounded-md border border-white/5 bg-white/[.04] px-1.5 py-0.5 text-[9px] text-slate-400">{catalog.cpus.find((x: any) => x.id === id)?.name || catalog.gpus.find((x: any) => x.id === id)?.name || catalog.rams.find((x: any) => x.id === id)?.name || id}</span>)}</span></button>)}</div>
           <div className="mt-3 grid grid-cols-2 gap-1.5 text-center sm:grid-cols-4 lg:grid-cols-9">{[['Процессоры', catalog.cpus], ['Видеокарты', catalog.gpus], ['Платы', catalog.motherboards], ['ОЗУ', catalog.rams], ['Охлаждение', catalog.coolers], ['SSD', catalog.ssds], ['HDD', catalog.hdds], ['БП', catalog.psus], ['Корпуса', catalog.cases]].map(([label, items]: any) => <div key={label} className="rounded-lg border border-white/5 bg-black/20 px-2 py-1.5"><b className="block text-xs text-white">{items?.length || 0}</b><span className="text-[9px] text-slate-500">{label}</span></div>)}</div>
           <p className="mt-2 text-[9px] leading-relaxed text-slate-500">Б/у детали требуют проверки состояния, модели платы, BIOS и комплектации. Совместимость носит справочный характер: сверяйте конкретные ревизии и руководства производителей.</p>
+        </section>
+
+        <section aria-labelledby="saved-pc-builds-heading" className="rounded-2xl border border-cyan-300/20 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/20 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[9px] font-bold uppercase tracking-[.22em] text-cyan-300">ПРОФИЛИ ЭТОГО УСТРОЙСТВА</div>
+              <h3 id="saved-pc-builds-heading" className="mt-1 text-sm font-bold text-white">Сохранённые сборки и сравнение</h3>
+              <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Хранение остаётся в браузере. Экспортируйте JSON, чтобы перенести конфигурации на другое устройство или сделать резервную копию.</p>
+            </div>
+            <span className="shrink-0 rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2 py-1 text-[10px] text-cyan-100">{savedPcBuilds.length}/{PC_SAVED_BUILDS_LIMIT} профилей</span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <label className="min-w-0">
+              <span className="sr-only">Название сохраняемой сборки</span>
+              <input value={savedBuildName} onChange={(event) => setSavedBuildName(event.target.value.slice(0, 60))} onKeyDown={(event) => { if (event.key === 'Enter') saveCurrentPcBuild(); }} maxLength={60} placeholder="Название текущей конфигурации" className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-cyan-300/50 focus:outline-none" />
+            </label>
+            <button type="button" onClick={saveCurrentPcBuild} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"><CheckCircle2 className="h-3.5 w-3.5" />Сохранить / обновить</button>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => importBuildInputRef.current?.click()} disabled={importLoading} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 disabled:opacity-50"><Upload className="h-3.5 w-3.5" />{importLoading ? 'Импорт…' : 'Импорт'}</button>
+              <button type="button" onClick={exportAllSavedPcBuilds} disabled={!savedPcBuilds.length} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"><Download className="h-3.5 w-3.5" />Резервная копия</button>
+              <input ref={importBuildInputRef} type="file" accept="application/json,.json" aria-label="Импорт сборок ПК из JSON" className="hidden" onChange={importSavedPcBuilds} />
+            </div>
+          </div>
+
+          {savedPcBuilds.length === 0 ? (
+            <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-5 text-center">
+              <p className="text-xs font-semibold text-slate-300">Здесь пока нет сохранённых конфигураций</p>
+              <p className="mt-1 text-[10px] text-slate-500">Подберите детали выше, задайте понятное имя и нажмите «Сохранить».</p>
+            </div>
+          ) : (
+            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {savedPcBuilds.map((build) => {
+                const cpu = catalog.cpus.find((item: any) => item.id === build.parts.cpu)?.name || build.parts.cpu;
+                const gpu = catalog.gpus.find((item: any) => item.id === build.parts.gpu)?.name || build.parts.gpu;
+                const ram = catalog.rams.find((item: any) => item.id === build.parts.ram)?.name || build.parts.ram;
+                return <article key={build.id} className="min-w-0 rounded-xl border border-white/10 bg-slate-950/70 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h4 className="truncate text-xs font-bold text-white" title={build.name}>{build.name}</h4>
+                      <p className="mt-1 text-[9px] text-slate-500">Обновлено {new Date(build.updatedAt).toLocaleDateString('ru-RU')}</p>
+                    </div>
+                    <span className="shrink-0 font-mono text-[10px] font-semibold text-amber-200">{build.snapshotPriceRub === null ? 'Цена не сохранена' : `≈ ${build.snapshotPriceRub.toLocaleString('ru-RU')} ₽`}</span>
+                  </div>
+                  <div className="mt-2 space-y-1 text-[10px] text-slate-400">
+                    <p className="truncate" title={cpu}><span className="text-slate-600">CPU · </span>{cpu}</p>
+                    <p className="truncate" title={gpu}><span className="text-slate-600">GPU · </span>{gpu}</p>
+                    <p className="truncate" title={ram}><span className="text-slate-600">RAM · </span>{ram}</p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <button type="button" onClick={() => applySavedPcBuild(build)} className="min-h-8 rounded-lg border border-indigo-300/20 bg-indigo-300/10 px-2.5 text-[10px] font-semibold text-indigo-100 hover:bg-indigo-300/20">Загрузить</button>
+                    <button type="button" onClick={() => exportSavedPcBuild(build)} aria-label={`Экспортировать сборку ${build.name}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[10px] text-slate-200 hover:bg-white/10"><Download className="h-3 w-3" />JSON</button>
+                    <button type="button" onClick={() => removeSavedPcBuild(build)} aria-label={`Удалить сборку ${build.name}`} className="ml-auto min-h-8 rounded-lg border border-rose-300/15 bg-rose-300/5 px-2.5 text-[10px] text-rose-200 hover:bg-rose-300/10">Удалить</button>
+                  </div>
+                </article>;
+              })}
+            </div>
+          )}
+
+          {savedPcBuilds.length >= 2 && <div className="mt-3 rounded-xl border border-indigo-300/15 bg-indigo-300/[.04] p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="min-w-[140px] flex-1 space-y-1"><span className="block text-[9px] font-semibold text-slate-400">Сборка A</span><select value={compareLeftId} onChange={(event) => { setCompareLeftId(event.target.value); setPcComparison(null); setCompareError(''); }} className="min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-2 text-[10px] text-white">{savedPcBuilds.map((build) => <option key={build.id} value={build.id}>{build.name}</option>)}</select></label>
+              <ArrowLeftRight className="mb-2 hidden h-4 w-4 text-indigo-300 sm:block" aria-hidden="true" />
+              <label className="min-w-[140px] flex-1 space-y-1"><span className="block text-[9px] font-semibold text-slate-400">Сборка B</span><select value={compareRightId} onChange={(event) => { setCompareRightId(event.target.value); setPcComparison(null); setCompareError(''); }} className="min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-2 text-[10px] text-white">{savedPcBuilds.map((build) => <option key={build.id} value={build.id}>{build.name}</option>)}</select></label>
+              <button type="button" onClick={compareSavedPcBuilds} disabled={compareLoading} className="min-h-9 rounded-lg border border-indigo-300/30 bg-indigo-400/15 px-3 text-[10px] font-semibold text-indigo-100 hover:bg-indigo-400/25 disabled:opacity-50">{compareLoading ? 'Сравниваем…' : 'Сравнить совместимость и цену'}</button>
+            </div>
+            {compareError && <p role="alert" className="mt-2 text-[10px] text-rose-200">{compareError}</p>}
+            {pcComparison && <div className="mt-3 overflow-x-auto rounded-lg border border-white/10">
+              <table className="w-full min-w-[420px] text-left text-[10px]">
+                <thead className="bg-white/[.04] text-slate-400"><tr><th className="px-2 py-2 font-medium">Показатель</th><th className="px-2 py-2 font-semibold text-cyan-100">{savedPcBuilds.find((build) => build.id === compareLeftId)?.name || 'Сборка A'}</th><th className="px-2 py-2 font-semibold text-indigo-100">{savedPcBuilds.find((build) => build.id === compareRightId)?.name || 'Сборка B'}</th></tr></thead>
+                <tbody className="divide-y divide-white/5 text-slate-300">
+                  <tr><th className="px-2 py-2 font-medium text-slate-500">Оценка цены</th><td className="px-2 py-2">{Number(pcComparison.left?.total_price_rub || 0).toLocaleString('ru-RU')} ₽</td><td className="px-2 py-2">{Number(pcComparison.right?.total_price_rub || 0).toLocaleString('ru-RU')} ₽</td></tr>
+                  <tr><th className="px-2 py-2 font-medium text-slate-500">Совместимость</th><td className="px-2 py-2">{pcComparison.left?.compatible ? '✓ Совместима' : `⚠ ${pcComparison.left?.errors?.length || 0} ошибок`}</td><td className="px-2 py-2">{pcComparison.right?.compatible ? '✓ Совместима' : `⚠ ${pcComparison.right?.errors?.length || 0} ошибок`}</td></tr>
+                  {(['cpu', 'gpu', 'ram', 'ssd', 'psu'] as const).map((key) => <tr key={key}><th className="px-2 py-2 font-medium uppercase text-slate-500">{key}</th><td className="max-w-[180px] truncate px-2 py-2" title={pcComparison.left?.selected?.[key]?.name}>{pcComparison.left?.selected?.[key]?.name || '—'}</td><td className="max-w-[180px] truncate px-2 py-2" title={pcComparison.right?.selected?.[key]?.name}>{pcComparison.right?.selected?.[key]?.name || '—'}</td></tr>)}
+                  <tr><th className="px-2 py-2 font-medium text-slate-500">Разница в цене B − A</th><td colSpan={2} className="px-2 py-2 font-semibold text-amber-100">{pcComparison.price_delta_rub > 0 ? '+' : ''}{pcComparison.price_delta_rub.toLocaleString('ru-RU')} ₽{pcComparison.cheaper_side === 'equal' ? ' · цена равна' : ` · дешевле: ${pcComparison.cheaper_side === 'left' ? 'A' : 'B'}`}</td></tr>
+                </tbody>
+              </table>
+              <p className="border-t border-white/5 px-2 py-2 text-[9px] leading-relaxed text-slate-500">{pcComparison.note} {pcComparison.left?.errors?.length ? `A: ${pcComparison.left.errors.join('; ')} ` : ''}{pcComparison.right?.errors?.length ? `B: ${pcComparison.right.errors.join('; ')}` : ''}</p>
+            </div>}
+          </div>}
+          {savedPcBuilds.length === 1 && <p className="mt-2 text-[9px] text-slate-500">Сохраните ещё одну сборку, чтобы сравнить совместимость, состав и ориентировочную цену.</p>}
         </section>
       </>}
 
