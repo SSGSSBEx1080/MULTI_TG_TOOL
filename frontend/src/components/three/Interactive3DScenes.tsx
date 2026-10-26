@@ -25,6 +25,7 @@ import {
   shadeBlinnPhong,
   sub3,
   syncHiDPICanvas,
+  usePrefersReducedMotion,
   useViewportActive,
   v3,
 } from '../../lib/engine3d';
@@ -112,9 +113,13 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const active = useViewportActive(wrapRef);
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const [geoMode, setGeoMode] = useState<'tesseract' | 'gyro' | 'icosa' | 'torus'>('tesseract');
-  const [autoSpin, setAutoSpin] = useState(true);
+  const [autoSpin, setAutoSpin] = useState(() => !prefersReducedMotion);
+  useEffect(() => {
+    if (prefersReducedMotion) setAutoSpin(false);
+  }, [prefersReducedMotion]);
 
   const rotRef = useRef({ rx: 0.32, ry: 0.58, vx: 0, vy: 0.0018, t4d: 0 });
   const dragRef = useRef({ down: false, x: 0, y: 0, moved: false, hovered: false });
@@ -163,8 +168,8 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
       if (!dragRef.current.down) {
         if (autoSpin) {
           const speedMult = dragRef.current.hovered ? 0.14 : 1.0;
-          st.ry += 0.00115 * speedMult;
-          st.t4d += 0.0028 * speedMult;
+          st.ry += 0.00072 * speedMult;
+          st.t4d += 0.00072 * speedMult;
         }
         st.rx += st.vx;
         st.ry += st.vy;
@@ -172,7 +177,7 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
         st.vy *= 0.9;
         st.rx = Math.max(-1.35, Math.min(1.35, st.rx));
       } else {
-        st.t4d += 0.002;
+        st.t4d += 0.00035;
       }
 
       ctx.clearRect(0, 0, W, H);
@@ -469,6 +474,7 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
           onClick={() => setAutoSpin((s) => !s)}
           className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 shrink-0"
           title={autoSpin ? 'Пауза вращения' : 'Авто-вращение'}
+          aria-label={autoSpin ? 'Остановить вращение 3D-ядра' : 'Включить медленное вращение 3D-ядра'}
         >
           {autoSpin ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
         </button>
@@ -476,6 +482,18 @@ export const CorePolyhedron3D: React.FC<Core3DProps> = ({
 
       <canvas
         ref={canvasRef}
+        role="application"
+        aria-label="Интерактивная 3D-модель. Перетаскивайте указателем или используйте клавиши со стрелками для вращения."
+        tabIndex={0}
+        onKeyDown={(e) => {
+          const step = 0.08;
+          if (e.key === 'ArrowLeft') rotRef.current.ry -= step;
+          else if (e.key === 'ArrowRight') rotRef.current.ry += step;
+          else if (e.key === 'ArrowUp') rotRef.current.rx = Math.max(-1.35, rotRef.current.rx - step);
+          else if (e.key === 'ArrowDown') rotRef.current.rx = Math.min(1.35, rotRef.current.rx + step);
+          else return;
+          e.preventDefault();
+        }}
         style={{ height: compact ? 184 : 208 }}
         onPointerEnter={() => {
           dragRef.current.hovered = true;
@@ -1278,10 +1296,50 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const active = useViewportActive(wrapRef);
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const [scene, setScene] = useState<'globe' | 'lorenz' | 'dodeca'>(mode === 'math' ? 'lorenz' : 'globe');
+  const [autoRotate, setAutoRotate] = useState(() => !prefersReducedMotion);
+  useEffect(() => {
+    if (prefersReducedMotion) setAutoRotate(false);
+  }, [prefersReducedMotion]);
   const camRef = useRef({ rx: 0.36, ry: -0.65, down: false, lx: 0, ly: 0, moved: false });
   const hitBeaconsRef = useRef<{ q: string; sx: number; sy: number; r: number; z: number }[]>([]);
+  const starField = useMemo(() => Array.from({ length: 42 }, (_, i) => {
+    const x = ((i * 73 + 19) % 997) / 997;
+    const y = ((i * 191 + 53) % 991) / 991;
+    return { x, y, r: 0.45 + (i % 4) * 0.32, phase: i * 0.71 };
+  }), []);
+  const cloudBands = useMemo(() => Array.from({ length: 7 }, (_, band) =>
+    Array.from({ length: 37 }, (_, i) => {
+      const lon = -180 + i * 10;
+      const lat = -48 + band * 16 + 4.4 * Math.sin((lon + band * 47) * Math.PI / 39) + 1.7 * Math.sin((lon - band * 19) * Math.PI / 16);
+      return [Math.max(-70, Math.min(70, lat)), lon] as [number, number];
+    })
+  ), []);
+  const textureTile = useMemo(() => {
+    if (typeof document === 'undefined') return null;
+    const tile = document.createElement('canvas');
+    tile.width = 64;
+    tile.height = 64;
+    const texture = tile.getContext('2d');
+    if (!texture) return null;
+    for (let i = 0; i < 34; i++) {
+      const x = (i * 37 + 11) % 64;
+      const y = (i * 53 + 7) % 64;
+      texture.fillStyle = i % 3 === 0 ? 'rgba(186,230,253,0.22)' : 'rgba(8,47,73,0.2)';
+      texture.beginPath();
+      texture.arc(x, y, 0.4 + (i % 3) * 0.25, 0, Math.PI * 2);
+      texture.fill();
+    }
+    texture.strokeStyle = 'rgba(125,211,252,0.08)';
+    texture.lineWidth = 0.55;
+    texture.beginPath();
+    texture.moveTo(4, 18); texture.quadraticCurveTo(24, 12, 42, 18); texture.stroke();
+    texture.beginPath();
+    texture.moveTo(18, 48); texture.quadraticCurveTo(34, 43, 62, 50); texture.stroke();
+    return tile;
+  }, []);
 
   useEffect(() => {
     setScene(mode === 'math' ? 'lorenz' : 'globe');
@@ -1303,12 +1361,29 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
       tick += 1;
 
       const cam = camRef.current;
-      if (!cam.down) {
-        cam.ry += 0.0045;
+      if (!cam.down && autoRotate) {
+        cam.ry += 0.00062;
       }
 
-      ctx.fillStyle = '#070b15';
+      const sky = ctx.createLinearGradient(0, 0, W, H);
+      sky.addColorStop(0, '#071124');
+      sky.addColorStop(0.55, '#070b15');
+      sky.addColorStop(1, '#101127');
+      ctx.fillStyle = sky;
       ctx.fillRect(0, 0, W, H);
+      const nebula = ctx.createRadialGradient(W * 0.72, H * 0.45, 3, W * 0.72, H * 0.45, W * 0.55);
+      nebula.addColorStop(0, 'rgba(56,189,248,0.12)');
+      nebula.addColorStop(0.55, 'rgba(99,102,241,0.055)');
+      nebula.addColorStop(1, 'rgba(7,11,21,0)');
+      ctx.fillStyle = nebula;
+      ctx.fillRect(0, 0, W, H);
+      for (const star of starField) {
+        const alpha = 0.24 + (Math.sin((autoRotate ? tick * 0.035 : 0) + star.phase) + 1) * 0.16;
+        ctx.fillStyle = `rgba(226,242,255,${alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(star.x * W, star.y * H, star.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       const fov = 260;
       const camDist = 4.2;
@@ -1363,6 +1438,17 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
         ctx.arc(c0.sx, c0.sy, screenR, 0, Math.PI * 2);
         ctx.clip();
 
+        // Locally-generated microtexture: no downloaded maps, trackers, or third-party requests.
+        if (textureTile) {
+          const oceanTexture = ctx.createPattern(textureTile, 'repeat');
+          if (oceanTexture) {
+            ctx.globalAlpha = 0.54;
+            ctx.fillStyle = oceanTexture;
+            ctx.fillRect(c0.sx - screenR, c0.sy - screenR, screenR * 2, screenR * 2);
+            ctx.globalAlpha = 1;
+          }
+        }
+
         for (const poly of miniConts) {
           const wps = poly.map(([la, lo]) => rotateEuler(latLonToVec3(la, lo, R * 1.003), cam.rx, cam.ry));
           if (wps.filter((w) => w.z > zLimb).length < 2) continue;
@@ -1381,11 +1467,31 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
             else ctx.lineTo(pp.sx, pp.sy);
           });
           ctx.closePath();
-          ctx.fillStyle = 'rgba(34,165,102,0.58)';
+          const landPoints = wps.filter((w) => w.z >= zLimb).map((w) => project3D(w, W, H, fov, camDist));
+          const landX = landPoints.reduce((sum, p) => sum + p.sx, 0) / Math.max(1, landPoints.length);
+          const landY = landPoints.reduce((sum, p) => sum + p.sy, 0) / Math.max(1, landPoints.length);
+          const landMaterial = ctx.createRadialGradient(landX - 8, landY - 7, 2, landX, landY, Math.max(15, screenR * 0.48));
+          landMaterial.addColorStop(0, 'rgba(74,222,128,0.86)');
+          landMaterial.addColorStop(0.62, 'rgba(34,150,94,0.78)');
+          landMaterial.addColorStop(1, 'rgba(18,92,76,0.82)');
+          ctx.fillStyle = landMaterial;
           ctx.fill();
-          ctx.strokeStyle = 'rgba(167,243,208,0.45)';
-          ctx.lineWidth = 0.85;
+          ctx.strokeStyle = 'rgba(167,243,208,0.58)';
+          ctx.lineWidth = 0.9;
           ctx.stroke();
+          // Subtle relief contours clipped to each landmass add a tactile map texture.
+          ctx.save();
+          ctx.clip();
+          ctx.strokeStyle = 'rgba(209,250,229,0.16)';
+          ctx.lineWidth = 0.75;
+          for (let contour = 0; contour < 3; contour++) {
+            const y = landY + (contour - 1) * Math.max(3, screenR * 0.075);
+            ctx.beginPath();
+            ctx.moveTo(landX - screenR * 0.26, y + 2);
+            ctx.quadraticCurveTo(landX, y - 3, landX + screenR * 0.25, y + 1);
+            ctx.stroke();
+          }
+          ctx.restore();
         }
 
         // Front-hemisphere Latitude parallels
@@ -1434,6 +1540,30 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
           ctx.stroke();
         }
 
+        // Fine, translucent cloud wisps move with the mapped globe and remain clipped at the limb.
+        for (let band = 0; band < cloudBands.length; band++) {
+          ctx.beginPath();
+          let pen = false;
+          for (const [lat, lon] of cloudBands[band]) {
+            const point = rotateEuler(latLonToVec3(lat, lon, R * 1.006), cam.rx, cam.ry);
+            if (point.z < zLimb) {
+              pen = false;
+              continue;
+            }
+            const pp = project3D(point, W, H, fov, camDist);
+            if (!pen) {
+              ctx.moveTo(pp.sx, pp.sy);
+              pen = true;
+            } else {
+              ctx.lineTo(pp.sx, pp.sy);
+            }
+          }
+          ctx.strokeStyle = band % 2 === 0 ? 'rgba(224,242,254,0.16)' : 'rgba(186,230,253,0.10)';
+          ctx.lineWidth = band % 3 === 0 ? 1.6 : 1.15;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+
         ctx.restore();
 
         ctx.beginPath();
@@ -1446,9 +1576,16 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
         const np = rotateEuler(latLonToVec3(90, 0, R * 1.08), cam.rx, cam.ry);
         if (np.z > -0.2) {
           const npp = project3D(np, W, H, fov, camDist);
-          ctx.fillStyle = '#7dd3fc';
+          ctx.fillStyle = '#bae6fd';
           ctx.font = '700 9px monospace';
           ctx.fillText('N↑', npp.sx - 6, npp.sy - 2);
+        }
+        const sp = rotateEuler(latLonToVec3(-90, 0, R * 1.08), cam.rx, cam.ry);
+        if (sp.z > -0.2) {
+          const spp = project3D(sp, W, H, fov, camDist);
+          ctx.fillStyle = '#a5f3fc';
+          ctx.font = '700 9px monospace';
+          ctx.fillText('S↓', spp.sx - 6, spp.sy + 9);
         }
 
         // Country markers (pin size is not population data)
@@ -1494,7 +1631,7 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
           ctx.lineWidth = 1.6;
           ctx.stroke();
         }
-        const tracerIdx = (tick * 3) % lorenzPts.length;
+        const tracerIdx = autoRotate ? (tick * 3) % lorenzPts.length : Math.floor(lorenzPts.length * 0.55);
         const tp = project3D(rotateEuler(lorenzPts[tracerIdx], cam.rx, cam.ry), W, H, fov, camDist);
         if (tp.visible) {
           ctx.fillStyle = '#ffffff';
@@ -1504,7 +1641,7 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
         }
       } else {
         hitBeaconsRef.current = [];
-        drawShadedMesh(ctx, dodeca, cam.rx, cam.ry, tick * 0.005, W, H, fov, camDist, '#34d399', 0.8);
+        drawShadedMesh(ctx, dodeca, cam.rx, cam.ry, autoRotate ? tick * 0.0008 : 0, W, H, fov, camDist, '#34d399', 0.8);
       }
 
       raf = requestAnimationFrame(render);
@@ -1512,7 +1649,7 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [active, scene, lorenzPts, dodeca]);
+  }, [active, scene, autoRotate, lorenzPts, dodeca, starField, cloudBands, textureTile]);
 
   const handleUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const wasTap = !camRef.current.moved;
@@ -1554,12 +1691,44 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
           ))}
         </div>
         {scene === 'globe' && (
-          <span className="text-[11px] text-slate-400">Тап по маяку на глобусе — фильтр страны</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setAutoRotate((value) => !value)}
+              aria-label={autoRotate ? 'Остановить вращение глобуса' : 'Включить медленное вращение глобуса'}
+              className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-slate-200 hover:bg-white/10"
+            >
+              {autoRotate ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+              {autoRotate ? 'Пауза' : 'Крутить'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { camRef.current.rx = 0.36; camRef.current.ry = -0.65; }}
+              aria-label="Сбросить вид глобуса на север вверх"
+              className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-slate-200 hover:bg-white/10"
+            >
+              <RotateCcw className="h-3 w-3" /> Сброс вида
+            </button>
+            <span className="text-[10px] text-slate-400">Перетащите глобус · Север ↑ · маяк — фильтр</span>
+          </div>
         )}
       </div>
 
       <canvas
         ref={canvasRef}
+        role="application"
+        aria-label="Интерактивный глобус с северным полюсом сверху. Перетаскивайте мышью или пальцем; клавиши со стрелками поворачивают вид, Home возвращает исходную ориентацию."
+        tabIndex={0}
+        onKeyDown={(e) => {
+          const step = 0.1;
+          if (e.key === 'ArrowLeft') camRef.current.ry -= step;
+          else if (e.key === 'ArrowRight') camRef.current.ry += step;
+          else if (e.key === 'ArrowUp') camRef.current.rx = Math.max(-1.2, camRef.current.rx - step);
+          else if (e.key === 'ArrowDown') camRef.current.rx = Math.min(1.2, camRef.current.rx + step);
+          else if (e.key === 'Home') { camRef.current.rx = 0.36; camRef.current.ry = -0.65; }
+          else return;
+          e.preventDefault();
+        }}
         style={{ height: 215 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture?.(e.pointerId);
