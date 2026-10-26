@@ -7,7 +7,7 @@ from typing import Any
 from aiogram.types import BufferedInputFile
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.api.tg_auth import resolve_api_user
 from backend.bot.factory import bot_manager
@@ -1110,11 +1110,11 @@ async def api_v5_running(req: RunningPaceReq, request: Request) -> dict[str, Any
 
 class FuelTripReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
-    distance_km: float = 450.0
-    consumption_l_100: float = 8.2
-    fuel_price: float = 61.5
-    passengers: int = 2
-    tolls_rub: float = 0.0
+    distance_km: float = Field(default=450.0, gt=0, le=100_000, allow_inf_nan=False)
+    consumption_l_100: float = Field(default=8.2, gt=0, le=60, allow_inf_nan=False)
+    fuel_price: float = Field(default=61.5, ge=0, le=1_000, allow_inf_nan=False)
+    passengers: int = Field(default=2, ge=1, le=60)
+    tolls_rub: float = Field(default=0.0, ge=0, le=10_000_000, allow_inf_nan=False)
     round_trip: bool = False
 
 
@@ -1128,14 +1128,17 @@ async def api_v5_fuel(req: FuelTripReq, request: Request) -> dict[str, Any]:
 
 class TireCompareReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
-    old_spec: str = "205/55 R16"
-    new_spec: str = "215/60 R16"
+    old_spec: str = Field(default="205/55 R16", min_length=5, max_length=20)
+    new_spec: str = Field(default="215/60 R16", min_length=5, max_length=20)
 
 
 @router.post("/api/v2/v5/tires-compare")
 async def api_v5_tires(req: TireCompareReq, request: Request) -> dict[str, Any]:
     uid = await resolve_api_user(request, req.user_id)
-    res = compare_tires(req.old_spec, req.new_spec)
+    try:
+        res = compare_tires(req.old_spec, req.new_spec)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await db.record_tool_use(uid, "tire_calc", "auto_travel", "miniapp", f"{req.old_spec}->{req.new_spec}", xp_gain=6)
     return res
 
@@ -1146,8 +1149,11 @@ async def api_v5_plates(q: str = "") -> dict[str, Any]:
 
 
 @router.get("/api/v2/v5/world-time")
-async def api_v5_world_time(msk_hour: float | None = None) -> dict[str, Any]:
-    return compute_world_timezones(msk_hour)
+async def api_v5_world_time(msk_hour: float | None = None, local_date: str | None = None) -> dict[str, Any]:
+    try:
+        return compute_world_timezones(msk_hour, local_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class FinanceProReq(BaseModel):
