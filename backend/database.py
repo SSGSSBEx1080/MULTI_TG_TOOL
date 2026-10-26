@@ -22,6 +22,52 @@ RANKS = [
 ]
 
 FAKE_SEED_USER_IDS = (0, 777000, 880101, 880102, 880103, 880104, 880201, 880202, 880203, 880204)
+TODO_PRIORITIES = frozenset({"normal", "high", "urgent"})
+TODO_CATEGORIES = frozenset({"general", "work", "personal", "study", "health", "shopping"})
+
+
+def normalize_todo_fields(
+    *,
+    text: Any,
+    priority: Any = "normal",
+    due_date: Any = None,
+    category: Any = "general",
+    estimated_minutes: Any = 0,
+) -> dict[str, Any]:
+    clean_text = str(text or "").strip()
+    clean_priority = str(priority or "normal").strip().lower()
+    clean_category = str(category or "general").strip().lower()
+    if not clean_text:
+        raise ValueError("Введите текст задачи")
+    if len(clean_text) > 200:
+        raise ValueError("Текст задачи не должен превышать 200 символов")
+    if clean_priority not in TODO_PRIORITIES:
+        raise ValueError("Неизвестный приоритет задачи")
+    if clean_category not in TODO_CATEGORIES:
+        raise ValueError("Неизвестная категория задачи")
+    clean_due_date = None
+    if due_date not in (None, ""):
+        raw_due_date = str(due_date)
+        try:
+            clean_due_date = dt.date.fromisoformat(raw_due_date).isoformat()
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Срок задачи должен быть датой в формате ГГГГ-ММ-ДД") from exc
+        if clean_due_date != raw_due_date:
+            raise ValueError("Срок задачи должен быть датой в формате ГГГГ-ММ-ДД")
+    raw_minutes = estimated_minutes or 0
+    if isinstance(raw_minutes, bool) or not isinstance(raw_minutes, int):
+        raise ValueError("Оценка времени должна быть целым числом минут")
+    minutes = raw_minutes
+    if not 0 <= minutes <= 1440:
+        raise ValueError("Оценка времени должна быть от 0 до 1440 минут")
+    return {
+        "text": clean_text,
+        "priority": clean_priority,
+        "due_date": clean_due_date,
+        "category": clean_category,
+        "estimated_minutes": minutes,
+    }
+
 
 DEFAULT_AUTHOR_INFO = {
     "title": "QLS • MULTI_TG_TOOL",
@@ -216,6 +262,9 @@ class Database:
                     text TEXT NOT NULL,
                     done INTEGER DEFAULT 0,
                     priority TEXT DEFAULT 'normal',
+                    due_date TEXT,
+                    category TEXT DEFAULT 'general',
+                    estimated_minutes INTEGER DEFAULT 0,
                     created_at REAL NOT NULL
                 );
 
@@ -343,6 +392,18 @@ class Database:
             for col_name, col_def in migrations:
                 if col_name not in existing_cols:
                     await conn.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+
+            cur = await conn.execute("PRAGMA table_info(todos)")
+            todo_columns = {row[1] for row in await cur.fetchall()}
+            todo_migrations = [
+                ("due_date", "TEXT"),
+                ("category", "TEXT DEFAULT 'general'"),
+                ("estimated_minutes", "INTEGER DEFAULT 0"),
+            ]
+            for column_name, column_definition in todo_migrations:
+                if column_name not in todo_columns:
+                    await conn.execute(f"ALTER TABLE todos ADD COLUMN {column_name} {column_definition}")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_todos_user_due ON todos(user_id, done, due_date, id DESC)")
 
             # Purge legacy fake/demo accounts from existing databases so only real Telegram users remain
             placeholders = ",".join("?" for _ in FAKE_SEED_USER_IDS)
@@ -1355,17 +1416,80 @@ class Database:
             cur = await conn.execute("SELECT * FROM todos WHERE user_id = ? ORDER BY done ASC, id DESC", (user_id,))
             return [dict(r) for r in await cur.fetchall()]
 
-    async def add_todo(self, user_id: int, text: str, priority: str = "normal") -> dict[str, Any]:
+    async def add_todo(
+        self,
+        user_id: int,
+        text: str,
+        priority: str = "normal",
+        due_date: str | None = None,
+        category: str = "general",
+        estimated_minutes: int = 0,
+    ) -> dict[str, Any]:
+        values = normalize_todo_fields(
+            text=text,
+            priority=priority,
+            due_date=due_date,
+            category=category,
+            estimated_minutes=estimated_minutes,
+        )
         now = time.time()
         async with self._session() as conn:
             cur = await conn.execute(
-                "INSERT INTO todos (user_id, text, done, priority, created_at) VALUES (?, ?, 0, ?, ?)",
-                (user_id, text.strip(), priority, now),
+                """INSERT INTO todos
+                   (user_id, text, done, priority, due_date, category, estimated_minutes, created_at)
+                   VALUES (?, ?, 0, ?, ?, ?, ?, ?)""",
+                (
+                    user_id,
+                    values["text"],
+                    values["priority"],
+                    values["due_date"],
+                    values["category"],
+                    values["estimated_minutes"],
+                    now,
+                ),
             )
             todo_id = cur.lastrowid
             await conn.commit()
-            cur = await conn.execute("SELECT * FROM todos WHERE id = ?", (todo_id,))
+            cur = await conn.execute("SELECT * FROM todos WHERE id = ? AND user_id = ?", (todo_id, user_id))
             return dict(await cur.fetchone())
+
+    async def update_todo(self, user_id: int, todo_id: int, changes: dict[str, Any]) -> dict[str, Any] | None:
+        allowed_columns = {"text", "priority", "due_date", "category", "estimated_minutes"}
+        if not changes or any(key not in allowed_columns for key in changes):
+            if not changes:
+                async with self._session() as conn:
+                    cur = await conn.execute("SELECT * FROM todos WHERE id = ? AND user_id = ?", (todo_id, user_id))
+                    row = await cur.fetchone()
+                    return dict(row) if row else None
+            raise ValueError("Недопустимое поле задачи")
+        async with self._session() as conn:
+            cur = await conn.execute("SELECT * FROM todos WHERE id = ? AND user_id = ?", (todo_id, user_id))
+            current = await cur.fetchone()
+            if current is None:
+                return None
+            values: dict[str, Any] = {}
+            for column, value in changes.items():
+                if column in {"text", "priority", "category"} and value is None:
+                    raise ValueError(f"Поле {column} не может быть пустым")
+                validation = normalize_todo_fields(
+                    text=value if column == "text" else "Задача",
+                    priority=value if column == "priority" else "normal",
+                    due_date=value if column == "due_date" else None,
+                    category=value if column == "category" else "general",
+                    estimated_minutes=value if column == "estimated_minutes" else 0,
+                )
+                values[column] = validation[column]
+            columns = list(changes)
+            assignments = ", ".join(f"{column} = ?" for column in columns)
+            parameters = [values[column] for column in columns]
+            await conn.execute(
+                f"UPDATE todos SET {assignments} WHERE id = ? AND user_id = ?",
+                (*parameters, todo_id, user_id),
+            )
+            await conn.commit()
+            cur = await conn.execute("SELECT * FROM todos WHERE id = ? AND user_id = ?", (todo_id, user_id))
+            row = await cur.fetchone()
+            return dict(row) if row else None
 
     async def toggle_todo(self, user_id: int, todo_id: int) -> list[dict[str, Any]]:
         async with self._session() as conn:

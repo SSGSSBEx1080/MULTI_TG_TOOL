@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.api.tg_auth import resolve_api_user
 from backend.config import DEFAULT_DEMO_USER_ID
@@ -65,19 +65,53 @@ async def api_delete_note(note_id: int, request: Request, user_id: int = DEFAULT
     return {"notes": await db.list_notes(uid)}
 
 
+TodoPriority = Literal["normal", "high", "urgent"]
+TodoCategory = Literal["general", "work", "personal", "study", "health", "shopping"]
+
+
 class CreateTodoReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
-    text: str
-    priority: str = "normal"
+    text: str = Field(min_length=1, max_length=200)
+    priority: TodoPriority = "normal"
+    due_date: str | None = None
+    category: TodoCategory = "general"
+    estimated_minutes: int = Field(default=0, ge=0, le=1440)
+
+
+class UpdateTodoReq(BaseModel):
+    user_id: int = DEFAULT_DEMO_USER_ID
+    text: str | None = Field(default=None, min_length=1, max_length=200)
+    priority: TodoPriority | None = None
+    due_date: str | None = None
+    category: TodoCategory | None = None
+    estimated_minutes: int | None = Field(default=None, ge=0, le=1440)
 
 
 @router.post("/todos")
 async def api_create_todo(req: CreateTodoReq, request: Request) -> dict[str, Any]:
     uid = await resolve_api_user(request, req.user_id)
-    if not req.text.strip():
-        raise HTTPException(status_code=400, detail="Введите текст задачи")
-    todo = await db.add_todo(uid, req.text, req.priority)
+    try:
+        todo = await db.add_todo(
+            uid, req.text, req.priority, req.due_date, req.category, req.estimated_minutes
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await db.record_tool_use(uid, "todo_board", "workspace", "miniapp", req.text[:30], xp_gain=6)
+    return {"todo": todo, "todos": await db.list_todos(uid)}
+
+
+@router.patch("/todos/{todo_id}")
+async def api_update_todo(
+    todo_id: int, req: UpdateTodoReq, request: Request
+) -> dict[str, Any]:
+    uid = await resolve_api_user(request, req.user_id)
+    changes = req.model_dump(exclude_unset=True, exclude={"user_id"})
+    try:
+        todo = await db.update_todo(uid, todo_id, changes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if todo is None:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
     return {"todo": todo, "todos": await db.list_todos(uid)}
 
 

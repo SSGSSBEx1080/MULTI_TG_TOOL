@@ -11,7 +11,17 @@ import {
   StickyNote,
   Trash2,
 } from 'lucide-react';
-import { HabitItem, NoteItem, TodoItem, apiDelete, apiPost, copyText } from '../../lib/api';
+import {
+  HabitItem,
+  NoteItem,
+  TodoCategory,
+  TodoItem,
+  TodoPriority,
+  apiDelete,
+  apiPatch,
+  apiPost,
+  copyText,
+} from '../../lib/api';
 import { HabitRing3D, NetworkTopology3D, PolyhedralDice3D } from '../three/Interactive3DScenes';
 import { RussianLanguageStudio } from './RussianLanguageStudio';
 
@@ -120,7 +130,16 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   const [noteContent, setNoteContent] = useState('');
   const [noteTag, setNoteTag] = useState('work');
   const [todoText, setTodoText] = useState('');
-  const [todoPriority, setTodoPriority] = useState<'normal' | 'high'>('normal');
+  const [todoPriority, setTodoPriority] = useState<TodoPriority>('normal');
+  const [todoDueDate, setTodoDueDate] = useState('');
+  const [todoCategory, setTodoCategory] = useState<TodoCategory>('general');
+  const [todoEstimate, setTodoEstimate] = useState('');
+  const [todoSearch, setTodoSearch] = useState('');
+  const [todoFilter, setTodoFilter] = useState<'all' | 'open' | 'done' | 'today' | 'overdue' | 'upcoming'>('all');
+  const [todoCategoryFilter, setTodoCategoryFilter] = useState<TodoCategory | 'all'>('all');
+  const [todoSort, setTodoSort] = useState<'due' | 'priority' | 'newest'>('due');
+  const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
+  const [editingTodo, setEditingTodo] = useState<Partial<TodoItem>>({});
 
   useEffect(() => {
     if (activeTool === 'habit_tracker') setWsTab('habits');
@@ -1210,8 +1229,15 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
       await apiPost('/api/workspace/todos', {
         text: todoText,
         priority: todoPriority,
+        due_date: todoDueDate || null,
+        category: todoCategory,
+        estimated_minutes: Number(todoEstimate || 0),
       });
       setTodoText('');
+      setTodoDueDate('');
+      setTodoEstimate('');
+      setTodoPriority('normal');
+      setTodoCategory('general');
       onRefreshWorkspace();
     } catch (e: any) {
       onToast(e.message || 'Ошибка добавления задачи');
@@ -1219,7 +1245,84 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   };
 
   const doneCount = todos.filter((t) => t.done).length;
+  const openTodos = todos.filter((todo) => !todo.done);
   const pct = todos.length ? Math.round((doneCount / todos.length) * 100) : 0;
+  const todayISO = (() => {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  })();
+  const overdueCount = openTodos.filter((todo) => todo.due_date && todo.due_date < todayISO).length;
+  const dueTodayCount = openTodos.filter((todo) => todo.due_date === todayISO).length;
+  const remainingMinutes = openTodos.reduce((sum, todo) => sum + (todo.estimated_minutes || 0), 0);
+  const categoryLabels: Record<TodoCategory, string> = {
+    general: 'Общее', work: 'Работа', personal: 'Личное', study: 'Учёба', health: 'Здоровье', shopping: 'Покупки',
+  };
+  const categoryOrder: TodoCategory[] = ['general', 'work', 'personal', 'study', 'health', 'shopping'];
+  const filteredTodos = todos
+    .filter((todo) => {
+      const matchesSearch = todo.text.toLocaleLowerCase('ru').includes(todoSearch.trim().toLocaleLowerCase('ru'));
+      const matchesFilter = todoFilter === 'all'
+        || (todoFilter === 'open' && !todo.done)
+        || (todoFilter === 'done' && !!todo.done)
+        || (todoFilter === 'today' && !todo.done && todo.due_date === todayISO)
+        || (todoFilter === 'overdue' && !todo.done && !!todo.due_date && todo.due_date < todayISO)
+        || (todoFilter === 'upcoming' && !todo.done && !!todo.due_date && todo.due_date > todayISO);
+      const matchesCategory = todoCategoryFilter === 'all' || todo.category === todoCategoryFilter;
+      return matchesSearch && matchesFilter && matchesCategory;
+    })
+    .sort((a, b) => {
+      if (a.done !== b.done) return a.done - b.done;
+      if (todoSort === 'priority') {
+        const weight = { urgent: 0, high: 1, normal: 2 };
+        return weight[a.priority] - weight[b.priority] || a.id - b.id;
+      }
+      if (todoSort === 'newest') return b.id - a.id;
+      const dateA = a.due_date || '9999-12-31';
+      const dateB = b.due_date || '9999-12-31';
+      return dateA.localeCompare(dateB) || b.id - a.id;
+    });
+
+  const formatTodoDate = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+  const updateTodo = async (todoId: number, patch: Partial<TodoItem>) => {
+    try {
+      await apiPatch(`/api/workspace/todos/${todoId}`, patch);
+      setEditingTodoId(null);
+      setEditingTodo({});
+      onRefreshWorkspace();
+    } catch (e: any) {
+      onToast(e.message || 'Не удалось обновить задачу');
+    }
+  };
+
+  const beginTodoEdit = (todo: TodoItem) => {
+    setEditingTodoId(todo.id);
+    setEditingTodo({ ...todo });
+  };
+
+  const exportTodosCsv = () => {
+    const cell = (value: unknown) => {
+      let text = String(value ?? '');
+      if (/^[=+@-]/.test(text) || text.startsWith('\t')) text = `'${text}`;
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+    const rows = [
+      ['Задача', 'Статус', 'Приоритет', 'Категория', 'Срок', 'Оценка минут', 'Создана'],
+      ...todos.map((todo) => [
+        todo.text, todo.done ? 'Выполнена' : 'Открыта', todo.priority,
+        categoryLabels[todo.category] || categoryLabels.general, todo.due_date || '',
+        String(todo.estimated_minutes || 0), new Date(Number(todo.created_at) * 1000).toISOString(),
+      ]),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map(cell).join(';')).join('\r\n')}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'my-tasks.csv';
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   const formatShortDay = (iso: string) => {
     const d = new Date(iso + 'T00:00:00');
@@ -1388,7 +1491,12 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
             <div className="flex items-center gap-2 text-emerald-300 font-semibold text-sm">
               <CheckSquare className="w-4 h-4" /> Список дел ({doneCount}/{todos.length})
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {todos.length > 0 && (
+                <button onClick={exportTodosCsv} className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-300">
+                  <Download className="h-3.5 w-3.5" /> Экспорт CSV
+                </button>
+              )}
               {doneCount > 0 && (
                 <button
                   onClick={() =>
@@ -1412,70 +1520,212 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
             />
           </div>
 
-          <div className="flex gap-2">
-            <input
-              value={todoText}
-              onChange={(e) => setTodoText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') addTodo();
-              }}
-              placeholder="Новая задача..."
-              className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-            />
-            <select
-              value={todoPriority}
-              onChange={(e) => setTodoPriority(e.target.value as any)}
-              className="rounded-xl bg-slate-950 border border-white/10 px-2.5 py-2 text-xs text-white"
-            >
-              <option value="normal">Обычная</option>
-              <option value="high">Важная</option>
-            </select>
-            <button
-              onClick={addTodo}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm"
-            >
-              +
-            </button>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <div className="rounded-lg border border-white/5 bg-slate-950/70 px-3 py-2 text-slate-300">
+              Открыто: <b className="text-white">{openTodos.length}</b>
+            </div>
+            <div className={`rounded-lg border px-3 py-2 ${overdueCount ? 'border-rose-500/30 bg-rose-950/20 text-rose-200' : 'border-white/5 bg-slate-950/70 text-slate-300'}`}>
+              Просрочено: <b>{overdueCount}</b> <span className="text-slate-500">· сегодня: {dueTodayCount}</span>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-slate-950/70 px-3 py-2 text-slate-300">
+              Плановая нагрузка: <b className="text-white">{remainingMinutes >= 60 ? `${Math.floor(remainingMinutes / 60)} ч ${remainingMinutes % 60} мин` : `${remainingMinutes} мин`}</b>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <input
+              value={todoSearch}
+              onChange={(e) => setTodoSearch(e.target.value)}
+              placeholder="Поиск по задачам"
+              aria-label="Поиск по задачам"
+              className="min-w-0 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+            />
+            <select
+              value={todoFilter}
+              onChange={(e) => setTodoFilter(e.target.value as typeof todoFilter)}
+              aria-label="Фильтр задач"
+              className="rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+            >
+              <option value="all">Все статусы</option>
+              <option value="open">Открытые</option>
+              <option value="done">Выполненные</option>
+              <option value="today">На сегодня</option>
+              <option value="overdue">Просроченные</option>
+              <option value="upcoming">Предстоящие</option>
+            </select>
+            <select
+              value={todoCategoryFilter}
+              onChange={(e) => setTodoCategoryFilter(e.target.value as TodoCategory | 'all')}
+              aria-label="Фильтр задач по категории"
+              className="rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+            >
+              <option value="all">Все категории</option>
+              {categoryOrder.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}
+            </select>
+            <select
+              value={todoSort}
+              onChange={(e) => setTodoSort(e.target.value as typeof todoSort)}
+              aria-label="Сортировка задач"
+              className="rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+            >
+              <option value="due">Сначала ближайший срок</option>
+              <option value="priority">По приоритету</option>
+              <option value="newest">Сначала новые</option>
+            </select>
+          </div>
+
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 p-3 space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
+              <input
+                value={todoText}
+                maxLength={200}
+                onChange={(e) => setTodoText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addTodo(); }}
+                placeholder="Новая задача (до 200 символов)"
+                className="min-w-0 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
+              />
+              <select
+                value={todoPriority}
+                onChange={(e) => setTodoPriority(e.target.value as TodoPriority)}
+                aria-label="Приоритет новой задачи"
+                className="rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+              >
+                <option value="normal">Обычная</option>
+                <option value="high">Важная</option>
+                <option value="urgent">Срочная</option>
+              </select>
+              <button
+                onClick={addTodo}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm"
+              >
+                + Добавить
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <label className="text-[11px] text-slate-400">
+                Категория
+                <select
+                  value={todoCategory}
+                  onChange={(e) => setTodoCategory(e.target.value as TodoCategory)}
+                  className="mt-1 block w-full rounded-lg bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+                >
+                  {categoryOrder.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-400">
+                Срок (необязательно)
+                <input
+                  type="date"
+                  value={todoDueDate}
+                  onChange={(e) => setTodoDueDate(e.target.value)}
+                  className="mt-1 block w-full rounded-lg bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+                />
+              </label>
+              <label className="text-[11px] text-slate-400">
+                Оценка времени, мин
+                <input
+                  type="number"
+                  min={0}
+                  max={1440}
+                  value={todoEstimate}
+                  onChange={(e) => setTodoEstimate(e.target.value)}
+                  placeholder="Например, 45"
+                  className="mt-1 block w-full rounded-lg bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-2">
             {todos.length === 0 ? (
-              <div className="p-4 text-center text-xs text-slate-400">Список задач пуст</div>
+              <div className="p-5 text-center text-xs text-slate-400">Список задач пуст — добавьте первую задачу выше.</div>
+            ) : filteredTodos.length === 0 ? (
+              <div className="p-5 text-center text-xs text-slate-400">По выбранному фильтру задач нет.</div>
             ) : (
-              todos.map((item) => (
+              filteredTodos.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950 border border-white/10"
+                  className={`rounded-xl border px-3 py-3 ${item.done ? 'border-white/5 bg-slate-950/50' : 'border-white/10 bg-slate-950'}`}
                 >
-                  <button
-                    onClick={() =>
-                      apiPost(`/api/workspace/todos/${item.id}/toggle`, {})
-                        .then(onRefreshWorkspace)
-                        .catch((e) => onToast(e.message))
-                    }
-                    className="flex items-center gap-2.5 text-left flex-1 min-w-0"
-                  >
-                    <span className="text-base">{item.done ? '✅' : '⬜'}</span>
-                    <span
-                      className={`text-sm truncate ${
-                        item.done ? 'line-through text-slate-500' : 'text-slate-100'
-                      }`}
-                    >
-                      {item.priority === 'high' && !item.done ? '❗ ' : ''}
-                      {item.text}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() =>
-                      apiDelete(`/api/workspace/todos/${item.id}`)
-                        .then(onRefreshWorkspace)
-                        .catch((e) => onToast(e.message))
-                    }
-                    className="p-1.5 text-slate-500 hover:text-rose-400"
-                    title="Удалить"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {editingTodoId === item.id ? (
+                    <div className="space-y-2">
+                      <input
+                        value={editingTodo.text || ''}
+                        maxLength={200}
+                        onChange={(e) => setEditingTodo((current) => ({ ...current, text: e.target.value }))}
+                        aria-label="Текст задачи"
+                        className="w-full rounded-lg bg-slate-900 border border-white/10 px-3 py-2 text-sm text-white"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                        <select
+                          value={editingTodo.category || 'general'}
+                          onChange={(e) => setEditingTodo((current) => ({ ...current, category: e.target.value as TodoCategory }))}
+                          aria-label="Категория задачи"
+                          className="rounded-lg bg-slate-900 border border-white/10 px-2 py-2 text-xs text-white"
+                        >
+                          {categoryOrder.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}
+                        </select>
+                        <select
+                          value={editingTodo.priority || 'normal'}
+                          onChange={(e) => setEditingTodo((current) => ({ ...current, priority: e.target.value as TodoPriority }))}
+                          aria-label="Приоритет задачи"
+                          className="rounded-lg bg-slate-900 border border-white/10 px-2 py-2 text-xs text-white"
+                        >
+                          <option value="normal">Обычная</option><option value="high">Важная</option><option value="urgent">Срочная</option>
+                        </select>
+                        <input
+                          type="date"
+                          value={editingTodo.due_date || ''}
+                          onChange={(e) => setEditingTodo((current) => ({ ...current, due_date: e.target.value || null }))}
+                          aria-label="Срок задачи"
+                          className="rounded-lg bg-slate-900 border border-white/10 px-2 py-2 text-xs text-white"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={1440}
+                          value={editingTodo.estimated_minutes ?? 0}
+                          onChange={(e) => setEditingTodo((current) => ({ ...current, estimated_minutes: Number(e.target.value) }))}
+                          aria-label="Оценка времени в минутах"
+                          className="rounded-lg bg-slate-900 border border-white/10 px-2 py-2 text-xs text-white"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => updateTodo(item.id, {
+                          text: editingTodo.text, priority: editingTodo.priority, category: editingTodo.category,
+                          due_date: editingTodo.due_date || null, estimated_minutes: editingTodo.estimated_minutes || 0,
+                        })} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">Сохранить</button>
+                        <button onClick={() => { setEditingTodoId(null); setEditingTodo({}); }} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300">Отмена</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start gap-2">
+                        <button
+                          onClick={() => apiPost(`/api/workspace/todos/${item.id}/toggle`, {}).then(onRefreshWorkspace).catch((e) => onToast(e.message))}
+                          aria-label={item.done ? 'Отметить задачу невыполненной' : 'Отметить задачу выполненной'}
+                          className="mt-0.5 text-base leading-none"
+                        >{item.done ? '✅' : '⬜'}</button>
+                        <div className="min-w-0 flex-1">
+                          <div className={`break-words text-sm ${item.done ? 'line-through text-slate-500' : 'text-slate-100'}`}>
+                            {item.priority === 'urgent' && !item.done ? '🚨 ' : item.priority === 'high' && !item.done ? '❗ ' : ''}{item.text}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">{categoryLabels[item.category] || categoryLabels.general}</span>
+                            {item.priority !== 'normal' && <span className={`rounded-full px-2 py-0.5 text-[10px] ${item.priority === 'urgent' ? 'bg-rose-500/15 text-rose-300' : 'bg-amber-500/15 text-amber-200'}`}>{item.priority === 'urgent' ? 'Срочно' : 'Важная'}</span>}
+                            {item.due_date && <span className={`rounded-full px-2 py-0.5 text-[10px] ${!item.done && item.due_date < todayISO ? 'bg-rose-500/15 text-rose-300' : item.due_date === todayISO && !item.done ? 'bg-amber-500/15 text-amber-200' : 'bg-slate-800 text-slate-300'}`}>{!item.done && item.due_date < todayISO ? 'Просрочена · ' : 'Срок · '}{formatTodoDate(item.due_date)}</span>}
+                            {!!item.estimated_minutes && <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">◷ {item.estimated_minutes} мин</span>}
+                          </div>
+                        </div>
+                        <button onClick={() => beginTodoEdit(item)} aria-label="Редактировать задачу" className="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-emerald-300">✎</button>
+                        <button
+                          onClick={() => apiDelete(`/api/workspace/todos/${item.id}`).then(onRefreshWorkspace).catch((e) => onToast(e.message))}
+                          aria-label="Удалить задачу"
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-500/10 hover:text-rose-300"
+                        ><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))
             )}
