@@ -51,6 +51,10 @@ export const CultureStatsBuildersHub: React.FC<{
   const [metricX, setMetricX] = useState('penis_length_cm');
   const [metricY, setMetricY] = useState('penis_girth_cm');
   const [statsData, setStatsData] = useState<any>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState('');
+  const [statsRetry, setStatsRetry] = useState(0);
+  const statsRequestId = useRef(0);
 
   // 2 & 3. Genres & Cult Lore
   const [genresCat, setGenresCat] = useState('all');
@@ -102,12 +106,27 @@ export const CultureStatsBuildersHub: React.FC<{
   const [imgTargetFmt, setImgTargetFmt] = useState('webp');
 
   useEffect(() => {
-    if (tab === 'earth_stats_2026') {
-      apiGet(`/api/v6/stats/earth-2026?x_metric=${metricX}&y_metric=${metricY}`)
-        .then(setStatsData)
-        .catch(() => {});
-    }
-  }, [tab, metricX, metricY]);
+    if (tab !== 'earth_stats_2026') return;
+    const requestId = ++statsRequestId.current;
+    let active = true;
+    setStatsLoading(true);
+    setStatsError('');
+    setStatsData(null);
+    apiGet(`/api/v6/stats/earth-2026?x_metric=${encodeURIComponent(metricX)}&y_metric=${encodeURIComponent(metricY)}`)
+      .then((data) => {
+        if (active && requestId === statsRequestId.current) setStatsData(data);
+      })
+      .catch((error: any) => {
+        if (active && requestId === statsRequestId.current) setStatsError(error?.message || 'Не удалось загрузить статистику');
+      })
+      .finally(() => {
+        if (active && requestId === statsRequestId.current) setStatsLoading(false);
+      });
+    return () => {
+      active = false;
+      if (requestId === statsRequestId.current) statsRequestId.current += 1;
+    };
+  }, [tab, metricX, metricY, statsRetry]);
 
   useEffect(() => {
     if ((tab === 'world_genres_tags' || tab === 'cult_lore_encyc') && cultureBundle.lore.length === 0) {
@@ -123,12 +142,19 @@ export const CultureStatsBuildersHub: React.FC<{
   // Scatter Correlation Chart + Least-Squares Regression Line
   useEffect(() => {
     const cvs = chartRef.current;
-    if (!cvs || !visible || tab !== 'earth_stats_2026' || !statsData?.countries?.length) return;
+    if (!cvs || !visible || tab !== 'earth_stats_2026') return;
     const { ctx, W, H } = syncHiDPICanvas(cvs);
     if (!ctx || W < 40) return;
 
     ctx.fillStyle = '#040816';
     ctx.fillRect(0, 0, W, H);
+    if (!statsData?.countries?.length) {
+      ctx.fillStyle = statsError ? '#fda4af' : '#94a3b8';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(statsLoading ? 'Загружаем выбранные метрики…' : statsError ? 'Не удалось построить график' : 'Нет данных для графика', W / 2, H / 2);
+      return;
+    }
 
     const pts = statsData.countries.map((c: any) => ({
       x: Number(c[metricX]),
@@ -171,6 +197,7 @@ export const CultureStatsBuildersHub: React.FC<{
     ctx.stroke();
     ctx.restore();
 
+    ctx.textAlign = 'left';
     for (const p of pts) {
       const px = sx(p.x);
       const py = sy(p.y);
@@ -182,7 +209,7 @@ export const CultureStatsBuildersHub: React.FC<{
       ctx.fillStyle = 'rgba(226,232,240,0.88)';
       ctx.fillText(p.label, px + 7, py + 3);
     }
-  }, [visible, tab, statsData, metricX, metricY]);
+  }, [visible, tab, statsData, statsLoading, statsError, metricX, metricY]);
 
   const exportTierPng = () => {
     const cvs = document.createElement('canvas');
@@ -304,8 +331,10 @@ export const CultureStatsBuildersHub: React.FC<{
               {STAT_METRICS.map((m) => <option key={m.id} value={m.id}>Ось Y: {m.label}</option>)}
             </select>
           </div>
+          {statsLoading && <p role="status" className="text-xs text-emerald-200">Загружаем данные для выбранной пары метрик…</p>}
+          {statsError && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{statsError}</p><button type="button" onClick={() => setStatsRetry((retry) => retry + 1)} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
 
-          <canvas ref={chartRef} style={{ height: 290 }} className="w-full rounded-2xl bg-[#040816] border border-white/10 block" />
+          <canvas ref={chartRef} aria-label="График корреляции выбранных метрик" style={{ height: 290 }} className="w-full rounded-2xl bg-[#040816] border border-white/10 block" />
 
           {statsData?.countries && (
             <div className="overflow-x-auto max-h-80">

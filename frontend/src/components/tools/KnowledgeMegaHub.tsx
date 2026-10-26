@@ -68,6 +68,13 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
 
   const [popQuery, setPopQuery] = useState('');
   const [popData, setPopData] = useState<any>(null);
+  const [panelStatus, setPanelStatus] = useState<Record<string, { loading: boolean; error: string }>>({});
+  const [panelRetries, setPanelRetries] = useState<Record<string, number>>({});
+  const popRequestId = useRef(0);
+  const retryPanel = (key: string) => setPanelRetries((current) => ({ ...current, [key]: (current[key] || 0) + 1 }));
+  const setPanelState = (key: string, loading: boolean, error?: string) => {
+    setPanelStatus((current) => ({ ...current, [key]: { loading, error: error ?? current[key]?.error ?? '' } }));
+  };
 
   const loadWikiPhotos = async () => {
     const searchPhrase = wikiQuery.trim();
@@ -114,41 +121,75 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
 
   useEffect(() => {
     if (subTab !== 'const') return;
-    apiGet(`/api/v2/knowledge/constitutions?q=${encodeURIComponent(constQuery)}`)
-      .then((r) => setConstItems(r.items || []))
-      .catch(() => {});
-  }, [subTab, constQuery]);
+    let active = true;
+    setPanelState('const', true, '');
+    setConstItems([]);
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v2/knowledge/constitutions?q=${encodeURIComponent(constQuery)}`)
+        .then((r) => { if (active) setConstItems(r.items || []); })
+        .catch((error: any) => { if (active) setPanelState('const', false, error?.message || 'Не удалось загрузить конституции'); })
+        .finally(() => { if (active) setPanelState('const', false); });
+    }, 140);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [subTab, constQuery, panelRetries.const]);
 
   useEffect(() => {
     if (subTab !== 'religions') return;
-    apiGet(`/api/v2/knowledge/religions?q=${encodeURIComponent(relQuery)}`)
-      .then((r) => setRelItems(r.items || []))
-      .catch(() => {});
-  }, [subTab, relQuery]);
+    let active = true;
+    setPanelState('religions', true, '');
+    setRelItems([]);
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v2/knowledge/religions?q=${encodeURIComponent(relQuery)}`)
+        .then((r) => { if (active) setRelItems(r.items || []); })
+        .catch((error: any) => { if (active) setPanelState('religions', false, error?.message || 'Не удалось загрузить статьи'); })
+        .finally(() => { if (active) setPanelState('religions', false); });
+    }, 140);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [subTab, relQuery, panelRetries.religions]);
 
   useEffect(() => {
     if (subTab !== 'wiki') return;
-    apiGet(`/api/v2/knowledge/wiki?section=${wikiSection}&q=${encodeURIComponent(wikiQuery)}`)
-      .then(setWikiData)
-      .catch(() => {});
-  }, [subTab, wikiSection, wikiQuery]);
+    let active = true;
+    setPanelState('wiki', true, '');
+    setWikiData({ jojo_stands: [], concepts: [], prog_langs: [] });
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v2/knowledge/wiki?section=${wikiSection}&q=${encodeURIComponent(wikiQuery)}`)
+        .then((r) => { if (active) setWikiData(r); })
+        .catch((error: any) => { if (active) setPanelState('wiki', false, error?.message || 'Не удалось загрузить энциклопедию'); })
+        .finally(() => { if (active) setPanelState('wiki', false); });
+    }, 140);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [subTab, wikiSection, wikiQuery, panelRetries.wiki]);
 
   useEffect(() => {
     if (subTab !== 'ege') return;
-    apiGet(`/api/v2/knowledge/formulas?subject=${encodeURIComponent(egeSubj)}&q=${encodeURIComponent(egeQuery)}`)
-      .then((r) => setEgeItems(r.items || []))
-      .catch(() => {});
-  }, [subTab, egeSubj, egeQuery]);
+    let active = true;
+    setPanelState('ege', true, '');
+    setEgeItems([]);
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v2/knowledge/formulas?subject=${encodeURIComponent(egeSubj)}&q=${encodeURIComponent(egeQuery)}`)
+        .then((r) => { if (active) setEgeItems(r.items || []); })
+        .catch((error: any) => { if (active) setPanelState('ege', false, error?.message || 'Не удалось загрузить формулы'); })
+        .finally(() => { if (active) setPanelState('ege', false); });
+    }, 140);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [subTab, egeSubj, egeQuery, panelRetries.ege]);
 
   const loadPop = (q = popQuery) => {
+    const currentRequest = ++popRequestId.current;
+    setPanelState('pop', true, '');
+    setPopData(null);
     apiGet(`/api/v2/knowledge/population?q=${encodeURIComponent(q)}`)
-      .then(setPopData)
-      .catch(() => {});
+      .then((r) => { if (currentRequest === popRequestId.current) setPopData(r); })
+      .catch((error: any) => {
+        if (currentRequest === popRequestId.current) setPanelState('pop', false, error?.message || 'Не удалось загрузить данные о населении');
+      })
+      .finally(() => { if (currentRequest === popRequestId.current) setPanelState('pop', false); });
   };
 
   useEffect(() => {
     if (subTab === 'pop' && !popData) {
-      loadPop('');
+      loadPop(popQuery);
     }
   }, [subTab]);
 
@@ -185,7 +226,6 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
               setSubTab('pop');
               onSelectTool('population_hub');
               setPopQuery(countryName);
-              loadPop(countryName);
             }
             onToast(`🌍 Выбрано на 3D-глобусе: ${countryName}`);
           }}
@@ -243,6 +283,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             </div>
           </div>
 
+          {panelStatus.const?.loading && <p role="status" className="text-xs text-amber-200">Поиск по конституциям…</p>}
+          {panelStatus.const?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.const.error}</p><button type="button" onClick={() => retryPanel('const')} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           <div className="space-y-3.5">
             {constItems.map((c, idx) => {
               const isOpen = expandedConst[c.code] ?? idx === 0;
@@ -407,6 +449,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             />
           </div>
 
+          {panelStatus.religions?.loading && <p role="status" className="text-xs text-purple-200">Ищем статьи…</p>}
+          {panelStatus.religions?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.religions.error}</p><button type="button" onClick={() => retryPanel('religions')} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           <div className="grid grid-cols-1 gap-3.5">
             {relItems.map((r) => {
               const isOpen = expandedRel[r.id] ?? true;
@@ -568,6 +612,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             </div>
 
             <div className="space-y-5 max-h-[680px] overflow-y-auto pr-1">
+              {panelStatus.wiki?.loading && <p role="status" className="text-xs text-purple-200">Поиск по встроенной энциклопедии…</p>}
+              {panelStatus.wiki?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.wiki.error}</p><button type="button" onClick={() => retryPanel('wiki')} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
               {wikiPhotos.length > 0 && (
                 <div className="space-y-2.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300">
@@ -760,6 +806,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             ))}
           </div>
 
+          {panelStatus.ege?.loading && <p role="status" className="text-xs text-sky-200">Подбираем формулы…</p>}
+          {panelStatus.ege?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.ege.error}</p><button type="button" onClick={() => retryPanel('ege')} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {egeItems.map((f, idx) => (
               <div
@@ -834,6 +882,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             </button>
           </div>
 
+          {panelStatus.pop?.loading && <p role="status" className="text-xs text-emerald-200">Загружаем данные о населении…</p>}
+          {panelStatus.pop?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.pop.error}</p><button type="button" onClick={() => loadPop(popQuery)} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           {popData?.count === 0 && (
             <p role="status" className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">
               Встроенный каталог не содержит совпадений. Мы не генерируем оценку для неизвестного населённого пункта.

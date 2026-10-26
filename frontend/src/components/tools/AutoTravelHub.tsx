@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Car, CheckSquare, Compass, Fuel, Globe2, Plus, Search, Star, Trash2 } from 'lucide-react';
 import { apiGet, apiPost } from '../../lib/api';
 
@@ -100,6 +100,9 @@ export const AutoTravelHub: React.FC<Props> = ({
   // 5. Plate codes
   const [plateQuery, setPlateQuery] = useState('777');
   const [plateHits, setPlateHits] = useState<any[]>([]);
+  const [plateLoading, setPlateLoading] = useState(true);
+  const [plateError, setPlateError] = useState('');
+  const plateRequestId = useRef(0);
 
   const runFuel = async (silent = false) => {
     try {
@@ -138,11 +141,16 @@ export const AutoTravelHub: React.FC<Props> = ({
   };
 
   const searchPlates = async (q: string) => {
+    const currentRequest = ++plateRequestId.current;
+    setPlateLoading(true);
+    setPlateError('');
     try {
       const r = await apiGet(`/api/v2/v5/plate-codes?q=${encodeURIComponent(q)}`);
-      setPlateHits(r.results || []);
-    } catch {
-      // ignore
+      if (currentRequest === plateRequestId.current) setPlateHits(r.results || []);
+    } catch (error: any) {
+      if (currentRequest === plateRequestId.current) setPlateError(error?.message || 'Не удалось найти код региона');
+    } finally {
+      if (currentRequest === plateRequestId.current) setPlateLoading(false);
     }
   };
 
@@ -150,7 +158,6 @@ export const AutoTravelHub: React.FC<Props> = ({
     runFuel(true);
     runTires(true);
     loadTz(mskHour);
-    searchPlates(plateQuery);
   }, []);
 
   useEffect(() => {
@@ -509,11 +516,20 @@ export const AutoTravelHub: React.FC<Props> = ({
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
               value={plateQuery}
-              onChange={(e) => setPlateQuery(e.target.value)}
+              onChange={(e) => {
+                plateRequestId.current += 1;
+                setPlateHits([]);
+                setPlateError('');
+                setPlateLoading(true);
+                setPlateQuery(e.target.value);
+              }}
               placeholder="Введите цифры региона (77, 116, 198, 23, 95) или город (Казань, Сочи)…"
               className="w-full rounded-xl bg-slate-950 border border-white/10 pl-10 pr-3 py-2.5 text-sm text-white"
             />
           </div>
+          {plateLoading && <p role="status" className="text-xs text-sky-200">Ищем автомобильный код…</p>}
+          {plateError && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{plateError}</p><button type="button" onClick={() => void searchPlates(plateQuery)} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
+          {!plateLoading && !plateError && plateHits.length === 0 && <p role="status" className="text-xs text-slate-400">По этому запросу коды не найдены.</p>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
             {plateHits.map((r) => (

@@ -1118,8 +1118,30 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             ht_r = await client.get("/api/v6/adult/hentai-tags?q=vanilla")
             assert ht_r.status_code == 200 and ht_r.json()["matched"] >= 1
 
-            assert (await client.get("/api/v6/pc/catalog")).status_code == 200
-            pc_ok = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r7_9800x3d", "mb_id": "b650_aorus", "ram_id": "ddr5_32_6000"})
+            pc_catalog_r = await client.get("/api/v6/pc/catalog")
+            assert pc_catalog_r.status_code == 200
+            pc_catalog = pc_catalog_r.json()
+            assert len(pc_catalog["cpus"]) >= 25 and len(pc_catalog["gpus"]) >= 20
+            assert {"DDR3", "DDR4", "DDR5"} <= {item["ram_type"] for item in pc_catalog["rams"]}
+            assert len(pc_catalog["hdds"]) >= 4 and len(pc_catalog["ssds"]) >= 8
+            pc_default = await client.post("/api/v6/pc/evaluate", json={})
+            assert pc_default.status_code == 200 and pc_default.json()["compatible"] is True
+            assert pc_default.json()["selected"]["cpu"]["id"] == "i5_6500"
+            assert pc_default.json()["price_note"] and pc_default.json()["performance_note"]
+            pc_apu = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r5_5600g", "gpu_id": "gpu_none", "mb_id": "b550_tuf", "ram_id": "ddr4_16_3200", "cooler_id": "stock_am4", "ssd_id": "sata_480", "hdd_id": "hdd_1tb", "psu_id": "psu_450", "case_id": "budget_mini"})
+            assert pc_apu.status_code == 200 and pc_apu.json()["compatible"] is True
+            assert pc_apu.json()["storage_capacity_gb"] == 1480
+            pc_unsupported_igpu = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r5_5600", "gpu_id": "gpu_none"})
+            assert pc_unsupported_igpu.status_code == 200 and pc_unsupported_igpu.json()["compatible"] is False
+            pc_unknown_part = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "made_up_cpu"})
+            assert pc_unknown_part.status_code == 200 and any("Неизвестный идентификатор детали" in item for item in pc_unknown_part.json()["errors"])
+            pc_platform_mismatch = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "i5_9400f", "mb_id": "h110_lga1151"})
+            assert pc_platform_mismatch.status_code == 200 and pc_platform_mismatch.json()["compatible"] is False
+            pc_m2_mismatch = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "i5_6500", "mb_id": "h110_lga1151", "ram_id": "ddr4_16_2133", "ssd_id": "nvme_500"})
+            assert pc_m2_mismatch.status_code == 200 and pc_m2_mismatch.json()["compatible"] is False
+            pc_ram_speed = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "i5_6500", "mb_id": "h110_lga1151", "ram_id": "ddr4_16_3200"})
+            assert pc_ram_speed.status_code == 200 and any("фактическая частота может быть снижена" in item for item in pc_ram_speed.json()["warnings"])
+            pc_ok = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r7_9800x3d", "gpu_id": "rtx_5070ti", "mb_id": "b650_aorus", "ram_id": "ddr5_32_6000", "cooler_id": "ak620", "psu_id": "psu_850", "case_id": "lancool_216"})
             assert pc_ok.status_code == 200 and pc_ok.json()["compatible"] is True
             pc_bad = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r7_9800x3d", "mb_id": "b760m_d4", "ram_id": "ddr5_32_6000"})
             assert pc_bad.status_code == 200 and pc_bad.json()["compatible"] is False
@@ -1130,7 +1152,14 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             assert len((await client.get("/api/v6/gaming/wikis")).json()["games"]) >= 5
             assert (await client.post("/api/v6/nealfun/craft", json={"item_a": "Вода", "item_b": "Огонь"})).json()["result"] == "Пар"
             assert len((await client.get("/api/v6/nealfun/billionaire")).json()["items"]) >= 12
-            assert (await client.post("/api/v6/route/plan", json={"origin": "Москва", "destination": "Казань"})).json()["route_distance_km"] > 600
+            route = await client.post("/api/v6/route/plan", json={"origin": "Москва", "destination": "Казань", "via": "Самара", "transport": "car"})
+            assert route.status_code == 200 and route.json()["route_distance_km"] > 600
+            assert len(route.json()["waypoints"]) == 3 and "без дорожного/железнодорожного роутера" in route.json()["estimate_note"]
+            rounded_duration = (await client.post("/api/v6/route/plan", json={"origin": "0,0", "destination": "0,1.25", "transport": "car"})).json()["duration_formatted"]
+            assert rounded_duration.endswith("00 мин") and "60 мин" not in rounded_duration
+            assert (await client.post("/api/v6/route/plan", json={"origin": "x", "destination": "Казань"})).status_code == 400
+            assert (await client.post("/api/v6/route/plan", json={"origin": "Москва", "destination": "Казань", "transport": "rocket"})).status_code == 422
+            assert (await client.post("/api/v6/route/plan", json={"origin": "Москва", "destination": "Казань", "fuel_l_per_100km": "NaN"})).status_code == 422
             conv_csv = await client.post(
                 "/api/v6/files/convert",
                 files={"file": ("items.json", b'[{"a": 1, "b": 2}]', "application/json")},

@@ -123,16 +123,40 @@ export const JojoAndAdult18Hub: React.FC<{
   const [tagCat, setTagCat] = useState('all');
   const [tagTier, setTagTier] = useState('all');
   const [tagData, setTagData] = useState<any>({ items: [], categories: [] });
+  const [jojoLoading, setJojoLoading] = useState(false);
+  const [jojoError, setJojoError] = useState('');
+  const [actLoading, setActLoading] = useState(false);
+  const [actError, setActError] = useState('');
+  const [tagLoading, setTagLoading] = useState(false);
+  const [tagError, setTagError] = useState('');
+  const [catalogRetry, setCatalogRetry] = useState({ jojo: 0, actresses: 0, tags: 0 });
+  const jojoRequestId = useRef(0);
+  const actRequestId = useRef(0);
+  const tagRequestId = useRef(0);
 
   useEffect(() => {
     if (tab !== 'jojo') return;
-    apiGet(`/api/v6/jojo/stands?part=${jojoPart}&q=${encodeURIComponent(jojoQuery)}`)
-      .then(setJojoData)
-      .catch(() => {});
-  }, [tab, jojoPart, jojoQuery]);
+    const requestId = ++jojoRequestId.current;
+    let active = true;
+    setJojoLoading(true);
+    setJojoError('');
+    setJojoData((current: any) => ({ ...current, items: [] }));
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v6/jojo/stands?part=${jojoPart}&q=${encodeURIComponent(jojoQuery)}`)
+        .then((data) => { if (active && requestId === jojoRequestId.current) setJojoData(data); })
+        .catch((error: any) => { if (active && requestId === jojoRequestId.current) setJojoError(error?.message || 'Не удалось загрузить Стенды'); })
+        .finally(() => { if (active && requestId === jojoRequestId.current) setJojoLoading(false); });
+    }, 120);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [tab, jojoPart, jojoQuery, catalogRetry.jojo]);
 
   useEffect(() => {
     if (tab !== 'actresses' || !adultConfirmed) return;
+    const requestId = ++actRequestId.current;
+    let active = true;
+    setActLoading(true);
+    setActError('');
+    setActItems([]);
     const p = new URLSearchParams({
       q: actQuery,
       hair: actHair,
@@ -141,18 +165,31 @@ export const JojoAndAdult18Hub: React.FC<{
       min_height: String(actMinH),
       max_height: String(actMaxH),
     });
-    apiGet(`/api/v6/adult/actresses?${p.toString()}`)
-      .then((r) => setActItems(r.items || []))
-      .catch(() => {});
-  }, [tab, adultConfirmed, actQuery, actHair, actCup, actNatural, actMinH, actMaxH]);
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v6/adult/actresses?${p.toString()}`)
+        .then((r) => { if (active && requestId === actRequestId.current) setActItems(r.items || []); })
+        .catch((error: any) => { if (active && requestId === actRequestId.current) setActError(error?.message || 'Не удалось загрузить каталог'); })
+        .finally(() => { if (active && requestId === actRequestId.current) setActLoading(false); });
+    }, 120);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [tab, adultConfirmed, actQuery, actHair, actCup, actNatural, actMinH, actMaxH, catalogRetry.actresses]);
 
   useEffect(() => {
     if (tab !== 'tags' || !adultConfirmed) return;
+    const requestId = ++tagRequestId.current;
+    let active = true;
+    setTagLoading(true);
+    setTagError('');
+    setTagData((current: any) => ({ ...current, items: [] }));
     const p = new URLSearchParams({ q: tagQuery, category: tagCat, tier: tagTier });
-    apiGet(`/api/v6/adult/hentai-tags?${p.toString()}`)
-      .then(setTagData)
-      .catch(() => {});
-  }, [tab, adultConfirmed, tagQuery, tagCat, tagTier]);
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v6/adult/hentai-tags?${p.toString()}`)
+        .then((data) => { if (active && requestId === tagRequestId.current) setTagData(data); })
+        .catch((error: any) => { if (active && requestId === tagRequestId.current) setTagError(error?.message || 'Не удалось загрузить каталог тегов'); })
+        .finally(() => { if (active && requestId === tagRequestId.current) setTagLoading(false); });
+    }, 120);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [tab, adultConfirmed, tagQuery, tagCat, tagTier, catalogRetry.tags]);
 
   const confirm18 = () => {
     setAdultConfirmed(true);
@@ -343,6 +380,8 @@ export const JojoAndAdult18Hub: React.FC<{
               </div>
             </div>
 
+            {jojoLoading && <p role="status" className="text-xs text-fuchsia-200">Обновляем каталог Стендов…</p>}
+            {jojoError && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{jojoError}</p><button type="button" onClick={() => setCatalogRetry((current) => ({ ...current, jojo: current.jojo + 1 }))} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[620px] overflow-y-auto pr-1">
               {(jojoData.items || []).map((s: any) => (
                 <div
@@ -460,6 +499,8 @@ export const JojoAndAdult18Hub: React.FC<{
             </label>
           </div>
 
+          {actLoading && <p role="status" className="text-xs text-rose-200">Применяем фильтры каталога…</p>}
+          {actError && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{actError}</p><button type="button" onClick={() => setCatalogRetry((current) => ({ ...current, actresses: current.actresses + 1 }))} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[600px] overflow-y-auto pr-1">
             {actItems.map((a) => (
               <div key={a.id} className="p-3.5 rounded-xl bg-slate-950/90 border border-white/10 space-y-2 text-xs">
@@ -558,6 +599,8 @@ export const JojoAndAdult18Hub: React.FC<{
             </select>
           </div>
 
+          {tagLoading && <p role="status" className="text-xs text-amber-200">Обновляем словарь тегов…</p>}
+          {tagError && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{tagError}</p><button type="button" onClick={() => setCatalogRetry((current) => ({ ...current, tags: current.tags + 1 }))} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[580px] overflow-y-auto pr-1">
             {(tagData.items || []).map((t: any) => (
               <div key={t.id} className="p-3.5 rounded-xl bg-slate-950/90 border border-white/10 space-y-1.5 text-xs">

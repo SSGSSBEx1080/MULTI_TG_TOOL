@@ -13,9 +13,11 @@ import {
   createTetrahedron,
   createTorus,
   cross3,
+  dot3,
   generateLorenzPoints,
   hexToRgb,
   latLonToVec3,
+  norm3,
   project3D,
   projectTesseract4DTo3D,
   rotX,
@@ -30,8 +32,22 @@ import {
   v3,
 } from '../../lib/engine3d';
 import { ToolCategory } from '../../lib/api';
+import obsidianMaterialUrl from '../../assets/textures/blue_obsidian.jpg';
 
-// Shared helper to render a solid shaded 3D mesh with Painter's Z-sorting
+// Small, self-hosted material atlas: loaded only when the first 3D mesh is actually drawn.
+let meshTextureImage: HTMLImageElement | null = null;
+let meshTextureRequested = false;
+function getMeshTexture(): HTMLImageElement | null {
+  if (!meshTextureRequested && typeof Image !== 'undefined') {
+    meshTextureRequested = true;
+    meshTextureImage = new Image();
+    meshTextureImage.decoding = 'async';
+    meshTextureImage.src = obsidianMaterialUrl;
+  }
+  return meshTextureImage?.complete && meshTextureImage.naturalWidth > 0 ? meshTextureImage : null;
+}
+
+// Shared helper to render a solid, textured 3D mesh with Painter's Z-sorting
 function drawShadedMesh(
   ctx: CanvasRenderingContext2D,
   mesh: Mesh3D,
@@ -88,6 +104,23 @@ function drawShadedMesh(
     ctx.closePath();
     ctx.fillStyle = shadeBlinnPhong(item.normal, item.center, rgb, undefined, faceAlpha);
     ctx.fill();
+
+    const material = getMeshTexture();
+    if (material) {
+      const xs = pts.map((point) => point.sx);
+      const ys = pts.map((point) => point.sy);
+      const left = Math.min(...xs);
+      const top = Math.min(...ys);
+      const width = Math.max(1, Math.max(...xs) - left);
+      const height = Math.max(1, Math.max(...ys) - top);
+      ctx.save();
+      ctx.clip();
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.globalAlpha = 0.38;
+      ctx.drawImage(material, left, top, width, height);
+      ctx.restore();
+    }
+
     ctx.strokeStyle = wireStroke;
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -1266,7 +1299,485 @@ export const PhysicsLab3D: React.FC<Physics3DProps> = ({ calcId, values }) => {
 };
 
 // ============================================================================
-// 4. INTERACTIVE 3D EARTH GLOBE & CHAOTIC LORENZ ATTRACTOR (KNOWLEDGE HUB)
+// 4. PC BUILDER: COMPONENT-LEVEL 3D ASSEMBLY VIEW WITH SELF-HOSTED MATERIALS
+// ============================================================================
+function offsetMesh(mesh: Mesh3D, x: number, y: number, z: number, scale = v3(1, 1, 1), rotateX = 0): Mesh3D {
+  return {
+    ...mesh,
+    vertices: mesh.vertices.map((point) => {
+      const turned = rotateX ? rotX(point, rotateX) : point;
+      return v3(turned.x * scale.x + x, turned.y * scale.y + y, turned.z * scale.z + z);
+    }),
+  };
+}
+
+export const PcBuilderShowcase3D: React.FC<{ build?: any }> = ({ build }) => {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const active = useViewportActive(wrapRef);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [autoRotate, setAutoRotate] = useState(() => !prefersReducedMotion);
+  const camRef = useRef({ rx: 0.14, ry: -0.62, down: false, x: 0, y: 0 });
+  const compatible = Boolean(build) && build?.compatible !== false;
+  const accent = !build ? '#94a3b8' : compatible ? '#38bdf8' : '#fb7185';
+  const gpuVendor = build?.selected?.gpu?.vendor;
+  const gpuMaterial = gpuVendor === 'NVIDIA' ? '#22c55e' : gpuVendor === 'AMD' ? '#ef4444' : gpuVendor === 'Intel' ? '#38bdf8' : '#14b8a6';
+  const gpuLengthMm = Number(build?.selected?.gpu?.length_mm) || 300;
+  const gpuLengthUnits = Math.max(0.58, Math.min(0.96, (gpuLengthMm / 420) * 0.96));
+  const parts = useMemo(() => {
+    const rings = [-0.52, 0, 0.52].map((y) => offsetMesh(createTorus(0.19, 0.026, 18, 6), 0.16, y, 0.72, v3(1, 1, 1), Math.PI / 2));
+    return {
+      board: offsetMesh(createBox(0.08, 1.38, 1.08), -0.39, 0.02, -0.04),
+      gpu: offsetMesh(createBox(gpuLengthUnits, 0.22, 0.72), 0.11, -0.22, 0.03),
+      gpuFans: [-gpuLengthUnits * 0.22, gpuLengthUnits * 0.22].map((x) => offsetMesh(createTorus(0.09, 0.018, 14, 5), x, -0.22, 0.4, v3(1, 1, 1), Math.PI / 2)),
+      cpu: offsetMesh(createBox(0.3, 0.11, 0.3), -0.29, 0.35, 0.24),
+      ram: [-0.02, 0.11, 0.24, 0.37].map((z) => offsetMesh(createBox(0.08, 0.78, 0.055), -0.24, 0.34, z)),
+      psu: offsetMesh(createBox(0.67, 0.36, 0.66), 0.1, -0.68, -0.24),
+      cooler: offsetMesh(createBox(0.44, 0.38, 0.46), -0.29, 0.64, -0.1),
+      coolerFan: offsetMesh(createTorus(0.16, 0.022, 18, 6), -0.29, 0.64, 0.15, v3(1, 1, 1), Math.PI / 2),
+      case: createBox(1.05, 1.82, 1.34),
+      fans: rings,
+    };
+  }, [gpuLengthUnits]);
+
+  useEffect(() => {
+    if (prefersReducedMotion) setAutoRotate(false);
+  }, [prefersReducedMotion]);
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    let tick = 0;
+    let lastFrame = 0;
+    const render = (timestamp = 0) => {
+      if (timestamp - lastFrame < 1000 / 30) { raf = requestAnimationFrame(render); return; }
+      const frameScale = lastFrame ? Math.min(2, (timestamp - lastFrame) / (1000 / 60)) : 1;
+      lastFrame = timestamp;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const { ctx, W, H } = syncHiDPICanvas(canvas, 560, 270);
+      if (!ctx) return;
+      tick += 0.014 * frameScale;
+      const { rx, ry } = camRef.current;
+      const fov = 250;
+      const camDist = 4.8;
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, '#071223'); bg.addColorStop(0.55, '#070b16'); bg.addColorStop(1, '#121129');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      const glow = ctx.createRadialGradient(W * 0.5, H * 0.56, 2, W * 0.5, H * 0.56, W * 0.48);
+      glow.addColorStop(0, `${accent}25`); glow.addColorStop(1, 'rgba(2,6,23,0)');
+      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+
+      // Layered motherboard, power supply, graphics card, RAM and cooling block.
+      drawShadedMesh(ctx, parts.board, rx, ry, 0, W, H, fov, camDist, '#164e63', 0.9, 'rgba(103,232,249,0.62)');
+      drawShadedMesh(ctx, parts.psu, rx, ry, 0, W, H, fov, camDist, '#334155', 0.97, 'rgba(148,163,184,0.56)');
+      if (build?.selected?.gpu?.id !== 'gpu_none') {
+        drawShadedMesh(ctx, parts.gpu, rx, ry, 0, W, H, fov, camDist, gpuMaterial, 0.97, 'rgba(226,232,240,0.74)');
+        parts.gpuFans.forEach((fan: Mesh3D, index: number) => drawShadedMesh(ctx, fan, rx, ry, autoRotate ? tick * (index ? -0.5 : 0.5) : 0, W, H, fov, camDist, '#c4b5fd', 0.94, 'rgba(224,231,255,0.72)'));
+      }
+      parts.ram.forEach((stick: Mesh3D, index: number) => drawShadedMesh(ctx, stick, rx, ry, 0, W, H, fov, camDist, index % 2 ? '#0f766e' : '#14b8a6', 0.94, 'rgba(153,246,228,0.7)'));
+      drawShadedMesh(ctx, parts.cpu, rx, ry, 0, W, H, fov, camDist, '#cbd5e1', 0.98, 'rgba(255,255,255,0.78)');
+      drawShadedMesh(ctx, parts.cooler, rx, ry, 0, W, H, fov, camDist, '#475569', 0.98, 'rgba(203,213,225,0.68)');
+      drawShadedMesh(ctx, parts.coolerFan, rx, ry, autoRotate ? -tick * 0.4 : 0, W, H, fov, camDist, accent, 0.96, 'rgba(255,255,255,0.7)');
+      const fanColors = ['#22d3ee', '#a78bfa', '#fb7185'];
+      parts.fans.forEach((fan: Mesh3D, index: number) => drawShadedMesh(ctx, fan, rx, ry, autoRotate ? tick * (index % 2 ? -0.45 : 0.45) : 0, W, H, fov, camDist, fanColors[index], 0.94, 'rgba(224,242,254,0.65)'));
+
+      // Glass-front chassis is drawn last with low opacity so the components remain visible.
+      drawShadedMesh(ctx, parts.case, rx, ry, 0, W, H, fov, camDist, '#17324c', 0.11, compatible ? 'rgba(125,211,252,0.86)' : 'rgba(251,113,133,0.92)');
+
+      // Side labels stay legible as screen-space diagnostics rather than fake physical parts.
+      const gpuLen = build?.selected?.gpu?.length_mm;
+      const gpuLabel = build?.selected?.gpu?.id === 'gpu_none' ? ' · встроенная графика' : gpuLen ? ` · GPU ${gpuLen} мм` : '';
+      const caseName = build?.selected?.case?.name || 'Выберите совместимые комплектующие';
+      ctx.font = '600 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = compatible ? '#bae6fd' : '#fecdd3';
+      ctx.fillText(!build ? 'ОЖИДАЮ РАСЧЁТА СБОРКИ' : compatible ? 'ПРОВЕРКИ ПРОЙДЕНЫ' : 'ЕСТЬ КОНФЛИКТ КОМПОНЕНТОВ', 12, 18);
+      if (build?.selected) {
+        const cpuName = String(build.selected.cpu?.name || '').replace(/^(AMD|Intel) /, '').slice(0, 28);
+        const gpuName = String(build.selected.gpu?.id === 'gpu_none' ? 'встроенная графика' : build.selected.gpu?.name || '').replace(/^(NVIDIA|AMD|Intel) /, '').slice(0, 28);
+        ctx.textAlign = 'right'; ctx.font = '500 9px "JetBrains Mono", monospace'; ctx.fillStyle = '#cbd5e1';
+        ctx.fillText(`${cpuName} · ${gpuName}`, W - 12, 18);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`${build.selected.ram?.capacity_gb} ГБ ${build.selected.ram?.ram_type} · ${Number(build.storage_capacity_gb || 0) / 1000} ТБ`, W - 12, 32);
+        ctx.textAlign = 'left'; ctx.font = '600 10px "JetBrains Mono", monospace';
+      }
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(`${caseName}${gpuLabel}`, 12, H - 12);
+      if (autoRotate) camRef.current.ry += 0.00055 * frameScale;
+      raf = requestAnimationFrame(render);
+    };
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [active, autoRotate, accent, compatible, build, parts]);
+
+  return <section ref={wrapRef} className="overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950 shadow-[0_20px_54px_rgba(2,6,23,0.48)]">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2.5">
+      <div><div className="text-[9px] font-bold uppercase tracking-[.2em] text-cyan-300">ИНТЕРАКТИВНАЯ 3D-СБОРКА</div><div className="text-xs font-semibold text-white">Корпус, плата, видеокарта, ОЗУ и охлаждение</div></div>
+      <div className="flex items-center gap-1.5"><span className={`rounded-full border px-2 py-1 text-[10px] ${!build ? 'border-white/10 bg-white/5 text-slate-300' : compatible ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100' : 'border-rose-300/25 bg-rose-400/10 text-rose-100'}`}>{!build ? 'Ожидание расчёта' : compatible ? 'Проверки пройдены' : 'Проверьте конфигурацию'}</span><button type="button" onClick={() => setAutoRotate((value) => !value)} aria-label={autoRotate ? 'Остановить вращение сборки ПК' : 'Включить медленное вращение сборки ПК'} className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-200 hover:bg-white/10">{autoRotate ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}</button><button type="button" onClick={() => { camRef.current.rx = 0.14; camRef.current.ry = -0.62; }} aria-label="Сбросить вид сборки ПК" className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-200 hover:bg-white/10"><RotateCcw className="h-3.5 w-3.5" /></button></div>
+    </div>
+    <canvas ref={canvasRef} role="application" tabIndex={0} aria-label="Интерактивная техническая 3D-схема сборки ПК. Перетаскивайте или используйте стрелки клавиатуры." style={{ height: 270 }} className="block w-full cursor-grab touch-none active:cursor-grabbing" onKeyDown={(event) => { const step = 0.08; if (event.key === 'ArrowLeft') camRef.current.ry -= step; else if (event.key === 'ArrowRight') camRef.current.ry += step; else if (event.key === 'ArrowUp') camRef.current.rx = Math.max(-1.1, camRef.current.rx - step); else if (event.key === 'ArrowDown') camRef.current.rx = Math.min(1.1, camRef.current.rx + step); else return; event.preventDefault(); }} onPointerDown={(event) => { event.currentTarget.setPointerCapture?.(event.pointerId); camRef.current.down = true; camRef.current.x = event.clientX; camRef.current.y = event.clientY; }} onPointerMove={(event) => { if (!camRef.current.down) return; const dx = event.clientX - camRef.current.x; const dy = event.clientY - camRef.current.y; camRef.current.x = event.clientX; camRef.current.y = event.clientY; camRef.current.ry += dx * 0.009; camRef.current.rx = Math.max(-1.1, Math.min(1.1, camRef.current.rx + dy * 0.009)); }} onPointerUp={() => { camRef.current.down = false; }} onPointerCancel={() => { camRef.current.down = false; }} />
+    <p className="px-3 py-2 text-[10px] leading-relaxed text-slate-500">Условная 3D-схема взаимного расположения классов компонентов, а не точная CAD-модель или гарантированная геометрия корпуса. Перетаскивание и клавиши со стрелками меняют ракурс.</p>
+  </section>;
+};
+
+// ============================================================================
+// 5. INTERACTIVE 3D CAR CONCEPT VIEWER (SELF-HOSTED MATERIAL + SPEC COMPARISON)
+// ============================================================================
+interface CarViewerProps {
+  car: { make: string; model: string; years?: string; hp?: number; torque_nm?: number; zero_to_100_s?: number; weight_kg?: number };
+  side: 'A' | 'B';
+}
+
+const CAR_COLORS = [
+  { name: 'Ледяной синий', value: '#38bdf8' },
+  { name: 'Графит', value: '#94a3b8' },
+  { name: 'Янтарный', value: '#fb923c' },
+  { name: 'Изумруд', value: '#34d399' },
+];
+
+function createCarBody(): Mesh3D {
+  // Generic concept-coupe profile. Deliberately not presented as a factory-accurate model.
+  const profile: [number, number][] = [
+    [-1.42, -0.22], [1.12, -0.22], [1.43, -0.08], [1.34, 0.02],
+    [0.82, 0.12], [0.48, 0.58], [-0.42, 0.58], [-0.83, 0.14],
+    [-1.28, 0.08], [-1.45, -0.04],
+  ];
+  const halfWidth = 0.54;
+  const n = profile.length;
+  const vertices: Vec3[] = [
+    ...profile.map(([x, y]) => v3(x, y, -halfWidth)),
+    ...profile.map(([x, y]) => v3(x, y, halfWidth)),
+  ];
+  const faces: number[][] = [
+    Array.from({ length: n }, (_, i) => i),
+    Array.from({ length: n }, (_, i) => n * 2 - 1 - i),
+  ];
+  for (let i = 0; i < n; i++) {
+    const next = (i + 1) % n;
+    faces.push([i, next, next + n, i + n]);
+  }
+  return { vertices, faces, edges: [] };
+}
+
+function drawGlassPanel(ctx: CanvasRenderingContext2D, points: Vec3[], rx: number, ry: number, W: number, H: number, fov: number, camDist: number) {
+  const projected = points.map((point) => project3D(rotateEuler(point, rx, ry), W, H, fov, camDist));
+  if (projected.some((point) => !point.visible)) return;
+  ctx.beginPath();
+  ctx.moveTo(projected[0].sx, projected[0].sy);
+  for (let i = 1; i < projected.length; i++) ctx.lineTo(projected[i].sx, projected[i].sy);
+  ctx.closePath();
+  const glass = ctx.createLinearGradient(projected[0].sx, projected[0].sy, projected[2].sx, projected[2].sy);
+  glass.addColorStop(0, 'rgba(125,211,252,0.5)');
+  glass.addColorStop(1, 'rgba(15,23,42,0.88)');
+  ctx.fillStyle = glass;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(186,230,253,0.64)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+export const CarComparison3D: React.FC<CarViewerProps> = ({ car, side }) => {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const active = useViewportActive(wrapRef);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [autoRotate, setAutoRotate] = useState(() => !prefersReducedMotion);
+  const [paint, setPaint] = useState(CAR_COLORS[0].value);
+  const camRef = useRef({ rx: 0.16, ry: -0.52, down: false, x: 0, y: 0 });
+  const geometry = useMemo(() => {
+    const body = createCarBody();
+    const wheel = createCylinder(0.245, 0.245, 0.16, 18);
+    const hub = createCylinder(0.105, 0.105, 0.176, 18);
+    const orientWheel = (mesh: Mesh3D, x: number, y: number, z: number): Mesh3D => ({
+      ...mesh,
+      vertices: mesh.vertices.map((point) => {
+        const turned = rotX(point, Math.PI / 2);
+        return v3(turned.x + x, turned.y + y, turned.z + z);
+      }),
+    });
+    const wheels = [-0.88, 0.88].flatMap((x) => [-1, 1].map((sideZ) => ({
+      rubber: orientWheel(wheel, x, -0.17, sideZ * 0.53),
+      hub: orientWheel(hub, x, -0.17, sideZ * 0.53),
+    })));
+    return { body, wheels };
+  }, []);
+
+  useEffect(() => {
+    if (prefersReducedMotion) setAutoRotate(false);
+  }, [prefersReducedMotion]);
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    let time = 0;
+    let lastFrame = 0;
+    const render = (timestamp = 0) => {
+      if (timestamp - lastFrame < 1000 / 30) { raf = requestAnimationFrame(render); return; }
+      const frameScale = lastFrame ? Math.min(2, (timestamp - lastFrame) / (1000 / 60)) : 1;
+      lastFrame = timestamp;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const { ctx, W, H } = syncHiDPICanvas(canvas, 560, 260);
+      if (!ctx) return;
+      time += 0.012 * frameScale;
+      const { rx, ry } = camRef.current;
+      const fov = 250;
+      const camDist = 4.65;
+      const background = ctx.createLinearGradient(0, 0, W, H);
+      background.addColorStop(0, '#081323');
+      background.addColorStop(0.55, '#080d18');
+      background.addColorStop(1, '#111126');
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, W, H);
+
+      // Diffuse floor glow, horizon grid and a soft chassis shadow.
+      const glow = ctx.createRadialGradient(W * 0.52, H * 0.7, 3, W * 0.52, H * 0.7, W * 0.42);
+      glow.addColorStop(0, `${paint}2c`);
+      glow.addColorStop(1, 'rgba(2,6,23,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+      for (let i = -4; i <= 4; i++) {
+        const near = project3D(rotateEuler(v3(i * 0.48, -0.48, -1.65), rx, ry), W, H, fov, camDist);
+        const far = project3D(rotateEuler(v3(i * 0.48, -0.48, 1.65), rx, ry), W, H, fov, camDist);
+        if (!near.visible || !far.visible) continue;
+        ctx.beginPath();
+        ctx.moveTo(near.sx, near.sy);
+        ctx.lineTo(far.sx, far.sy);
+        ctx.strokeStyle = 'rgba(148,163,184,0.10)';
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+      }
+      ctx.save();
+      ctx.translate(W * 0.5, H * 0.72);
+      ctx.scale(1, 0.25);
+      const shadow = ctx.createRadialGradient(0, 0, 5, 0, 0, W * 0.24);
+      shadow.addColorStop(0, 'rgba(0,0,0,0.74)');
+      shadow.addColorStop(0.6, 'rgba(0,0,0,0.26)');
+      shadow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = shadow;
+      ctx.beginPath();
+      ctx.arc(0, 0, W * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      const spin = autoRotate ? Math.sin(time * 0.18) * 0.04 : 0;
+      drawShadedMesh(ctx, geometry.body, rx + spin, ry, 0, W, H, fov, camDist, paint, 0.96, 'rgba(224,242,254,0.55)');
+      for (const wheel of geometry.wheels) {
+        drawShadedMesh(ctx, wheel.rubber, rx, ry, 0, W, H, fov, camDist, '#101722', 1, 'rgba(148,163,184,0.32)');
+        drawShadedMesh(ctx, wheel.hub, rx, ry, time * 0.04, W, H, fov, camDist, '#94a3b8', 0.96, 'rgba(226,232,240,0.66)');
+      }
+
+      // Tinted side windows and a restrained light signature.
+      drawGlassPanel(ctx, [v3(0.43, 0.5, -0.55), v3(-0.38, 0.5, -0.55), v3(-0.73, 0.17, -0.55), v3(0.68, 0.17, -0.55)], rx, ry, W, H, fov, camDist);
+      drawGlassPanel(ctx, [v3(0.43, 0.5, 0.55), v3(-0.38, 0.5, 0.55), v3(-0.73, 0.17, 0.55), v3(0.68, 0.17, 0.55)], rx, ry, W, H, fov, camDist);
+      for (const x of [-1.34, 1.34]) {
+        const lamp = project3D(rotateEuler(v3(x, -0.02, 0), rx, ry), W, H, fov, camDist);
+        if (!lamp.visible) continue;
+        ctx.fillStyle = x > 0 ? 'rgba(224,242,254,0.92)' : 'rgba(251,113,133,0.82)';
+        ctx.shadowColor = x > 0 ? '#bae6fd' : '#fb7185';
+        ctx.shadowBlur = 9;
+        ctx.beginPath();
+        ctx.ellipse(lamp.sx, lamp.sy, 5, 2.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      if (autoRotate) camRef.current.ry += 0.00065 * frameScale;
+      raf = requestAnimationFrame(render);
+    };
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [active, autoRotate, paint, geometry]);
+
+  return (
+    <section ref={wrapRef} className="overflow-hidden rounded-2xl border border-sky-300/20 bg-slate-950 shadow-[0_22px_56px_rgba(2,6,23,0.55)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-slate-950/90 px-3 py-2.5">
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-[.2em] text-sky-300">СТУДИЯ 3D · КОНЦЕПТ-КУПЕ · {side}</div>
+          <div className="truncate text-sm font-bold text-white">{car.make} {car.model}</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {CAR_COLORS.map((color) => <button key={color.value} type="button" aria-label={`Цвет: ${color.name}`} title={color.name} onClick={() => setPaint(color.value)} className={`h-5 w-5 rounded-full border ${paint === color.value ? 'border-white ring-2 ring-white/30' : 'border-white/20'}`} style={{ backgroundColor: color.value }} />)}
+          <button type="button" onClick={() => setAutoRotate((value) => !value)} aria-label={autoRotate ? 'Остановить вращение автомобиля' : 'Включить медленное вращение автомобиля'} className="ml-1 rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-200 hover:bg-white/10">{autoRotate ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}</button>
+          <button type="button" onClick={() => { camRef.current.rx = 0.16; camRef.current.ry = -0.52; }} aria-label="Сбросить вид автомобиля" className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-200 hover:bg-white/10"><RotateCcw className="h-3.5 w-3.5" /></button>
+        </div>
+      </div>
+      <canvas ref={canvasRef} role="application" tabIndex={0} aria-label="Схематическая интерактивная 3D-модель купе. Перетаскивайте или используйте стрелки клавиатуры." style={{ height: 260 }} className="block w-full cursor-grab touch-none border-b border-white/5 active:cursor-grabbing" onKeyDown={(event) => { const step = 0.08; if (event.key === 'ArrowLeft') camRef.current.ry -= step; else if (event.key === 'ArrowRight') camRef.current.ry += step; else if (event.key === 'ArrowUp') camRef.current.rx = Math.max(-1.1, camRef.current.rx - step); else if (event.key === 'ArrowDown') camRef.current.rx = Math.min(1.1, camRef.current.rx + step); else return; event.preventDefault(); }} onPointerDown={(event) => { event.currentTarget.setPointerCapture?.(event.pointerId); camRef.current.down = true; camRef.current.x = event.clientX; camRef.current.y = event.clientY; }} onPointerMove={(event) => { if (!camRef.current.down) return; const dx = event.clientX - camRef.current.x; const dy = event.clientY - camRef.current.y; camRef.current.x = event.clientX; camRef.current.y = event.clientY; camRef.current.ry += dx * 0.009; camRef.current.rx = Math.max(-1.1, Math.min(1.1, camRef.current.rx + dy * 0.009)); }} onPointerUp={() => { camRef.current.down = false; }} onPointerCancel={() => { camRef.current.down = false; }} />
+      <div className="grid grid-cols-2 gap-px bg-white/5 sm:grid-cols-4">
+        {[[`${car.hp ?? '—'} л.с.`, 'МОЩНОСТЬ'], [`${car.torque_nm ?? '—'} Н·м`, 'МОМЕНТ'], [`${car.zero_to_100_s ?? '—'} с`, '0—100 КМ/Ч'], [`${car.weight_kg ?? '—'} кг`, 'МАССА']].map(([value, label]) => <div key={label} className="bg-slate-950 px-3 py-2"><div className="font-mono text-sm font-bold text-white">{value}</div><div className="text-[9px] tracking-wider text-slate-500">{label}</div></div>)}
+      </div>
+      <p className="px-3 py-2 text-[10px] leading-relaxed text-slate-500">Условная концепт-форма для сравнения характеристик — не заводская модель, фотография или подтверждение комплектации. Перетащите сцену; клавиши со стрелками тоже работают.</p>
+    </section>
+  );
+};
+
+// ============================================================================
+// 5. ROUTE GLOBE: GREAT-CIRCLE VISUALIZATION WITH PRIVATE, LOCAL CANVAS RENDERING
+// ============================================================================
+export interface RouteGlobePoint { label: string; lat: number; lon: number; }
+
+function sphericalLerp(a: Vec3, b: Vec3, t: number): Vec3 {
+  const cosine = Math.max(-1, Math.min(1, dot3(norm3(a), norm3(b))));
+  const angle = Math.acos(cosine);
+  const radius = Math.hypot(a.x, a.y, a.z);
+  if (angle < 1e-5) {
+    const direction = norm3(v3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t));
+    return v3(direction.x * radius, direction.y * radius, direction.z * radius);
+  }
+  if (angle > Math.PI - 1e-5) {
+    const start = norm3(a);
+    const reference = Math.abs(start.y) < 0.9 ? v3(0, 1, 0) : v3(1, 0, 0);
+    const axis = norm3(cross3(start, reference));
+    const phase = angle * t;
+    return v3(
+      (start.x * Math.cos(phase) + axis.x * Math.sin(phase)) * radius,
+      (start.y * Math.cos(phase) + axis.y * Math.sin(phase)) * radius,
+      (start.z * Math.cos(phase) + axis.z * Math.sin(phase)) * radius,
+    );
+  }
+  const sinAngle = Math.sin(angle);
+  const wa = Math.sin((1 - t) * angle) / sinAngle;
+  const wb = Math.sin(t * angle) / sinAngle;
+  return v3(a.x * wa + b.x * wb, a.y * wa + b.y * wb, a.z * wa + b.z * wb);
+}
+
+export const RouteGlobe3D: React.FC<{ points: RouteGlobePoint[]; transport: string }> = ({ points, transport }) => {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const active = useViewportActive(wrapRef);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [autoRotate, setAutoRotate] = useState(false);
+  const camRef = useRef({ rx: 0.25, ry: -0.5, down: false, x: 0, y: 0 });
+  const routeColor = transport === 'plane' ? '#c084fc' : transport === 'train' ? '#fbbf24' : transport === 'bike' ? '#34d399' : transport === 'walk' ? '#fb923c' : '#38bdf8';
+  const routeVectors = useMemo(() => points.map((point) => ({
+    point,
+    vector: latLonToVec3(point.lat, point.lon, 1.38),
+  })), [points]);
+
+  useEffect(() => {
+    if (prefersReducedMotion) setAutoRotate(false);
+  }, [prefersReducedMotion]);
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    let lastFrame = 0;
+    const render = (timestamp = 0) => {
+      if (timestamp - lastFrame < 1000 / 30) { raf = requestAnimationFrame(render); return; }
+      const frameScale = lastFrame ? Math.min(2, (timestamp - lastFrame) / (1000 / 60)) : 1;
+      lastFrame = timestamp;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const { ctx, W, H } = syncHiDPICanvas(canvas, 560, 265);
+      if (!ctx) return;
+      const { rx, ry } = camRef.current;
+      const radius = 1.38;
+      const fov = 260;
+      const camDist = 4.2;
+      ctx.fillStyle = '#070b15';
+      ctx.fillRect(0, 0, W, H);
+      const center = project3D(v3(0, 0, 0), W, H, fov, camDist);
+      const limbZ = radius * radius / camDist;
+      const limbPoint = project3D(v3(Math.sqrt(radius * radius - limbZ * limbZ), 0, limbZ), W, H, fov, camDist);
+      const screenRadius = Math.abs(limbPoint.sx - center.sx);
+      const halo = ctx.createRadialGradient(center.sx, center.sy, screenRadius * 0.72, center.sx, center.sy, screenRadius * 1.3);
+      halo.addColorStop(0, `${routeColor}24`);
+      halo.addColorStop(0.72, 'rgba(56,189,248,0.10)');
+      halo.addColorStop(1, 'rgba(2,6,23,0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(center.sx, center.sy, screenRadius * 1.3, 0, Math.PI * 2); ctx.fill();
+
+      const ocean = ctx.createRadialGradient(center.sx - screenRadius * 0.3, center.sy - screenRadius * 0.3, 4, center.sx, center.sy, screenRadius);
+      ocean.addColorStop(0, '#12608b'); ocean.addColorStop(0.62, '#0c3d61'); ocean.addColorStop(1, '#071d36');
+      ctx.fillStyle = ocean;
+      ctx.beginPath(); ctx.arc(center.sx, center.sy, screenRadius, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(center.sx, center.sy, screenRadius, 0, Math.PI * 2); ctx.clip();
+
+      // Spherical latitude/longitude graticule: orientation remains north-up at reset.
+      for (const lat of [-60, -30, 0, 30, 60]) {
+        ctx.beginPath(); let pen = false;
+        for (let lon = -180; lon <= 180; lon += 6) {
+          const point = rotateEuler(latLonToVec3(lat, lon, radius), rx, ry);
+          if (point.z < limbZ) { pen = false; continue; }
+          const p = project3D(point, W, H, fov, camDist);
+          if (!pen) { ctx.moveTo(p.sx, p.sy); pen = true; } else ctx.lineTo(p.sx, p.sy);
+        }
+        ctx.strokeStyle = lat === 0 ? 'rgba(186,230,253,0.27)' : 'rgba(148,163,184,0.14)';
+        ctx.lineWidth = lat === 0 ? 1.2 : 0.75; ctx.stroke();
+      }
+      for (let lon = -150; lon <= 180; lon += 30) {
+        ctx.beginPath(); let pen = false;
+        for (let lat = -84; lat <= 84; lat += 6) {
+          const point = rotateEuler(latLonToVec3(lat, lon, radius), rx, ry);
+          if (point.z < limbZ) { pen = false; continue; }
+          const p = project3D(point, W, H, fov, camDist);
+          if (!pen) { ctx.moveTo(p.sx, p.sy); pen = true; } else ctx.lineTo(p.sx, p.sy);
+        }
+        ctx.strokeStyle = 'rgba(148,163,184,0.12)'; ctx.lineWidth = 0.75; ctx.stroke();
+      }
+
+      // Each itinerary leg is a spherical great-circle arc, not a fabricated road path.
+      if (routeVectors.length > 1) {
+        ctx.save(); ctx.shadowColor = routeColor; ctx.shadowBlur = 10;
+        ctx.strokeStyle = routeColor; ctx.lineWidth = 2.8; ctx.lineCap = 'round';
+        for (let leg = 0; leg < routeVectors.length - 1; leg++) {
+          const a = routeVectors[leg].vector;
+          const b = routeVectors[leg + 1].vector;
+          ctx.beginPath(); let pen = false;
+          for (let i = 0; i <= 48; i++) {
+            const point = rotateEuler(sphericalLerp(a, b, i / 48), rx, ry);
+            const visible = point.z >= limbZ;
+            if (!visible) { pen = false; continue; }
+            const p = project3D(point, W, H, fov, camDist);
+            if (!pen) { ctx.moveTo(p.sx, p.sy); pen = true; } else ctx.lineTo(p.sx, p.sy);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(center.sx, center.sy, screenRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(125,211,252,0.52)'; ctx.lineWidth = 1.2; ctx.stroke();
+
+      routeVectors.forEach(({ point, vector }, index) => {
+        const rotated = rotateEuler(vector, rx, ry);
+        if (rotated.z < limbZ) return;
+        const p = project3D(rotated, W, H, fov, camDist);
+        const markerColor = index === 0 ? '#34d399' : index === routeVectors.length - 1 ? '#fb7185' : '#fbbf24';
+        ctx.fillStyle = 'rgba(2,6,23,0.88)'; ctx.beginPath(); ctx.arc(p.sx, p.sy, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = markerColor; ctx.beginPath(); ctx.arc(p.sx, p.sy, 4.2, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.82)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.font = '600 10px sans-serif'; ctx.fillStyle = '#f8fafc';
+        const label = `${index === 0 ? 'СТАРТ · ' : index === routeVectors.length - 1 ? 'ФИНИШ · ' : `${index} · `}${point.label}`;
+        ctx.fillText(label, p.sx + 9, p.sy - 8);
+      });
+
+      if (autoRotate && !camRef.current.down) camRef.current.ry += 0.00048 * frameScale;
+      raf = requestAnimationFrame(render);
+    };
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [active, routeVectors, routeColor, autoRotate]);
+
+  return (
+    <section ref={wrapRef} className="overflow-hidden rounded-2xl border border-sky-300/20 bg-slate-950 shadow-[0_20px_54px_rgba(2,6,23,0.5)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-slate-950/90 px-3 py-2.5">
+        <div><div className="text-[9px] font-bold uppercase tracking-[.2em] text-sky-300">ПЛАНЕТАРНАЯ СХЕМА</div><div className="text-xs font-semibold text-white">{points.length} точек · {Math.max(0, points.length - 1)} участков</div></div>
+        <div className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: routeColor, boxShadow: `0 0 10px ${routeColor}` }} aria-hidden="true" />
+          <span className="text-[10px] text-slate-400">дуги большого круга</span>
+          <button type="button" onClick={() => setAutoRotate((value) => !value)} aria-label={autoRotate ? 'Остановить вращение глобуса маршрута' : 'Включить медленное вращение глобуса маршрута'} className="ml-1 rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-200 hover:bg-white/10">{autoRotate ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}</button>
+          <button type="button" onClick={() => { camRef.current.rx = 0.25; camRef.current.ry = -0.5; }} aria-label="Сбросить ориентацию глобуса маршрута" className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-200 hover:bg-white/10"><RotateCcw className="h-3.5 w-3.5" /></button>
+        </div>
+      </div>
+      <canvas ref={canvasRef} role="application" tabIndex={0} aria-label="Интерактивная 3D-схема последовательности точек маршрута на глобусе. Перетаскивайте или используйте стрелки клавиатуры." style={{ height: 265 }} className="block w-full cursor-grab touch-none border-b border-white/5 active:cursor-grabbing" onKeyDown={(event) => { const step = 0.08; if (event.key === 'ArrowLeft') camRef.current.ry -= step; else if (event.key === 'ArrowRight') camRef.current.ry += step; else if (event.key === 'ArrowUp') camRef.current.rx = Math.max(-1.1, camRef.current.rx - step); else if (event.key === 'ArrowDown') camRef.current.rx = Math.min(1.1, camRef.current.rx + step); else return; event.preventDefault(); }} onPointerDown={(event) => { event.currentTarget.setPointerCapture?.(event.pointerId); camRef.current.down = true; camRef.current.x = event.clientX; camRef.current.y = event.clientY; }} onPointerMove={(event) => { if (!camRef.current.down) return; const dx = event.clientX - camRef.current.x; const dy = event.clientY - camRef.current.y; camRef.current.x = event.clientX; camRef.current.y = event.clientY; camRef.current.ry += dx * 0.009; camRef.current.rx = Math.max(-1.1, Math.min(1.1, camRef.current.rx + dy * 0.009)); }} onPointerUp={() => { camRef.current.down = false; }} onPointerCancel={() => { camRef.current.down = false; }} />
+      <p className="px-3 py-2 text-[10px] leading-relaxed text-slate-500">Геометрическая иллюстрация между указанными координатами, а не реальная дорожная карта. Фактические пути и расстояния могут отличаться; перетаскивайте глобус или вращайте стрелками.</p>
+    </section>
+  );
+};
+
+// ============================================================================
+// 6. INTERACTIVE 3D EARTH GLOBE & CHAOTIC LORENZ ATTRACTOR (KNOWLEDGE HUB)
 // ============================================================================
 const WORLD_BEACONS = [
   { name: 'Россия', city: 'Москва', lat: 55.75, lon: 37.62, color: '#38bdf8' },

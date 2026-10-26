@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Bomb, Copy, Flag, Plus, RotateCcw, Search, Shield, Table, Trash2, Trophy } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
 
@@ -11,24 +11,53 @@ export const PeriodicTableStudio: React.FC<{ onToast: (m: string) => void }> = (
   const [elements, setElements] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
   const [molar, setMolar] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const tableRequestId = useRef(0);
+  const molarRequestId = useRef(0);
+  const queryEffectMounted = useRef(false);
 
   const loadData = async (q: string, f: string) => {
+    const currentTableRequest = ++tableRequestId.current;
+    const currentMolarRequest = f ? ++molarRequestId.current : null;
+    setLoading(true);
+    setLoadError('');
     try {
       const r = await apiGet(`/api/v2/v5/periodic-table?q=${encodeURIComponent(q)}&formula=${encodeURIComponent(f)}`);
-      setElements(r.elements || []);
-      if (!selected && r.elements?.length) setSelected(r.elements[0]);
-      if (r.molar) setMolar(r.molar);
+      if (currentTableRequest === tableRequestId.current) {
+        const nextElements = r.elements || [];
+        setElements(nextElements);
+        setSelected((current: any) =>
+          !current || !nextElements.some((element: any) => element.z === current.z)
+            ? (nextElements[0] || null)
+            : current,
+        );
+      }
+      if (currentMolarRequest !== null && currentMolarRequest === molarRequestId.current) {
+        setMolar(r.molar || null);
+      }
     } catch (e: any) {
-      onToast(e.message);
+      const tableIsCurrent = currentTableRequest === tableRequestId.current;
+      const molarIsCurrent = currentMolarRequest !== null && currentMolarRequest === molarRequestId.current;
+      if (!tableIsCurrent && !molarIsCurrent) return;
+      const message = e?.message || 'Не удалось загрузить данные таблицы';
+      setLoadError(message);
+      onToast(message);
+    } finally {
+      if (currentTableRequest === tableRequestId.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData('', formula);
+    void loadData('', formula);
   }, []);
 
   useEffect(() => {
-    const t = window.setTimeout(() => loadData(query, ''), 160);
+    if (!queryEffectMounted.current) {
+      queryEffectMounted.current = true;
+      return;
+    }
+    const t = window.setTimeout(() => void loadData(query, formula), 160);
     return () => window.clearTimeout(t);
   }, [query]);
 
@@ -46,6 +75,8 @@ export const PeriodicTableStudio: React.FC<{ onToast: (m: string) => void }> = (
               className="w-full rounded-xl bg-slate-950 border border-white/10 pl-9 pr-3 py-2 text-xs sm:text-sm text-white"
             />
           </div>
+          {loading && <p role="status" className="text-xs text-amber-200">Обновляем таблицу и расчёт…</p>}
+          {loadError && <p role="alert" className="text-xs text-rose-300">{loadError}</p>}
           {selected && (
             <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-400/30 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -70,7 +101,12 @@ export const PeriodicTableStudio: React.FC<{ onToast: (m: string) => void }> = (
           <div className="flex gap-2">
             <input
               value={formula}
-              onChange={(e) => setFormula(e.target.value)}
+              onChange={(e) => {
+                setFormula(e.target.value);
+                setMolar(null);
+                setLoadError('');
+                molarRequestId.current += 1;
+              }}
               onKeyDown={(e) => e.key === 'Enter' && loadData(query, formula)}
               placeholder="H2SO4, Ca(OH)2, C6H12O6"
               className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 font-mono text-sm text-white"

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Calculator, Copy } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
 import { PhysicsLab3D } from '../three/Interactive3DScenes';
@@ -52,11 +52,15 @@ const CALC_TO_TOOL: Record<string, string> = {
 export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, onToast }) => {
   const [calculators, setCalculators] = useState<PhysCalc[]>([]);
   const [materials, setMaterials] = useState<{ id: string; label: string; c: number }[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [selectedCalcId, setSelectedCalcId] = useState<string>(() => TOOL_MAP[activeTool] || 'kinematics_uniform');
   const [targetVar, setTargetVar] = useState<string>('t');
   const [values, setValues] = useState<Record<string, string>>({});
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const solveRequestId = useRef(0);
 
   // Ballistics & Thin Lens Studio
   const [v0, setV0] = useState<number>(35);
@@ -65,15 +69,24 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, 
   const [objDistCm, setObjDistCm] = useState<number>(25);
 
   useEffect(() => {
+    let current = true;
+    setCatalogLoading(true);
+    setCatalogError('');
     apiGet('/api/v2/physics/catalog')
       .then((r) => {
+        if (!current) return;
         setCalculators(r.calculators || []);
         setMaterials(r.materials || []);
       })
-      .catch(() => {});
-  }, []);
+      .catch((error: any) => { if (current) setCatalogError(error?.message || 'Не удалось загрузить каталог формул'); })
+      .finally(() => { if (current) setCatalogLoading(false); });
+    return () => { current = false; };
+  }, [catalogRetry]);
 
   useEffect(() => {
+    solveRequestId.current += 1;
+    setLoading(false);
+    setResult(null);
     const mapped = TOOL_MAP[activeTool];
     if (mapped) {
       setSelectedCalcId((prev) => (CALC_TO_TOOL[prev] === activeTool ? prev : mapped));
@@ -92,11 +105,15 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, 
     firstTarget.fields.forEach((f) => {
       defaults[f.name] = String(f.default);
     });
+    solveRequestId.current += 1;
+    setLoading(false);
     setValues(defaults);
     setResult(null);
   }, [selectedCalcId, calculators.length]);
 
   const switchTarget = (tgt: PhysTarget) => {
+    solveRequestId.current += 1;
+    setLoading(false);
     setTargetVar(tgt.var);
     const nextVals: Record<string, string> = {};
     tgt.fields.forEach((f) => {
@@ -119,24 +136,29 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, 
       numericParams[f.name] = parsed;
     }
 
+    const currentRequest = ++solveRequestId.current;
     setLoading(true);
+    setResult(null);
     try {
       const res = await apiPost('/api/v2/physics/solve', {
         calc_id: activeCalc.id,
         target_var: activeTarget.var,
         params: numericParams,
       });
+      if (currentRequest !== solveRequestId.current) return;
       setResult(res);
       onSync?.();
     } catch (e: any) {
-      onToast(e.message || 'Ошибка расчёта');
+      if (currentRequest === solveRequestId.current) onToast(e.message || 'Ошибка расчёта');
     } finally {
-      setLoading(false);
+      if (currentRequest === solveRequestId.current) setLoading(false);
     }
   };
 
   if (!activeCalc || !activeTarget) {
-    return <div className="p-4 text-sm text-slate-400">Загрузка физических формул...</div>;
+    return <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 text-center">
+      {catalogError ? <><p role="alert" className="text-sm text-rose-200">{catalogError}</p><button type="button" onClick={() => setCatalogRetry((value) => value + 1)} className="mt-3 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs text-white">Повторить загрузку формул</button></> : <p role="status" className="text-sm text-slate-400">{catalogLoading ? 'Загружаю каталог физических формул…' : 'Формулы не найдены в каталоге.'}</p>}
+    </div>;
   }
 
   return (
@@ -150,6 +172,9 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, 
               key={c.id}
               type="button"
               onClick={() => {
+                solveRequestId.current += 1;
+                setLoading(false);
+                setResult(null);
                 setSelectedCalcId(c.id);
                 if (CALC_TO_TOOL[c.id]) onSelectTool?.(CALC_TO_TOOL[c.id]);
               }}
@@ -212,7 +237,12 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, 
               {materials.map((m) => (
                 <button
                   key={m.id}
-                  onClick={() => setValues((prev) => ({ ...prev, c: String(m.c) }))}
+                  onClick={() => {
+                    solveRequestId.current += 1;
+                    setLoading(false);
+                    setResult(null);
+                    setValues((prev) => ({ ...prev, c: String(m.c) }));
+                  }}
                   className="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-300"
                 >
                   {m.label} ({m.c})
@@ -236,7 +266,12 @@ export const PhysicsHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync, 
                   type="number"
                   step="any"
                   value={values[f.name] ?? ''}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                  onChange={(e) => {
+                    solveRequestId.current += 1;
+                    setLoading(false);
+                    setResult(null);
+                    setValues((prev) => ({ ...prev, [f.name]: e.target.value }));
+                  }}
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-white/10 text-sm text-white font-mono focus:outline-none focus:border-sky-400"
                 />
               </label>

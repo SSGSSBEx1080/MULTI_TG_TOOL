@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, File, Form, Request, Response, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
+from pydantic import BaseModel, Field
 
 from backend.api.tg_auth import resolve_api_user
 from backend.config import DEFAULT_DEMO_USER_ID
@@ -209,14 +209,15 @@ async def api_v6_pc_catalog() -> dict[str, Any]:
 
 class PcEvalReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
-    cpu_id: str = "r7_9800x3d"
-    gpu_id: str = "rtx_5070ti"
-    mb_id: str = "b650_aorus"
-    ram_id: str = "ddr5_32_6000"
-    cooler_id: str = "ak620"
-    ssd_id: str = "990pro_2tb"
-    psu_id: str = "psu_850"
-    case_id: str = "lancool_216"
+    cpu_id: str = "i5_6500"
+    gpu_id: str = "gtx_1050ti"
+    mb_id: str = "h110_lga1151"
+    ram_id: str = "ddr4_16_2133"
+    cooler_id: str = "stock_intel"
+    ssd_id: str = "sata_480"
+    hdd_id: str = "hdd_none"
+    psu_id: str = "psu_450"
+    case_id: str = "used_office_case"
 
 
 @router.post("/api/v6/pc/evaluate")
@@ -229,6 +230,7 @@ async def api_v6_pc_evaluate(req: PcEvalReq, request: Request) -> dict[str, Any]
         ram_id=req.ram_id,
         cooler_id=req.cooler_id,
         ssd_id=req.ssd_id,
+        hdd_id=req.hdd_id,
         psu_id=req.psu_id,
         case_id=req.case_id,
     )
@@ -262,25 +264,28 @@ async def api_v6_gaming_wikis(game_id: str = "") -> dict[str, Any]:
 
 class RoutePlanReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
-    origin: str = "Москва"
-    destination: str = "Санкт-Петербург"
-    via: str = ""
-    transport: str = "car"
-    fuel_l_per_100km: float = 8.2
-    fuel_price_rub: float = 61.5
+    origin: str = Field(default="Москва", min_length=1, max_length=120)
+    destination: str = Field(default="Санкт-Петербург", min_length=1, max_length=120)
+    via: str = Field(default="", max_length=360)
+    transport: Literal["car", "train", "plane", "bike", "walk"] = "car"
+    fuel_l_per_100km: float = Field(default=8.2, ge=0, le=100, allow_inf_nan=False)
+    fuel_price_rub: float = Field(default=61.5, ge=0, le=1000, allow_inf_nan=False)
 
 
 @router.post("/api/v6/route/plan")
 async def api_v6_route_plan(req: RoutePlanReq, request: Request) -> dict[str, Any]:
     uid = await resolve_api_user(request, req.user_id)
-    res = calculate_route_plan(
-        origin=req.origin,
-        destination=req.destination,
-        via=req.via,
-        transport=req.transport,
-        fuel_l_per_100km=req.fuel_l_per_100km,
-        fuel_price_rub=req.fuel_price_rub,
-    )
+    try:
+        res = calculate_route_plan(
+            origin=req.origin,
+            destination=req.destination,
+            via=req.via,
+            transport=req.transport,
+            fuel_l_per_100km=req.fuel_l_per_100km,
+            fuel_price_rub=req.fuel_price_rub,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await db.record_tool_use(uid, "route_planner_calc", "auto_travel", "miniapp", f"{res['route_distance_km']}km", xp_gain=6)
     return res
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BookCheck, CheckCircle2, Copy, Languages, RefreshCw, Sparkles, XCircle } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
 
@@ -14,6 +14,9 @@ interface StressItem {
 export const RussianLanguageStudio: React.FC<{ onToast: (m: string) => void }> = ({ onToast }) => {
   const [sub, setSub] = useState<'stress' | 'yo' | 'translit'>('stress');
   const [deck, setDeck] = useState<StressItem[]>([]);
+  const [deckLoading, setDeckLoading] = useState(true);
+  const [deckError, setDeckError] = useState('');
+  const deckRequestId = useRef(0);
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   const [streak, setStreak] = useState(0);
@@ -25,18 +28,26 @@ export const RussianLanguageStudio: React.FC<{ onToast: (m: string) => void }> =
   const [trInput, setTrInput] = useState('Щеглов Артём Юрьевич');
   const [trStandards, setTrStandards] = useState<{ id: string; title: string; value: string }[]>([]);
 
-  const loadDeck = (q = '') => {
-    apiGet(`/api/v2/timbrica/ege-stress?count=20&q=${encodeURIComponent(q)}`)
-      .then((r) => {
-        setDeck(r.items || []);
-        setIdx(0);
-        setPicked(null);
-      })
-      .catch(() => {});
+  const loadDeck = async (q = '') => {
+    const id = ++deckRequestId.current;
+    setDeckLoading(true);
+    setDeckError('');
+    try {
+      const r = await apiGet(`/api/v2/timbrica/ege-stress?count=20&q=${encodeURIComponent(q)}`);
+      if (id !== deckRequestId.current) return;
+      setDeck(r.items || []);
+      setIdx(0);
+      setPicked(null);
+    } catch (error: any) {
+      if (id === deckRequestId.current) setDeckError(error?.message || 'Не удалось загрузить словарь ударений');
+    } finally {
+      if (id === deckRequestId.current) setDeckLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadDeck();
+    void loadDeck();
+    return () => { deckRequestId.current += 1; };
   }, []);
 
   const cur = deck[idx];
@@ -157,8 +168,9 @@ export const RussianLanguageStudio: React.FC<{ onToast: (m: string) => void }> =
                     <p className="text-slate-300 leading-relaxed">{cur.hint}</p>
                     <button
                       type="button"
+                      disabled={deckLoading}
                       onClick={() => {
-                        if (idx + 1 >= deck.length) loadDeck(searchQ);
+                        if (idx + 1 >= deck.length) void loadDeck(searchQ);
                         else {
                           setIdx((i) => i + 1);
                           setPicked(null);
@@ -171,8 +183,15 @@ export const RussianLanguageStudio: React.FC<{ onToast: (m: string) => void }> =
                   </div>
                 )}
               </>
+            ) : deckError ? (
+              <div className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-4 py-5 text-center">
+                <p role="alert" className="text-xs text-rose-100">{deckError}</p>
+                <button type="button" onClick={() => void loadDeck(searchQ)} className="mt-3 rounded-lg border border-rose-300/25 bg-rose-400/10 px-3 py-1.5 text-xs text-rose-100 hover:bg-rose-400/20">Повторить загрузку</button>
+              </div>
+            ) : deckLoading ? (
+              <div role="status" className="text-xs text-slate-400 py-6 text-center">Загружаю словарь ударений…</div>
             ) : (
-              <div className="text-xs text-slate-400 py-6 text-center">Слова загружаются…</div>
+              <div className="text-xs text-slate-400 py-6 text-center">По этому запросу слов не найдено. Измените поисковый запрос.</div>
             )}
           </div>
 
@@ -189,10 +208,11 @@ export const RussianLanguageStudio: React.FC<{ onToast: (m: string) => void }> =
               />
               <button
                 type="button"
-                onClick={() => loadDeck(searchQ)}
-                className="px-3 py-1.5 rounded-xl bg-pink-500/25 border border-pink-400/50 text-xs text-pink-200 font-semibold"
+                disabled={deckLoading}
+                onClick={() => void loadDeck(searchQ)}
+                className="px-3 py-1.5 rounded-xl bg-pink-500/25 border border-pink-400/50 text-xs text-pink-200 font-semibold disabled:cursor-wait disabled:opacity-50"
               >
-                Найти
+                {deckLoading ? 'Загрузка…' : 'Найти'}
               </button>
             </div>
             <div className="max-h-52 overflow-y-auto space-y-1.5 text-xs">
