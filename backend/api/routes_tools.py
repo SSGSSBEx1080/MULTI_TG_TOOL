@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.api.tg_auth import resolve_api_user
 from backend.config import DEFAULT_DEMO_USER_ID, GENERATED_DIR
@@ -710,10 +710,14 @@ async def api_calc_units(req: UnitReq, request: Request) -> dict[str, Any]:
 
 class FinanceReq(BaseModel):
     mode: str = "compound"
-    principal: float = 500_000
-    rate_annual_pct: float = 17.5
-    months: int = 12
-    monthly_topup: float = 20_000
+    principal: float = Field(default=500_000, ge=0, le=100_000_000_000, allow_inf_nan=False)
+    rate_annual_pct: float = Field(default=17.5, ge=0, le=200, allow_inf_nan=False)
+    months: int = Field(default=12, ge=1, le=600)
+    monthly_topup: float = Field(default=20_000, ge=0, le=1_000_000_000, allow_inf_nan=False)
+    monthly_extra_payment: float = Field(default=0, ge=0, le=100_000_000_000, allow_inf_nan=False)
+    target_amount: float = Field(default=1_000_000, ge=0, le=100_000_000_000, allow_inf_nan=False)
+    inflation_annual_pct: float = Field(default=0, ge=0, le=200, allow_inf_nan=False)
+    repayment_method: str = "annuity"
     people_count: int = 4
     tip_pct: float = 10.0
     user_id: int = DEFAULT_DEMO_USER_ID
@@ -722,15 +726,22 @@ class FinanceReq(BaseModel):
 @router.post("/calc/finance")
 async def api_calc_finance(req: FinanceReq, request: Request) -> dict[str, Any]:
     uid = await resolve_api_user(request, req.user_id)
-    res = calculate_finance(
-        mode=req.mode,
-        principal=req.principal,
-        rate_annual_pct=req.rate_annual_pct,
-        months=req.months,
-        monthly_topup=req.monthly_topup,
-        people_count=req.people_count,
-        tip_pct=req.tip_pct,
-    )
+    try:
+        res = calculate_finance(
+            mode=req.mode,
+            principal=req.principal,
+            rate_annual_pct=req.rate_annual_pct,
+            months=req.months,
+            monthly_topup=req.monthly_topup,
+            people_count=req.people_count,
+            tip_pct=req.tip_pct,
+            monthly_extra_payment=req.monthly_extra_payment,
+            target_amount=req.target_amount,
+            repayment_method=req.repayment_method,
+            inflation_annual_pct=req.inflation_annual_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await db.record_tool_use(uid, "finance_calc", "calc", "miniapp", req.mode)
     return res
 

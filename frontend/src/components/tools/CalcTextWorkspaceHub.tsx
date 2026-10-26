@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Calculator,
   CheckSquare,
+  Download,
   Dices,
   Languages,
   Network,
@@ -56,13 +57,20 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   const [uFrom, setUFrom] = useState('GB');
   const [unitRes, setUnitRes] = useState<any>(null);
 
-  const [finMode, setFinMode] = useState<'compound' | 'loan' | 'split'>('compound');
+  const [finMode, setFinMode] = useState<'compound' | 'loan' | 'split' | 'goal'>('compound');
   const [finPrincipal, setFinPrincipal] = useState(500000);
   const [finRate, setFinRate] = useState(18);
   const [finMonths, setFinMonths] = useState(12);
   const [finTopup, setFinTopup] = useState(25000);
   const [finPeople, setFinPeople] = useState(4);
   const [finTip, setFinTip] = useState(10);
+  const [finGoal, setFinGoal] = useState(1_000_000);
+  const [finExtraPayment, setFinExtraPayment] = useState(0);
+  const [finInflation, setFinInflation] = useState(0);
+  const [finRepaymentMethod, setFinRepaymentMethod] = useState<'annuity' | 'differentiated'>('annuity');
+  const [finLoading, setFinLoading] = useState(false);
+  const [finError, setFinError] = useState('');
+  const [finSchedulePage, setFinSchedulePage] = useState(0);
   const [finRes, setFinRes] = useState<any>(null);
 
   const [cidr, setCidr] = useState('192.168.10.42/26');
@@ -242,19 +250,71 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   // =========================================================================
   if (activeCategory === 'calc') {
     const finLabels: Record<string, string> = {
+      initial: 'Начальный капитал',
       final_balance: 'Итоговая сумма',
+      invested_total: 'Всего внесено средств',
       total_invested: 'Внесено средств',
+      profit: 'Начисленный доход',
+      yield_pct: 'Доходность (%)',
       interest_earned: 'Начислено процентов',
       effective_yield_pct: 'Доходность (%)',
-      monthly_payment: 'Ежемесячный платёж',
-      total_payout: 'Общая выплата',
-      total_interest: 'Переплата по кредиту',
-      overpayment_pct: 'Переплата (%)',
+      monthly_payment: 'Базовый ежемесячный платёж',
+      monthly_extra_payment: 'Досрочно сверх платежа / мес.',
+      total_paid: 'Всего выплачено',
+      overpayment: 'Проценты по кредиту',
+      overpayment_pct: 'Проценты к сумме кредита (%)',
+      months_to_payoff: 'Месяцев до погашения',
+      months_saved: 'Срок сокращён на (мес.)',
+      standard_total_paid: 'Без досрочных платежей',
+      standard_overpayment: 'Проценты без досрочных платежей',
+      interest_saved: 'Экономия на процентах',
+      target_amount_today: 'Цель в сегодняшних рублях',
+      target_amount_at_horizon: 'Номинальная цель к сроку',
+      projected_balance: 'Прогноз к концу срока',
+      projected_balance_in_today_rub: 'Прогноз в сегодняшних рублях',
+      required_monthly_contribution: 'Нужно откладывать в месяц',
+      monthly_contribution: 'Плановое пополнение / мес.',
+      initial_amount_future_value: 'Начальная сумма с ростом',
+      estimated_growth: 'Оценка дохода',
+      target_difference: 'Запас / недобор до номинальной цели',
+      real_target_difference: 'Запас / недобор с учётом инфляции',
+      estimated_months_to_goal: 'Месяцев до цели при текущем взносе',
+      months: 'Срок (мес.)',
+      rate_pct: 'Ставка (% годовых)',
+      inflation_pct: 'Инфляция (% годовых)',
+      first_payment: 'Первый платёж с досрочным взносом',
+      last_payment: 'Последний платёж',
+      repayment_method_label: 'Тип платежей',
+      bill: 'Сумма чека',
+      grand_total: 'Итого с чаевыми',
+      people: 'Количество человек',
       subtotal: 'Сумма чека',
       tip_amount: 'Чаевые',
       total_with_tip: 'Итого с чаевыми',
       per_person: 'С каждого человека',
       people_count: 'Человек',
+    };
+    const financeSchedule: Array<Record<string, number>> = Array.isArray(finRes?.schedule) ? finRes.schedule : [];
+    const savingsSchedule: Array<Record<string, number>> = finMode === 'goal' && Array.isArray(finRes?.schedule) ? finRes.schedule : [];
+    const financePageSize = 12;
+    const financePageCount = Math.max(1, Math.ceil(financeSchedule.length / financePageSize));
+    const financePageRows = financeSchedule.slice(finSchedulePage * financePageSize, (finSchedulePage + 1) * financePageSize);
+    const financeCurrency = (value: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(value);
+    const exportFinanceSchedule = () => {
+      if (!financeSchedule.length) return;
+      const columns = ['month', 'payment', 'regular_payment', 'extra_payment', 'principal_paid', 'interest_paid', 'remaining_balance'];
+      const header = ['Месяц', 'Платёж', 'Основной платёж', 'Досрочно', 'Погашено долга', 'Проценты', 'Остаток'];
+      const rows = financeSchedule.map((row) => columns.map((key) => String(row[key] ?? 0).replace('.', ',')));
+      const csv = [header, ...rows].map((row) => row.join(';')).join(String.fromCharCode(13, 10));
+      const url = URL.createObjectURL(new Blob([String.fromCharCode(0xFEFF), csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'loan-amortization-schedule.csv';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
 
     return (
@@ -510,135 +570,156 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
 
         {calcTab === 'finance' && (
           <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 sm:p-5 space-y-4">
-            <div className="flex flex-wrap gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-white">Финансовый планировщик</h3>
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-400">Сценарные расчёты помогают оценить порядок сумм, но не являются предложением банка или гарантией доходности.</p>
+            </div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Режим финансового калькулятора">
               {[
-                { id: 'compound', label: '💎 Сложный процент (Вклад)' },
-                { id: 'loan', label: '🏦 Кредит (Аннуитет)' },
-                { id: 'split', label: '🧾 Деление счёта на компанию' },
-              ].map((m) => (
+                { id: 'compound', label: '💎 Вклад' },
+                { id: 'loan', label: '🏦 Кредит и досрочное погашение' },
+                { id: 'goal', label: '🎯 Цель накоплений' },
+                { id: 'split', label: '🧾 Разделить счёт' },
+              ].map((mode) => (
                 <button
-                  key={m.id}
-                  onClick={() => setFinMode(m.id as any)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
-                    finMode === m.id
-                      ? 'bg-indigo-500 text-white border-indigo-400'
-                      : 'bg-slate-950 text-slate-300 border-white/10'
-                  }`}
+                  key={mode.id}
+                  type="button"
+                  aria-pressed={finMode === mode.id}
+                  onClick={() => { setFinMode(mode.id as typeof finMode); setFinRes(null); setFinError(''); setFinSchedulePage(0); }}
+                  className={`min-h-9 rounded-lg border px-3 py-1.5 text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300 ${finMode === mode.id ? 'border-indigo-400 bg-indigo-500 text-white' : 'border-white/10 bg-slate-950 text-slate-300 hover:bg-white/5'}`}
                 >
-                  {m.label}
+                  {mode.label}
                 </button>
               ))}
             </div>
 
-            {finMode === 'split' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Сумма чека</label>
-                  <input
-                    type="number"
-                    value={finPrincipal}
-                    onChange={(e) => setFinPrincipal(Number(e.target.value))}
-                    className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Количество человек</label>
-                  <input
-                    type="number"
-                    value={finPeople}
-                    onChange={(e) => setFinPeople(Number(e.target.value))}
-                    className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Чаевые (%)</label>
-                  <input
-                    type="number"
-                    value={finTip}
-                    onChange={(e) => setFinTip(Number(e.target.value))}
-                    className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-sm text-white"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Сумма</label>
-                  <input
-                    type="number"
-                    value={finPrincipal}
-                    onChange={(e) => setFinPrincipal(Number(e.target.value))}
-                    className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Ставка (% годовых)</label>
-                  <input
-                    type="number"
-                    value={finRate}
-                    onChange={(e) => setFinRate(Number(e.target.value))}
-                    className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Срок (мес.)</label>
-                  <input
-                    type="number"
-                    value={finMonths}
-                    onChange={(e) => setFinMonths(Number(e.target.value))}
-                    className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-                  />
-                </div>
-                {finMode === 'compound' && (
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Пополнение/мес.</label>
-                    <input
-                      type="number"
-                      value={finTopup}
-                      onChange={(e) => setFinTopup(Number(e.target.value))}
-                      className="w-full rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+            <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${finMode === 'split' ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
+              {finMode === 'split' ? <>
+                <label className="space-y-1 text-xs text-slate-400">Сумма счёта
+                  <input type="number" min="0" max="100000000000" step="0.01" value={finPrincipal} onChange={(event) => { setFinPrincipal(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </label>
+                <label className="space-y-1 text-xs text-slate-400">Количество человек
+                  <input type="number" min="1" max="1000" step="1" value={finPeople} onChange={(event) => { setFinPeople(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </label>
+                <label className="space-y-1 text-xs text-slate-400">Чаевые (%)
+                  <input type="number" min="0" max="100" step="0.1" value={finTip} onChange={(event) => { setFinTip(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </label>
+              </> : <>
+                <label className="space-y-1 text-xs text-slate-400">{finMode === 'goal' ? 'Начальная сумма' : 'Сумма кредита / вклада'}
+                  <input type="number" min="0" max="100000000000" step="1000" value={finPrincipal} onChange={(event) => { setFinPrincipal(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </label>
+                <label className="space-y-1 text-xs text-slate-400">Ставка (% годовых)
+                  <input type="number" min="0" max="200" step="0.1" value={finRate} onChange={(event) => { setFinRate(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </label>
+                <label className="space-y-1 text-xs text-slate-400">Срок (месяцев)
+                  <input type="number" min="1" max="600" step="1" value={finMonths} onChange={(event) => { setFinMonths(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </label>
+                {finMode === 'compound' && <label className="space-y-1 text-xs text-slate-400">Пополнение в месяц
+                  <input type="number" min="0" max="1000000000" step="1000" value={finTopup} onChange={(event) => { setFinTopup(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </label>}
+                {finMode === 'loan' && <label className="space-y-1 text-xs text-slate-400">Досрочно сверх платежа / месяц
+                  <input type="number" min="0" max={Math.max(0, finPrincipal)} step="500" value={finExtraPayment} onChange={(event) => { setFinExtraPayment(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                </label>}
+                {finMode === 'goal' && <>
+                  <label className="space-y-1 text-xs text-slate-400">Плановое пополнение в месяц
+                    <input type="number" min="0" max="1000000000" step="1000" value={finTopup} onChange={(event) => { setFinTopup(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                  </label>
+                  <label className="space-y-1 text-xs text-slate-400">Цель в сегодняшних рублях
+                    <input type="number" min="0" max="100000000000" step="1000" value={finGoal} onChange={(event) => { setFinGoal(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                  </label>
+                  <label className="space-y-1 text-xs text-slate-400">Инфляция (% годовых, оценка)
+                    <input type="number" min="0" max="200" step="0.1" value={finInflation} onChange={(event) => { setFinInflation(Number(event.target.value)); setFinRes(null); }} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white" />
+                  </label>
+                </>}
+              </>}
+            </div>
 
-            <button
-              onClick={() =>
-                apiPost('/api/tools/calc/finance', {
-                  mode: finMode,
-                  principal: finPrincipal,
-                  rate_annual_pct: finRate,
-                  months: finMonths,
-                  monthly_topup: finTopup,
-                  people_count: finPeople,
-                  tip_pct: finTip,
-                })
-                  .then((r) => {
-                    setFinRes(r);
-                    onRefreshWorkspace();
+            {finMode === 'loan' && <label className="block max-w-xl space-y-1 text-xs text-slate-400">Способ погашения
+              <select value={finRepaymentMethod} onChange={(event) => { setFinRepaymentMethod(event.target.value as 'annuity' | 'differentiated'); setFinRes(null); }} className="min-h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white">
+                <option value="annuity">Аннуитетный — одинаковый базовый платёж</option>
+                <option value="differentiated">Дифференцированный — основной долг равными частями</option>
+              </select>
+            </label>}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={finLoading}
+                onClick={() => {
+                  setFinLoading(true); setFinError(''); setFinRes(null); setFinSchedulePage(0);
+                  apiPost('/api/tools/calc/finance', {
+                    mode: finMode,
+                    principal: finPrincipal,
+                    rate_annual_pct: finRate,
+                    months: finMonths,
+                    monthly_topup: finTopup,
+                    monthly_extra_payment: finExtraPayment,
+                    target_amount: finGoal,
+                    inflation_annual_pct: finInflation,
+                    repayment_method: finRepaymentMethod,
+                    people_count: finPeople,
+                    tip_pct: finTip,
                   })
-                  .catch((err) => onToast(err.message))
-              }
-              className="px-6 py-2.5 rounded-xl bg-indigo-500 text-white font-semibold text-xs"
-            >
-              Рассчитать
-            </button>
+                    .then((result) => { setFinRes(result); onRefreshWorkspace(); })
+                    .catch((error) => { setFinError(error?.message || 'Не удалось выполнить расчёт'); onToast(error?.message || 'Не удалось выполнить расчёт'); })
+                    .finally(() => setFinLoading(false));
+                }}
+                className="min-h-10 rounded-xl bg-indigo-500 px-6 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-wait disabled:opacity-60"
+              >
+                {finLoading ? 'Считаю…' : 'Рассчитать сценарий'}
+              </button>
+              {finError && <p role="alert" className="text-xs text-rose-200">{finError}</p>}
+            </div>
 
-            {finRes && (
-              <div className="p-4 rounded-xl bg-slate-950 border border-indigo-500/30 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+            {finRes && <>
+              <div className="grid grid-cols-2 gap-3 rounded-xl border border-indigo-500/30 bg-slate-950 p-4 text-xs sm:grid-cols-3">
                 {Object.entries(finRes)
-                  .filter(([k]) => k !== 'mode')
-                  .map(([k, v]) => (
-                    <div key={k} className="min-w-0">
-                      <div className="text-slate-400 truncate">{finLabels[k] || k}</div>
-                      <div className="font-mono text-sm sm:text-base font-bold text-emerald-300 break-words">
-                        {typeof v === 'number' ? v.toLocaleString('ru-RU') : String(v)}
+                  .filter(([key]) => !['mode', 'schedule', 'assumption', 'repayment_method'].includes(key))
+                  .map(([key, value]) => (
+                    <div key={key} className="min-w-0 rounded-lg border border-white/5 bg-white/[.02] p-2">
+                      <div className="truncate text-slate-400">{finLabels[key] || key}</div>
+                      <div className="mt-1 break-words font-mono text-sm font-bold text-emerald-300 sm:text-base">
+                        {value === null && key === 'estimated_months_to_goal'
+                          ? 'Не достигнута за 50 лет при текущем взносе'
+                          : typeof value === 'number'
+                            ? (['months', 'months_saved', 'months_to_payoff', 'estimated_months_to_goal', 'people_count', 'people'].includes(key)
+                              ? value.toLocaleString('ru-RU')
+                              : (key.includes('pct') || key === 'rate_pct')
+                                ? `${value.toLocaleString('ru-RU')}%`
+                                : financeCurrency(value))
+                            : String(value)}
                       </div>
                     </div>
                   ))}
               </div>
-            )}
+              {finRes.assumption && <p className="rounded-lg border border-amber-300/10 bg-amber-300/[.03] px-3 py-2 text-[10px] leading-relaxed text-amber-100/70">{finRes.assumption}</p>}
+              {finMode === 'goal' && savingsSchedule.length > 0 && <section aria-label="Годовые этапы накоплений" className="overflow-hidden rounded-xl border border-white/10 bg-slate-950">
+                <div className="border-b border-white/10 px-3 py-3"><h4 className="text-xs font-bold text-white">Контрольные точки накоплений</h4><p className="mt-0.5 text-[9px] text-slate-500">Номинальные значения и покупательная способность с учётом заданной инфляции</p></div>
+                <div className="max-h-80 overflow-auto">
+                  <table className="w-full min-w-[580px] text-left text-[10px]">
+                    <thead className="sticky top-0 bg-slate-900 text-slate-400"><tr><th className="px-2 py-2">Период</th><th className="px-2 py-2">Баланс</th><th className="px-2 py-2">Цель с инфляцией</th><th className="px-2 py-2">В сегодняшних ₽</th><th className="px-2 py-2">Запас / недобор</th></tr></thead>
+                    <tbody className="divide-y divide-white/5 text-slate-300">{savingsSchedule.map((row) => <tr key={row.month}><th className="px-2 py-2 font-mono font-medium text-slate-400">{row.month} мес.</th><td className="px-2 py-2">{financeCurrency(row.projected_balance)}</td><td className="px-2 py-2">{financeCurrency(row.target_at_date)}</td><td className="px-2 py-2">{financeCurrency(row.balance_in_today_rub)}</td><td className={`px-2 py-2 font-semibold ${row.difference_to_target >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>{financeCurrency(row.difference_to_target)}</td></tr>)}</tbody>
+                  </table>
+                </div>
+              </section>}
+              {finMode === 'loan' && financeSchedule.length > 0 && <section aria-label="График погашения кредита" className="overflow-hidden rounded-xl border border-white/10 bg-slate-950">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-3">
+                  <div><h4 className="text-xs font-bold text-white">График платежей</h4><p className="mt-0.5 text-[9px] text-slate-500">Показаны {financeSchedule.length} месяцев сценария</p></div>
+                  <button type="button" onClick={exportFinanceSchedule} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[10px] text-slate-200 hover:bg-white/10"><Download className="h-3.5 w-3.5" />Скачать CSV</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[620px] text-left text-[10px]">
+                    <thead className="bg-white/[.03] text-slate-400"><tr><th className="px-2 py-2">Месяц</th><th className="px-2 py-2">Платёж</th><th className="px-2 py-2">Досрочно</th><th className="px-2 py-2">В долг</th><th className="px-2 py-2">Проценты</th><th className="px-2 py-2">Остаток</th></tr></thead>
+                    <tbody className="divide-y divide-white/5 text-slate-300">{financePageRows.map((row) => <tr key={row.month}><th className="px-2 py-2 font-mono font-medium text-slate-400">{row.month}</th><td className="px-2 py-2">{financeCurrency(row.payment)}</td><td className="px-2 py-2">{financeCurrency(row.extra_payment)}</td><td className="px-2 py-2">{financeCurrency(row.principal_paid)}</td><td className="px-2 py-2">{financeCurrency(row.interest_paid)}</td><td className="px-2 py-2 font-semibold text-white">{financeCurrency(row.remaining_balance)}</td></tr>)}</tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
+                  <button type="button" disabled={finSchedulePage === 0} onClick={() => setFinSchedulePage((page) => Math.max(0, page - 1))} className="min-h-8 rounded-lg border border-white/10 px-3 text-[10px] text-slate-200 disabled:opacity-40">← Назад</button>
+                  <span className="text-[9px] text-slate-500">Страница {finSchedulePage + 1} из {financePageCount}</span>
+                  <button type="button" disabled={finSchedulePage + 1 >= financePageCount} onClick={() => setFinSchedulePage((page) => Math.min(financePageCount - 1, page + 1))} className="min-h-8 rounded-lg border border-white/10 px-3 text-[10px] text-slate-200 disabled:opacity-40">Далее →</button>
+                </div>
+              </section>}
+            </>}
           </div>
         )}
 
