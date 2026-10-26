@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backend.bot.handlers.helpers import esc, progress_bar, render_hud
+from backend.bot.gamepiada import gamepiada_announcement
 from backend.bot.keyboards import category_kb, main_menu_kb
 from backend.database import db
 from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
@@ -21,6 +22,7 @@ def _build_welcome_text(profile: dict[str, Any]) -> str:
     return (
         f"<b>MULTI_TG_TOOL</b>\n"
         f"<blockquote>👤 {name}  •  Уровень {rank['level']} ({rank['xp']} XP)  •  Запусков: {profile.get('tools_used', 0)}</blockquote>\n\n"
+        f"{gamepiada_announcement()}\n\n"
         f"Выберите нужный раздел в меню ниже или откройте приложение.\n"
         f"Также можно отправить в чат фото, PDF, математический пример или величину для перевода (например: <code>75 кг в фунты</code>)."
     )
@@ -44,6 +46,21 @@ async def cmd_start(
 
 @router.callback_query(F.data == "nav:home")
 async def cb_home(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_profile: dict[str, Any],
+    user_favorites: list[str],
+) -> None:
+    await state.clear()
+    await render_hud(
+        callback,
+        _build_welcome_text(user_profile),
+        reply_markup=main_menu_kb(len(user_favorites)),
+    )
+
+
+@router.callback_query(F.data == "event:gamepiada:refresh")
+async def cb_refresh_gamepiada_countdown(
     callback: CallbackQuery,
     state: FSMContext,
     user_profile: dict[str, Any],

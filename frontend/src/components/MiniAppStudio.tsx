@@ -220,6 +220,71 @@ function formatCategoryVisits(count: number): string {
   return `Открывали ${count} ${noun}`;
 }
 
+const GAMEPIADA_START_MS = new Date('2026-10-27T00:00:00+03:00').getTime();
+const GAMEPIADA_END_MS = new Date('2026-11-02T00:00:00+03:00').getTime();
+const GAMEPIADA_REGISTRATION_URL = 'https://forms.gle/BSrp7vQqTXzJtBhq7';
+const GAMEPIADA_DISCORD_URL = 'https://discord.gg/5fRZkcjt';
+const GAMEPIADA_DISCIPLINES = 'Dota 2 • CS2 • Minecraft Duo Speedrun • Clash Royale • Double Dealers • Rocket League • GeoGuessr • Fall Guys • Geometry Dash • Fortnite • Trackmania • MK11 • шахматы • Minecraft PvP • Brawl Stars';
+
+const GamepiadaPromoBanner: React.FC = () => {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const beforeStart = now < GAMEPIADA_START_MS;
+  const inTournament = now >= GAMEPIADA_START_MS && now < GAMEPIADA_END_MS;
+  const secondsLeft = Math.max(0, Math.floor((GAMEPIADA_START_MS - now) / 1000));
+  const days = Math.floor(secondsLeft / 86400);
+  const hours = Math.floor((secondsLeft % 86400) / 3600);
+  const minutes = Math.floor((secondsLeft % 3600) / 60);
+  const seconds = secondsLeft % 60;
+
+  return (
+    <section aria-labelledby="gamepiada-title" className="relative overflow-hidden rounded-2xl border border-amber-300/25 bg-[radial-gradient(ellipse_at_top_right,rgba(245,158,11,.19),transparent_48%),linear-gradient(125deg,#170e20,#0b1020_58%,#101526)] p-4 shadow-[0_16px_50px_-32px_rgba(245,158,11,.75)] sm:p-5">
+      <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full border border-amber-200/10" />
+      <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="min-w-0">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/25 bg-amber-400/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.17em] text-amber-100">
+            <span className={`h-1.5 w-1.5 rounded-full ${inTournament ? 'bg-emerald-300' : 'bg-amber-300 animate-pulse'}`} />
+            {inTournament ? 'Турнирный период начался' : now >= GAMEPIADA_END_MS ? 'Событие завершено' : 'Регистрация открыта'}
+          </div>
+          <h2 id="gamepiada-title" className="mt-2 font-display text-xl font-black tracking-tight text-white sm:text-2xl">⚡️ GAMEpiada 🏆</h2>
+          <p className="mt-1 text-xs font-semibold text-amber-100 sm:text-sm">17 дисциплин. Один общий рейтинг. Докажи, что ты универсал.</p>
+          <p className="mt-2 max-w-4xl text-[10px] leading-relaxed text-slate-300 sm:text-xs">{GAMEPIADA_DISCIPLINES}</p>
+          <p className="mt-2 text-[10px] text-slate-400 sm:text-xs">📅 27 октября — 1 ноября 2026 (предварительно) · расписание и подробности — скоро.</p>
+        </div>
+        <div className="flex min-w-0 flex-col gap-2.5 lg:w-[230px]">
+          <div className="rounded-xl border border-white/10 bg-black/25 p-2.5 text-center" aria-live="off">
+            <div className="text-[9px] font-bold uppercase tracking-[.14em] text-amber-200/80">{beforeStart ? 'До ориентировочной даты старта' : inTournament ? 'GAMEpiada уже на арене' : 'Турнирный период завершён'}</div>
+            {beforeStart ? (
+              <div className="mt-1 grid grid-cols-4 gap-1 font-mono">
+                {[[days, 'дн'], [hours, 'ч'], [minutes, 'мин'], [seconds, 'сек']].map(([value, label]) => (
+                  <div key={label} className="rounded-lg bg-slate-950/70 px-1 py-1.5">
+                    <b className="block text-base tabular-nums text-white sm:text-lg">{String(value).padStart(2, '0')}</b>
+                    <span className="text-[8px] text-slate-400">{label}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-1 text-sm font-bold text-emerald-200">{inTournament ? 'Выбирай дисциплины и выходи играть!' : 'Спасибо участникам!'}</div>
+            )}
+            {beforeStart && <div className="mt-1 text-[8px] text-slate-500">Обратный отсчёт до 27 октября, 00:00 МСК; точное расписание скоро.</div>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {now < GAMEPIADA_END_MS && (
+              <a href={GAMEPIADA_REGISTRATION_URL} target="_blank" rel="noreferrer" className="inline-flex min-h-10 flex-1 items-center justify-center rounded-xl border border-amber-200/40 bg-amber-300 px-3 py-2 text-[11px] font-extrabold text-slate-950 transition hover:bg-amber-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">📝 Подать заявку</a>
+            )}
+            <a href={GAMEPIADA_DISCORD_URL} target="_blank" rel="noreferrer" className="inline-flex min-h-10 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/[.06] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200">💬 Discord турнира</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const ToolDiscoveryBanner: React.FC<{
   categories: ToolCategory[];
   onOpenPalette: () => void;
@@ -989,6 +1054,7 @@ export const MiniAppStudio: React.FC<Props> = ({
         {/* Right Main Content */}
         <section className="col-span-9 space-y-4 min-w-0">
           <ToolDiscoveryBanner categories={categories} onOpenPalette={onOpenPalette} onRandomCategory={openRandomCategory} />
+          <GamepiadaPromoBanner />
           {/* Universal Intuitive Search + Calculator Top Bar */}
           <form
             onSubmit={runQuickBar}
@@ -1183,6 +1249,7 @@ export const MiniAppStudio: React.FC<Props> = ({
             </div>
 
             <ToolDiscoveryBanner categories={categories} onOpenPalette={onOpenPalette} onRandomCategory={openRandomCategory} />
+            <GamepiadaPromoBanner />
 
             {renderIntuitivePanel()}
 

@@ -1384,7 +1384,11 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             # 5. Verify EVERY registered category & tool opens cleanly in the Telegram Bot Simulator!
             start_r = await client.post("/api/sim/send-text", json={"text": "/start"})
             assert start_r.status_code == 200
-            mid = start_r.json()["messages"][-1]["message_id"]
+            welcome = start_r.json()["messages"][-1]
+            assert "GAMEpiada" in welcome["text"]
+            welcome_buttons = [button for row in welcome["inline_keyboard"] for button in row]
+            assert any(button.get("url") == "https://discord.gg/5fRZkcjt" for button in welcome_buttons)
+            mid = welcome["message_id"]
 
             for cat in TOOL_CATEGORIES:
                 cat_r = await client.post("/api/sim/callback", json={"message_id": mid, "callback_data": f"nav:cat:{cat['id']}"})
