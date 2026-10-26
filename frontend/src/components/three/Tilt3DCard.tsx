@@ -56,11 +56,18 @@ export const Tilt3DCard: React.FC<TiltProps> = ({
   return (
     <div
       ref={ref}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
+      onKeyDown={onClick ? (event) => {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        onClick();
+      } : undefined}
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
       style={style}
-      className={`relative overflow-hidden will-change-transform ${className}`}
+      className={`relative overflow-hidden will-change-transform ${onClick ? 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300' : ''} ${className}`}
     >
       {glare.active && (
         <div

@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Box, Flame, Globe, Search, Star, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Box, Dices, Flame, Globe, Search, Star, X } from 'lucide-react';
 import {
   HabitItem,
   NoteItem,
@@ -143,6 +143,145 @@ interface IntuitiveSearchResult {
   instant?: { kind: string; title: string; output: string } | null;
 }
 
+const CATEGORY_COVERS: Record<string, string> = {
+  ai_assistant: '/art/category-science.webp',
+  jojo_adult_encyc: '/art/category-play.webp',
+  neal_fun_lab: '/art/category-play.webp',
+  pc_materials_style: '/art/category-engineering.webp',
+  gaming_wikis: '/art/category-play.webp',
+  sports_physics_3d: '/art/category-play.webp',
+  cosmos_micro_math: '/art/category-science.webp',
+  tests_builders_lore: '/art/category-science.webp',
+  horoscope: '/art/category-life.webp',
+  physics: '/art/category-science.webp',
+  universes: '/art/category-play.webp',
+  workspace: '/art/category-life.webp',
+  calc: '/art/category-engineering.webp',
+  qr: '/art/category-creative.webp',
+  image: '/art/category-creative.webp',
+  pdf: '/art/category-creative.webp',
+  text: '/art/category-creative.webp',
+  security: '/art/category-engineering.webp',
+  dev: '/art/category-engineering.webp',
+  knowledge: '/art/category-science.webp',
+  party: '/art/category-play.webp',
+  arcade: '/art/category-play.webp',
+  audio_device: '/art/category-engineering.webp',
+  brain_reflex: '/art/category-life.webp',
+  health: '/art/category-life.webp',
+  auto_travel: '/art/category-engineering.webp',
+  creator_design: '/art/category-creative.webp',
+  social: '/art/category-play.webp',
+  health_reference: '/art/category-life.webp',
+  daily_planning: '/art/category-life.webp',
+  home_engineering: '/art/category-engineering.webp',
+  culture_games: '/art/category-play.webp',
+};
+
+const getCategoryCover = (categoryId: string) =>
+  CATEGORY_COVERS[categoryId] || '/art/tool-discovery-hero.webp';
+
+const CategoryCoverImage: React.FC<{ categoryId: string; className: string }> = ({ categoryId, className }) => (
+  <img
+    src={getCategoryCover(categoryId)}
+    alt=""
+    aria-hidden="true"
+    loading="lazy"
+    decoding="async"
+    onError={(event) => {
+      const image = event.currentTarget;
+      if (!image.src.endsWith('/art/tool-discovery-hero.webp')) {
+        image.src = '/art/tool-discovery-hero.webp';
+      }
+    }}
+    className={className}
+  />
+);
+
+const CATEGORY_FAVORITES_KEY = 'mtt_favorite_categories_v1';
+
+function readCategoryFavorites(): string[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(CATEGORY_FAVORITES_KEY) || '[]');
+    return Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatCategoryVisits(count: number): string {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  const noun = last === 1 && lastTwo !== 11
+    ? 'раз'
+    : last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)
+      ? 'раза'
+      : 'раз';
+  return `Открывали ${count} ${noun}`;
+}
+
+const ToolDiscoveryBanner: React.FC<{
+  categories: ToolCategory[];
+  onOpenPalette: () => void;
+  onRandomCategory: () => void;
+}> = ({ categories, onOpenPalette, onRandomCategory }) => {
+  const toolCount = categories.reduce((total, category) => total + category.tools.length, 0);
+
+  return (
+    <section className="group relative isolate min-h-[168px] overflow-hidden rounded-2xl border border-indigo-300/15 bg-[#080d1c] shadow-[0_18px_60px_-34px_rgba(99,102,241,.55)] sm:min-h-[184px]">
+      <img
+        src="/art/tool-discovery-hero.webp"
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        fetchPriority="high"
+        decoding="async"
+        className="absolute inset-0 h-full w-full object-cover object-[center_52%] transition-transform duration-700 group-hover:scale-[1.025]"
+      />
+      <div className="absolute inset-0 bg-gradient-to-r from-[#070b18] via-[#070b18]/95 via-50% to-[#070b18]/15" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#070b18]/55 via-transparent to-[#070b18]/10" />
+      <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/5" />
+      <div className="relative flex min-h-[168px] max-w-[88%] flex-col justify-center p-4 sm:min-h-[184px] sm:max-w-[72%] sm:p-6">
+        <div className="mb-2 inline-flex w-fit items-center gap-1.5 rounded-full border border-indigo-300/20 bg-indigo-950/60 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.18em] text-indigo-200 sm:text-[10px]">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_#67e8f9]" />
+          Цифровая мастерская
+        </div>
+        <h2 className="max-w-xl font-display text-lg font-bold leading-tight tracking-tight text-white sm:text-2xl">
+          Найди инструмент для своей идеи
+        </h2>
+        <p className="mt-1.5 max-w-lg text-[11px] leading-relaxed text-slate-300 sm:text-sm">
+          Учись, создавай, считай и исследуй — всё в одном пространстве.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2.5 sm:mt-4">
+          <button
+            type="button"
+            onClick={onOpenPalette}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-indigo-300/25 bg-indigo-500/20 px-3 py-2 text-[11px] font-semibold text-white shadow-lg shadow-indigo-950/30 transition hover:border-indigo-200/50 hover:bg-indigo-500/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 sm:text-xs"
+          >
+            <Search className="h-3.5 w-3.5" />
+            Найти инструмент
+          </button>
+          <button
+            type="button"
+            onClick={onRandomCategory}
+            aria-label="Открыть случайный раздел"
+            title="Открыть случайный раздел"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-slate-950/55 px-3 py-2 text-[11px] font-semibold text-slate-200 transition hover:border-cyan-200/30 hover:bg-cyan-950/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 sm:text-xs"
+          >
+            <Dices className="h-3.5 w-3.5 text-cyan-200" />
+            <span className="hidden sm:inline">Сюрприз</span>
+          </button>
+          <span className="text-[10px] font-mono text-slate-300 sm:text-xs">
+            <b className="text-white">{categories.length}</b> разделов
+            <span className="mx-1.5 text-slate-500">·</span>
+            <b className="text-white">{toolCount}</b> инструментов
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 export const MiniAppStudio: React.FC<Props> = ({
   isNativeTma = false,
   categories,
@@ -170,10 +309,55 @@ export const MiniAppStudio: React.FC<Props> = ({
   const [knowledgeSearchSeed, setKnowledgeSearchSeed] = useState<string>('');
   const [quickBusy, setQuickBusy] = useState(false);
   const [showMobile3D, setShowMobile3D] = useState(true);
+  const [categoryQuery, setCategoryQuery] = useState('');
+  const [categoryView, setCategoryView] = useState<'all' | 'favorites' | 'popular'>('all');
+  const [categoryFavorites, setCategoryFavorites] = useState<string[]>(readCategoryFavorites);
   const topAnchorRef = useRef<HTMLDivElement>(null);
 
   const currentCat = categories.find((c) => c.id === activeCategory) || categories[0];
   const currentToolObj = currentCat?.tools.find((t) => t.id === activeTool) || currentCat?.tools[0];
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CATEGORY_FAVORITES_KEY, JSON.stringify(categoryFavorites));
+    } catch {
+      // Keep the directory usable if browser storage is unavailable.
+    }
+  }, [categoryFavorites]);
+
+  const toggleCategoryFavorite = (categoryId: string) => {
+    setCategoryFavorites((current) =>
+      current.includes(categoryId)
+        ? current.filter((id) => id !== categoryId)
+        : [...current, categoryId]
+    );
+  };
+
+  const openRandomCategory = () => {
+    const candidates = visibleCategories.filter((category) => category.id !== activeCategory);
+    const choices = candidates.length > 0 ? candidates : categories;
+    if (choices.length === 0) return;
+    const picked = choices[Math.floor(Math.random() * choices.length)];
+    onSelectCategory(picked.id);
+  };
+
+  const normalizedCategoryQuery = categoryQuery.trim().toLocaleLowerCase('ru');
+  const isCategoryFilterActive = categoryView !== 'all' || Boolean(normalizedCategoryQuery);
+  const visibleCategories = categories
+    .filter((category) => {
+      if (categoryView === 'favorites' && !categoryFavorites.includes(category.id)) return false;
+      if (!normalizedCategoryQuery) return true;
+      const searchableText = [category.title, category.short, ...category.tools.flatMap((tool) => [tool.title, tool.desc])]
+        .join(' ')
+        .toLocaleLowerCase('ru');
+      return searchableText.includes(normalizedCategoryQuery);
+    })
+    .sort((a, b) => {
+      if (categoryView !== 'popular') return categories.indexOf(a) - categories.indexOf(b);
+      return (categoryUsage[b.id] || 0) - (categoryUsage[a.id] || 0)
+        || b.tools.length - a.tools.length
+        || a.title.localeCompare(b.title, 'ru');
+    });
 
   // Scroll to top immediately when switching category or entering a section on mobile
   useEffect(() => {
@@ -731,7 +915,7 @@ export const MiniAppStudio: React.FC<Props> = ({
             </div>
           )}
 
-          {categories.length > 0 && (
+          {categories.length > 0 && categoryView === 'all' && !normalizedCategoryQuery && (
             <Suspense
               fallback={<div className="h-[235px] rounded-2xl bg-slate-950/60 border border-white/5 animate-pulse" />}
             >
@@ -745,41 +929,58 @@ export const MiniAppStudio: React.FC<Props> = ({
 
           <div className="space-y-1">
             <div className="px-2 flex items-center justify-between text-[11px] font-tech uppercase tracking-wider text-slate-400">
-              <span>Разделы ({categories.length})</span>
+              <span>Разделы ({visibleCategories.length}/{categories.length})</span>
               <span className="text-[10px] font-mono text-indigo-300/80" title="Часто используемые разделы автоматически поднимаются выше">
                 авто-топ ↑
               </span>
             </div>
-            {categories.map((cat, idx) => {
+            <div className="space-y-1.5 px-1">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                <input value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} placeholder="Найти раздел или инструмент" aria-label="Поиск разделов" className="w-full rounded-lg border border-white/10 bg-slate-950/80 py-2 pl-8 pr-7 text-[11px] text-white placeholder:text-slate-500 focus:border-indigo-400/60 focus:outline-none" />
+                {categoryQuery && <button type="button" onClick={() => setCategoryQuery('')} aria-label="Очистить поиск" className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
+              </div>
+              <div className="grid grid-cols-3 gap-1" role="group" aria-label="Фильтр разделов">
+                {([
+                  ['all', 'Все'], ['favorites', `★ ${categoryFavorites.length}`], ['popular', 'Топ'],
+                ] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={categoryView === mode} onClick={() => setCategoryView(mode)} className={`rounded-md border px-1 py-1.5 text-[9px] font-semibold transition ${categoryView === mode ? 'border-indigo-300/35 bg-indigo-500/15 text-indigo-100' : 'border-white/5 bg-white/[.02] text-slate-500 hover:text-white'}`}>{label}</button>)}
+              </div>
+            </div>
+            {visibleCategories.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 bg-slate-950/60 p-3 text-center text-[11px] text-slate-400">
+                Разделы не найдены.
+                <button type="button" onClick={() => { setCategoryQuery(''); setCategoryView('all'); }} className="ml-1 text-indigo-200 underline underline-offset-2">Сбросить</button>
+              </div>
+            ) : visibleCategories.map((cat, idx) => {
               const active = cat.id === activeCategory;
               const usageCount = categoryUsage[cat.id] || 0;
               const isHot = usageCount >= 2 && idx < 3;
+              const isCategoryFavorite = categoryFavorites.includes(cat.id);
               return (
-                <button
-                  key={cat.id}
-                  onClick={() => onSelectCategory(cat.id)}
-                  style={
-                    active
-                      ? {
-                          boxShadow: `inset 3px 0 0 ${cat.color || '#6366f1'}, 0 6px 18px -6px ${cat.color || '#6366f1'}66`,
-                        }
-                      : undefined
-                  }
-                  className={`w-full px-3 py-2.5 rounded-xl text-left transition-all duration-300 flex items-center gap-2.5 ${
-                    active
-                      ? 'bg-slate-800/95 border border-white/15 text-white font-semibold translate-x-0.5'
-                      : 'text-slate-300 hover:bg-white/5 hover:text-white border border-transparent'
-                  }`}
-                >
-                  <span className="text-base shrink-0">{cat.emoji}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs leading-snug truncate">{cat.title}</div>
-                  </div>
-                  {isHot && <Flame className="w-3 h-3 text-amber-400 shrink-0" />}
-                  <span className={`text-[10px] font-mono ${active ? 'text-sky-300' : 'text-slate-500'}`}>
-                    {cat.tools.length}
-                  </span>
-                </button>
+                <div key={cat.id} className="group flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelectCategory(cat.id)}
+                    style={active ? { boxShadow: `inset 3px 0 0 ${cat.color || '#6366f1'}, 0 6px 18px -6px ${cat.color || '#6366f1'}66` } : undefined}
+                    className={`group min-w-0 flex-1 rounded-xl border px-2 py-2 text-left transition-all duration-300 flex items-center gap-2 ${active ? 'bg-slate-800/95 border-white/15 text-white font-semibold translate-x-0.5' : 'text-slate-300 hover:bg-white/5 hover:text-white border-transparent'}`}
+                  >
+                    <span className="relative h-9 w-11 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-slate-950">
+                      <CategoryCoverImage categoryId={cat.id} className="h-full w-full object-cover opacity-75 transition duration-300 group-hover:scale-110" />
+                      <span className="absolute inset-0 grid place-items-center bg-gradient-to-t from-slate-950/60 to-transparent text-lg drop-shadow">{cat.emoji}</span>
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs leading-snug">{cat.title}</span>
+                    {isHot && <Flame className="h-3 w-3 shrink-0 text-amber-400" />}
+                    <span className={`shrink-0 text-[10px] font-mono ${active ? 'text-sky-300' : 'text-slate-500'}`}>{cat.tools.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={isCategoryFavorite ? `Убрать ${cat.title} из избранных разделов` : `Добавить ${cat.title} в избранные разделы`}
+                    aria-pressed={isCategoryFavorite}
+                    title={isCategoryFavorite ? 'Убрать из избранных разделов' : 'Добавить в избранные разделы'}
+                    onClick={() => toggleCategoryFavorite(cat.id)}
+                    className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 ${isCategoryFavorite ? 'border-amber-300/30 bg-amber-950/50 text-amber-200' : 'border-transparent text-slate-600 hover:border-white/10 hover:text-amber-100'}`}
+                  ><Star className={`h-3.5 w-3.5 ${isCategoryFavorite ? 'fill-current' : ''}`} /></button>
+                </div>
               );
             })}
           </div>
@@ -787,6 +988,7 @@ export const MiniAppStudio: React.FC<Props> = ({
 
         {/* Right Main Content */}
         <section className="col-span-9 space-y-4 min-w-0">
+          <ToolDiscoveryBanner categories={categories} onOpenPalette={onOpenPalette} onRandomCategory={openRandomCategory} />
           {/* Universal Intuitive Search + Calculator Top Bar */}
           <form
             onSubmit={runQuickBar}
@@ -831,6 +1033,10 @@ export const MiniAppStudio: React.FC<Props> = ({
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative h-12 w-14 shrink-0 overflow-hidden rounded-xl border border-white/15 shadow-lg">
+                    <CategoryCoverImage categoryId={currentCat.id} className="h-full w-full object-cover" />
+                    <span className="absolute inset-0 grid place-items-center bg-gradient-to-t from-slate-950/70 to-transparent text-2xl drop-shadow">{currentCat.emoji}</span>
+                  </div>
                   <Suspense fallback={<div className="w-12 h-12 rounded-xl bg-slate-950/80 border border-white/10 shrink-0" />}>
                     <Mini3DSceneBadge
                       seed={`${currentCat.id}:${activeTool}`}
@@ -925,12 +1131,14 @@ export const MiniAppStudio: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => setShowMobile3D((s) => !s)}
-                    className={`px-2.5 py-2 rounded-xl border text-xs flex items-center gap-1 transition ${
-                      showMobile3D
+                    disabled={isCategoryFilterActive}
+                    aria-pressed={showMobile3D && !isCategoryFilterActive}
+                    className={`px-2.5 py-2 rounded-xl border text-xs flex items-center gap-1 transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      showMobile3D && !isCategoryFilterActive
                         ? 'bg-indigo-500/20 border-indigo-400/50 text-indigo-200'
                         : 'bg-white/5 border-white/10 text-slate-300'
                     }`}
-                    title="Переключить 3D-навигатор"
+                    title={isCategoryFilterActive ? 'Сначала сбросьте фильтр каталога' : 'Переключить 3D-навигатор'}
                   >
                     <Box className="w-3.5 h-3.5" /> 3D
                   </button>
@@ -974,6 +1182,8 @@ export const MiniAppStudio: React.FC<Props> = ({
               </form>
             </div>
 
+            <ToolDiscoveryBanner categories={categories} onOpenPalette={onOpenPalette} onRandomCategory={openRandomCategory} />
+
             {renderIntuitivePanel()}
 
             {/* Favorites Quick Strip (if any) */}
@@ -995,8 +1205,41 @@ export const MiniAppStudio: React.FC<Props> = ({
               </div>
             )}
 
+            <section className="space-y-2 rounded-2xl border border-white/10 bg-slate-950/55 p-3" aria-label="Поиск и фильтры разделов">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-bold text-white">Выбери направление</h2>
+                <span className="text-[10px] font-mono text-slate-400">{visibleCategories.length} / {categories.length}</span>
+              </div>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                <input
+                  value={categoryQuery}
+                  onChange={(event) => setCategoryQuery(event.target.value)}
+                  placeholder="Найти раздел или инструмент внутри него"
+                  aria-label="Поиск разделов и инструментов"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900 py-2.5 pl-9 pr-9 text-xs text-white placeholder:text-slate-500 focus:border-indigo-400/60 focus:outline-none"
+                />
+                {categoryQuery && <button type="button" onClick={() => setCategoryQuery('')} aria-label="Очистить поиск разделов" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar" role="group" aria-label="Фильтр каталога">
+                {([
+                  ['all', 'Все разделы'],
+                  ['favorites', `Избранные (${categoryFavorites.length})`],
+                  ['popular', 'Популярные'],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={categoryView === mode}
+                    onClick={() => setCategoryView(mode)}
+                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 ${categoryView === mode ? 'border-indigo-300/40 bg-indigo-500/20 text-indigo-100' : 'border-white/5 bg-white/[.03] text-slate-400 hover:text-white'}`}
+                  >{label}</button>
+                ))}
+              </div>
+            </section>
+
             {/* Interactive 3D / 4D Orbital Navigator */}
-            {showMobile3D && categories.length > 0 && (
+            {showMobile3D && categories.length > 0 && categoryView === 'all' && !normalizedCategoryQuery && (
               <Suspense
                 fallback={<div className="h-[215px] rounded-2xl bg-slate-950/60 border border-white/5 animate-pulse" />}
               >
@@ -1009,47 +1252,62 @@ export const MiniAppStudio: React.FC<Props> = ({
               </Suspense>
             )}
 
-            {/* 2-Column Category Grid with 3D Specular Tilt & Staggered Entrance */}
-            <div className="grid grid-cols-2 gap-2.5 stagger-3d">
-              {categories.map((cat, idx) => {
-                const usageCount = categoryUsage[cat.id] || 0;
-                const isHot = usageCount >= 2 && idx < 2;
-                return (
-                  <Tilt3DCard
-                    key={cat.id}
-                    accentColor={cat.color || '#6366f1'}
-                    maxTilt={9}
-                    onClick={() => onSelectCategory(cat.id)}
-                    className="p-3.5 rounded-2xl glass-surface hover:bg-slate-800/90 active:scale-[0.99] border border-white/10 text-left transition flex flex-col justify-between min-h-[108px] cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-2xl">{cat.emoji}</span>
-                      <div className="flex items-center gap-1">
-                        {isHot && <Flame className="w-3 h-3 text-amber-400" />}
-                        <span
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded-md border"
-                          style={{
-                            borderColor: `${cat.color || '#6366f1'}55`,
-                            backgroundColor: `${cat.color || '#6366f1'}20`,
-                            color: '#e2e8f0',
-                          }}
-                        >
-                          {cat.tools.length}
-                        </span>
-                      </div>
+            {/* Image-led category gallery with persistent category bookmarks */}
+            {visibleCategories.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/50 px-4 py-8 text-center">
+                <div className="text-2xl" aria-hidden="true">🔎</div>
+                <p className="mt-2 text-sm font-semibold text-slate-200">Разделы не найдены</p>
+                <p className="mt-1 text-xs text-slate-500">Попробуйте другое слово или переключите фильтр.</p>
+                <button type="button" onClick={() => { setCategoryQuery(''); setCategoryView('all'); }} className="mt-3 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-indigo-200 hover:bg-white/5">Сбросить фильтры</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5 stagger-3d sm:gap-3">
+                {visibleCategories.map((cat, idx) => {
+                  const usageCount = categoryUsage[cat.id] || 0;
+                  const isHot = usageCount >= 2 && idx < 3;
+                  const isCategoryFavorite = categoryFavorites.includes(cat.id);
+                  return (
+                    <div key={cat.id} className="group relative min-w-0">
+                      <Tilt3DCard
+                        accentColor={cat.color || '#6366f1'}
+                        maxTilt={7}
+                        onClick={() => onSelectCategory(cat.id)}
+                        className={`relative flex min-h-[154px] cursor-pointer flex-col justify-between rounded-2xl border p-3.5 text-left transition sm:min-h-[174px] sm:p-4 ${activeCategory === cat.id ? 'border-indigo-300/55 shadow-[0_0_24px_-12px_rgba(129,140,248,.7)]' : 'border-white/10 hover:border-white/25'}`}
+                      >
+                        <CategoryCoverImage categoryId={cat.id} className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#050812] via-[#070b18]/75 to-[#070b18]/15" />
+                        <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/[.06] via-transparent to-transparent" />
+                        <div className="relative z-[1] flex items-start justify-between gap-2 pr-8">
+                          <span className="grid h-9 w-9 place-items-center rounded-xl border border-white/15 bg-slate-950/65 text-xl shadow-lg backdrop-blur-sm" aria-hidden="true">{cat.emoji}</span>
+                          <div className="flex items-center gap-1.5">
+                            {isHot && <span className="rounded-full border border-amber-300/20 bg-amber-950/65 px-2 py-1 text-[9px] font-bold text-amber-200">Популярно</span>}
+                            <span className="rounded-lg border border-white/15 bg-slate-950/65 px-2 py-1 text-[10px] font-mono text-white backdrop-blur-sm">{cat.tools.length}</span>
+                          </div>
+                        </div>
+                        <div className="relative z-[1] mt-5">
+                          <h3 className="text-xs font-display font-bold leading-snug text-white drop-shadow sm:text-sm">{cat.title}</h3>
+                          <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-slate-200/85 sm:text-[11px]">{cat.short}</p>
+                          <div className="mt-2 flex items-center gap-1.5 text-[9px] font-medium text-slate-300">
+                            <span>{usageCount > 0 ? formatCategoryVisits(usageCount) : 'Откройте раздел'}</span>
+                            <span aria-hidden="true">→</span>
+                          </div>
+                        </div>
+                      </Tilt3DCard>
+                      <button
+                        type="button"
+                        aria-label={isCategoryFavorite ? `Убрать ${cat.title} из избранных разделов` : `Добавить ${cat.title} в избранные разделы`}
+                        aria-pressed={isCategoryFavorite}
+                        title={isCategoryFavorite ? 'Убрать из избранных разделов' : 'Добавить в избранные разделы'}
+                        onClick={() => toggleCategoryFavorite(cat.id)}
+                        className={`absolute right-2 top-2 z-20 grid h-8 w-8 place-items-center rounded-xl border backdrop-blur-md transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 ${isCategoryFavorite ? 'border-amber-300/35 bg-amber-950/75 text-amber-200' : 'border-white/10 bg-slate-950/70 text-slate-300 hover:border-amber-200/30 hover:text-amber-100'}`}
+                      >
+                        <Star className={`h-3.5 w-3.5 ${isCategoryFavorite ? 'fill-current' : ''}`} />
+                      </button>
                     </div>
-                    <div className="mt-2">
-                      <div className="text-xs sm:text-sm font-display font-bold text-white leading-snug">
-                        {cat.title}
-                      </div>
-                      <div className="text-[11px] text-slate-400 line-clamp-2 mt-0.5 leading-tight">
-                        {cat.short}
-                      </div>
-                    </div>
-                  </Tilt3DCard>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         ) : (
           /* LEVEL 2: IMMEDIATE TOOL VIEW AT TOP OF SCREEN */
@@ -1070,13 +1328,10 @@ export const MiniAppStudio: React.FC<Props> = ({
                 </button>
                 {currentCat && (
                   <div className="flex items-center gap-2 min-w-0">
-                    <Suspense fallback={<div className="w-8 h-8 rounded-lg bg-slate-900 shrink-0" />}>
-                      <Mini3DSceneBadge
-                        seed={`${currentCat.id}:${activeTool}`}
-                        color={currentCat.color || '#6366f1'}
-                        size={34}
-                      />
-                    </Suspense>
+                    <span className="relative h-9 w-10 shrink-0 overflow-hidden rounded-lg border border-white/15 shadow-md">
+                      <CategoryCoverImage categoryId={currentCat.id} className="h-full w-full object-cover" />
+                      <span className="absolute inset-0 grid place-items-center bg-gradient-to-t from-slate-950/65 to-transparent text-lg drop-shadow">{currentCat.emoji}</span>
+                    </span>
                     <div className="text-xs sm:text-sm font-display font-bold text-white truncate min-w-0">
                       {currentCat.emoji} {currentCat.title}
                     </div>
