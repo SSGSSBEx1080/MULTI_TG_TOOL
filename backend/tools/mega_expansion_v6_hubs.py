@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import math
+import re
 from typing import Any
 
 from PIL import Image
@@ -30,6 +31,11 @@ def _pc_segment(tier: str, release_year: int | None) -> str:
 def _pc_part(part_id: str, name: str, price_rub: int, tier: str, release_year: int | None = None, **spec: Any) -> dict[str, Any]:
     """Build one catalog record. Prices are broad planning estimates, not live offers."""
     segment = spec.pop("segment", None) or _pc_segment(tier, release_year)
+    kit = spec.get("kit")
+    if kit and "modules" not in spec:
+        module_count = re.match(r"^(\d+)\s*[×xX]", str(kit))
+        if module_count:
+            spec["modules"] = int(module_count.group(1))
     return {
         "id": part_id,
         "name": name,
@@ -76,10 +82,14 @@ PC_CPUS: list[dict[str, Any]] = [
     _pc_part("i5_3570k", "Intel Core i5-3570K · Ivy Bridge, 4 ядра", 1800, "Вторичный рынок", 2012, socket="LGA1155", platform_key="lga1155", ram_type="DDR3", cores="4C / 4T", boost_ghz=3.8, tdp_w=77, score=17, integrated_graphics=True),
     _pc_part("i7_9700f", "Intel Core i7-9700F · Coffee Lake Refresh, 8 ядер", 7900, "Старый бюджет", 2019, socket="LGA1151", platform_key="lga1151_300", ram_type="DDR4", cores="8C / 8T", boost_ghz=4.7, tdp_w=65, score=53, integrated_graphics=False),
     _pc_part("r5_9600x", "AMD Ryzen 5 9600X · Zen 5, 6 ядер / 12 потоков", 27900, "Производительный", 2024, socket="AM5", platform_key="am5", ram_type="DDR5", cores="6C / 12T", boost_ghz=5.4, tdp_w=65, score=86, integrated_graphics=True),
+    _pc_part("r7_9850x3d", "AMD Ryzen 7 9850X3D · Zen 5 / 3D V-Cache", 69900, "Флагманский", 2026, socket="AM5", platform_key="am5", ram_type="DDR5", cores="8C / 16T", boost_ghz=5.6, tdp_w=120, score=108, integrated_graphics=True, max_ram_gb=256, max_ram_mhz=5600, source_url="https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-7-9850x3d.html"),
+    _pc_part("r9_9950x3d2", "AMD Ryzen 9 9950X3D2 Dual Edition · 16 ядер / 208 МБ кэша", 99900, "Флагманский", 2026, socket="AM5", platform_key="am5", ram_type="DDR5", cores="16C / 32T", boost_ghz=5.6, tdp_w=200, score=112, integrated_graphics=True, max_ram_gb=256, max_ram_mhz=5600, source_url="https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-9-9950x3d2-dual-edition.html"),
+    _pc_part("u7_270k_plus", "Intel Core Ultra 7 270K Plus · Arrow Lake Refresh, 24 ядер", 39900, "Флагманский", 2026, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", cores="24C (8P + 16E)", boost_ghz=5.5, tdp_w=250, score=101, integrated_graphics=True, max_ram_mhz=7200, max_ram_gb=256, source_url="https://www.intel.com/content/www/us/en/products/sku/245692/intel-core-ultra-7-processor-270k-plus-36m-cache-up-to-5-50-ghz/specifications.html"),
+    _pc_part("u5_250k_plus", "Intel Core Ultra 5 250K Plus · Arrow Lake Refresh, 18 ядер", 26900, "Производительный", 2026, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", cores="18C (6P + 12E)", boost_ghz=5.3, tdp_w=159, score=89, integrated_graphics=True, max_ram_mhz=7200, max_ram_gb=256, source_url="https://www.intel.com/content/www/us/en/products/sku/245694/intel-core-ultra-5-processor-250k-plus-30m-cache-up-to-5-30-ghz/specifications.html"),
 ]
 
 PC_GPUS: list[dict[str, Any]] = [
-    _pc_part("gpu_none", "Без отдельной видеокарты · использовать встроенную графику CPU", 0, "Офис / iGPU", None, vram_gb=0, length_mm=0, tdp_w=0, score=20, vendor="iGPU"),
+    _pc_part("gpu_none", "Без отдельной видеокарты · использовать встроенную графику CPU", 0, "Опционально · iGPU", None, segment="optional", vram_gb=0, length_mm=0, tdp_w=0, score=20, vendor="iGPU"),
     _pc_part("gtx_750ti", "NVIDIA GeForce GTX 750 Ti 2GB · вторичный рынок", 2500, "Вторичный рынок", 2014, vram_gb=2, length_mm=195, tdp_w=60, score=8, vendor="NVIDIA"),
     _pc_part("rx_580_8", "AMD Radeon RX 580 8GB · вторичный рынок", 5500, "Вторичный рынок", 2017, vram_gb=8, length_mm=270, tdp_w=185, score=24, vendor="AMD"),
     _pc_part("gtx_1050ti", "NVIDIA GeForce GTX 1050 Ti 4GB", 4500, "Вторичный рынок", 2016, vram_gb=4, length_mm=229, tdp_w=75, score=15, vendor="NVIDIA"),
@@ -105,6 +115,11 @@ PC_GPUS: list[dict[str, Any]] = [
     _pc_part("gtx_970", "NVIDIA GeForce GTX 970 4GB · вторичный рынок", 3500, "Вторичный рынок", 2014, vram_gb=4, length_mm=267, tdp_w=145, score=19, vendor="NVIDIA"),
     _pc_part("rtx_5070", "NVIDIA GeForce RTX 5070 12GB GDDR7", 77900, "Производительный", 2025, vram_gb=12, length_mm=304, tdp_w=250, score=82, vendor="NVIDIA"),
     _pc_part("rx_9060xt_16", "AMD Radeon RX 9060 XT 16GB", 55900, "Средний", 2025, vram_gb=16, length_mm=280, tdp_w=160, score=74, vendor="AMD"),
+    _pc_part("rtx_5060ti_16", "NVIDIA GeForce RTX 5060 Ti 16GB GDDR7", 49900, "Средний", 2025, vram_gb=16, length_mm=280, length_is_estimate=True, tdp_w=180, score=72, vendor="NVIDIA", recommended_psu_w=600, required_8pin_connectors=1, accepts_native_12v_2x6=True, power_connectors="1×8-pin или PCIe 5.x 16-pin", source_url="https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5060-family/"),
+    _pc_part("rtx_5060ti_8", "NVIDIA GeForce RTX 5060 Ti 8GB GDDR7", 42900, "Средний", 2025, vram_gb=8, length_mm=280, length_is_estimate=True, tdp_w=180, score=70, vendor="NVIDIA", recommended_psu_w=600, required_8pin_connectors=1, accepts_native_12v_2x6=True, power_connectors="1×8-pin или PCIe 5.x 16-pin", source_url="https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5060-family/"),
+    _pc_part("rtx_5060", "NVIDIA GeForce RTX 5060 8GB GDDR7", 35900, "Начальный", 2025, vram_gb=8, length_mm=260, length_is_estimate=True, tdp_w=145, score=62, vendor="NVIDIA", recommended_psu_w=550, required_8pin_connectors=1, accepts_native_12v_2x6=True, power_connectors="1×8-pin или PCIe 5.x 16-pin", source_url="https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5060-family/"),
+    _pc_part("rx_9070", "AMD Radeon RX 9070 16GB GDDR6", 79900, "Производительный", 2025, vram_gb=16, length_mm=290, length_is_estimate=True, tdp_w=220, score=93, vendor="AMD", recommended_psu_w=650, required_8pin_connectors=2, power_connectors="2×8-pin", source_url="https://www.amd.com/en/products/graphics/desktops/radeon/9000-series/amd-radeon-rx-9070.html"),
+    _pc_part("rx_9070_gre", "AMD Radeon RX 9070 GRE 12GB GDDR6", 69900, "Производительный", 2026, vram_gb=12, length_mm=280, length_is_estimate=True, tdp_w=220, score=86, vendor="AMD", recommended_psu_w=650, required_8pin_connectors=2, power_connectors="2×8-pin", source_url="https://www.amd.com/en/products/graphics/desktops/radeon/9000-series/amd-radeon-rx-9070-gre.html"),
 ]
 
 PC_MOTHERBOARDS: list[dict[str, Any]] = [
@@ -130,7 +145,34 @@ PC_MOTHERBOARDS: list[dict[str, Any]] = [
     _pc_part("a620m_am5", "A620 mATX · AM5 / DDR5 · доступный вход на AM5", 10900, "Начальный", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=6000, m2_slots=1, sata_ports=4, form_factor="mATX", pcie="4.0", supports_atx=False),
     _pc_part("b850m_am5", "B850 mATX · AM5 / DDR5 · обновлённая массовая платформа", 17900, "Средний", 2025, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=8000, m2_slots=3, sata_ports=4, form_factor="mATX", pcie="5.0", supports_atx=False),
     _pc_part("x670e_am5", "X670E ATX · AM5 / DDR5 · расширенные линии PCIe", 29900, "Производительный", 2022, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=7600, m2_slots=4, sata_ports=6, form_factor="ATX", pcie="5.0", supports_atx=True),
+    _pc_part("h610_lga1700", "H610 mATX · LGA1700 / DDR4 · доступная начальная плата", 6900, "Бюджетный", 2022, socket="LGA1700", platform_key="lga1700", ram_type="DDR4", max_ram_mhz=3200, m2_slots=1, sata_ports=4, form_factor="mATX", pcie="4.0", supports_atx=False),
+    _pc_part("h810_lga1851", "H810 mATX · LGA1851 / DDR5 · входная плата Core Ultra", 11900, "Бюджетный", 2025, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", max_ram_mhz=6400, m2_slots=2, sata_ports=4, form_factor="mATX", pcie="5.0", supports_atx=False),
+    _pc_part("b860_d5", "B860 mATX · LGA1851 / DDR5 · массовая платформа", 16900, "Средний", 2025, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", max_ram_mhz=8000, m2_slots=3, sata_ports=4, form_factor="mATX", pcie="5.0", supports_atx=False),
+    _pc_part("b860_atx", "B860 ATX · LGA1851 / DDR5 · расширение и Wi-Fi", 22900, "Средний", 2025, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", max_ram_mhz=8800, m2_slots=4, sata_ports=4, form_factor="ATX", pcie="5.0", supports_atx=True),
+    _pc_part("b840_am5", "B840 mATX · AM5 / DDR5 · бюджетная новая платформа", 13900, "Бюджетный", 2025, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=7600, m2_slots=2, sata_ports=4, form_factor="mATX", pcie="4.0", supports_atx=False),
+    _pc_part("b850_atx", "B850 ATX · AM5 / DDR5 · актуальная плата среднего класса", 21900, "Средний", 2025, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=8000, m2_slots=3, sata_ports=4, form_factor="ATX", pcie="5.0", supports_atx=True),
+    _pc_part("x870_am5", "X870 ATX · AM5 / DDR5 · USB4 и PCIe 5.0", 27900, "Производительный", 2024, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=8000, m2_slots=4, sata_ports=4, form_factor="ATX", pcie="5.0", supports_atx=True),
+    _pc_part("b650e_am5", "B650E mATX · AM5 / DDR5 · PCIe 5.0 для GPU и SSD", 18900, "Средний", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=7600, m2_slots=2, sata_ports=4, form_factor="mATX", pcie="5.0", supports_atx=False),
+    _pc_part("b650i_am5", "B650I Mini-ITX · AM5 / DDR5 · компактная сборка", 22900, "Производительный", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=7600, m2_slots=2, sata_ports=2, form_factor="Mini-ITX", pcie="5.0", supports_atx=False),
+    _pc_part("b860i_lga1851", "B860I Mini-ITX · LGA1851 / DDR5 · компактный Core Ultra", 27900, "Производительный", 2025, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", max_ram_mhz=8000, m2_slots=3, sata_ports=2, form_factor="Mini-ITX", pcie="5.0", supports_atx=False),
+    _pc_part("x870e_eatx_am5", "X870E E-ATX · AM5 / DDR5 · расширенная рабочая станция", 49900, "Флагманский", 2025, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=8400, m2_slots=5, sata_ports=4, form_factor="E-ATX", pcie="5.0", supports_atx=True),
 ]
+
+_MOTHERBOARD_MEMORY_LIMITS: dict[str, tuple[int, int]] = {
+    "h61_lga1155": (16, 2), "h81_lga1150": (16, 2), "h110_lga1151": (32, 2), "b365_lga1151": (64, 4),
+    "b450m": (128, 4), "a320m_am4": (64, 4), "b550_tuf": (128, 4), "b550_atx": (128, 4),
+    "b560_lga1200": (128, 4), "h510_lga1200": (64, 2), "h610_lga1700": (64, 2), "b660_d4": (128, 4),
+    "b760m_d4": (128, 4), "b760m_d5": (192, 4), "z790_ud": (192, 4), "b650_aorus": (192, 4),
+    "b650m": (192, 4), "x870e_tomahawk": (256, 4), "z890_pro": (256, 4), "a620m_am5": (128, 2),
+    "b850m_am5": (192, 4), "x670e_am5": (192, 4), "h810_lga1851": (128, 2), "b860_d5": (192, 4),
+    "b860_atx": (256, 4), "b840_am5": (128, 2), "b850_atx": (192, 4), "x870_am5": (256, 4), "b650e_am5": (192, 4),
+    "b75_lga1155": (32, 4), "b650i_am5": (96, 2), "b860i_lga1851": (96, 2), "x870e_eatx_am5": (256, 4),
+}
+_MOTHERBOARD_WIFI_IDS = {"b760m_d4", "b650_aorus", "x870e_tomahawk", "z890_pro", "b860_atx", "x870_am5", "b650i_am5", "b860i_lga1851", "x870e_eatx_am5"}
+for _mb in PC_MOTHERBOARDS:
+    _mb["max_ram_gb"], _mb["dimm_slots"] = _MOTHERBOARD_MEMORY_LIMITS[_mb["id"]]
+    _mb["wifi_integrated"] = _mb["id"] in _MOTHERBOARD_WIFI_IDS
+    _mb["pcie_x1_slots"] = 2 if _mb["form_factor"] in {"ATX", "E-ATX"} else 1 if _mb["form_factor"] == "mATX" else 0
 
 PC_RAMS: list[dict[str, Any]] = [
     _pc_part("ddr3_8_1600", "8GB (2×4) DDR3-1600 · базовый апгрейд", 1200, "Вторичный рынок", 2014, ram_type="DDR3", capacity_gb=8, speed_mhz=1600, kit="2×4 ГБ"),
@@ -163,7 +205,7 @@ PC_COOLERS: list[dict[str, Any]] = [
     _pc_part("aio_240", "СЖО 240 мм · радиатор в зависимости от корпуса", 7900, "Производительный", 2023, max_tdp_w=260, height_mm=55, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="aio_240"),
     _pc_part("aio_360", "Arctic Liquid Freezer III 360 · СЖО", 11900, "Флагманский", 2024, max_tdp_w=320, height_mm=65, is_aio_360=True, supported_sockets=["AM4", "AM5", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="aio_360"),
     _pc_part("stock_lga1155", "Штатный кулер Intel push-pin · старые LGA1155 / LGA1150", 500, "Вторичный рынок", 2012, max_tdp_w=77, height_mm=55, is_aio_360=False, supported_sockets=["LGA1155", "LGA1150"], cooler_kind="stock"),
-    _pc_part("low_profile_92", "Низкопрофильный 92 мм кулер · компактные корпуса", 1900, "Начальный", 2021, max_tdp_w=95, height_mm=67, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1155", "LGA1150", "LGA1151", "LGA1200", "LGA1700"], cooler_kind="low_profile"),
+    _pc_part("low_profile_92", "Низкопрофильный 92 мм кулер · компактные корпуса", 1900, "Начальный", 2021, max_tdp_w=95, height_mm=67, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1155", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="low_profile"),
     _pc_part("tower_120_budget", "Башенный кулер 120 мм · доступный апгрейд штатного", 2800, "Бюджетный", 2022, max_tdp_w=160, height_mm=154, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1155", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="tower"),
     _pc_part("dual_tower_pro", "Двухбашенный кулер 140 мм · высокое тепловыделение", 8900, "Производительный", 2024, max_tdp_w=280, height_mm=168, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1155", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="dual_tower"),
     _pc_part("aio_280", "СЖО 280 мм · проверьте посадочные места корпуса", 8900, "Производительный", 2023, max_tdp_w=280, height_mm=60, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="aio_280"),
@@ -213,7 +255,13 @@ PC_PSUS: list[dict[str, Any]] = [
     _pc_part("psu_550", "550W 80+ Bronze · начальная игровая видеокарта", 5100, "Начальный", 2022, watts=550, efficiency="80+ Bronze", atx_version="ATX 2.x", pcie_5=False),
     _pc_part("psu_650_gold", "650W 80+ Gold · модульный блок среднего класса", 8900, "Средний", 2023, watts=650, efficiency="80+ Gold", atx_version="ATX 3.0", pcie_5=True),
     _pc_part("psu_1600", "1600W 80+ Platinum ATX 3.1 · рабочая станция", 59900, "Флагманский", 2025, watts=1600, efficiency="80+ Platinum", atx_version="ATX 3.1", pcie_5=True),
+    _pc_part("psu_sfx_750", "750W SFX 80+ Gold ATX 3.1 · компактная игровая сборка", 15900, "Производительный", 2025, watts=750, efficiency="80+ Gold", atx_version="ATX 3.1", pcie_5=True, form_factor="SFX", pcie_8pin_count=2, source_note="Проверьте глубину БП и совместимость корпуса с SFX."),
+    _pc_part("psu_sfx_850", "850W SFX-L 80+ Gold ATX 3.1 · мощная Mini-ITX сборка", 20900, "Флагманский", 2025, watts=850, efficiency="80+ Gold", atx_version="ATX 3.1", pcie_5=True, form_factor="SFX-L", pcie_8pin_count=3, source_note="SFX-L длиннее стандартного SFX; проверьте ограничения корпуса."),
 ]
+for _psu in PC_PSUS:
+    _psu.setdefault("form_factor", "ATX")
+    _psu.setdefault("pcie_8pin_count", 2 if _psu["watts"] < 700 else 4 if _psu["watts"] < 1000 else 6)
+    _psu["native_12v_2x6"] = bool(_psu.get("pcie_5"))
 
 PC_CASES: list[dict[str, Any]] = [
     _pc_part("used_office_case", "Обычный офисный корпус · вторичный рынок, mATX", 1500, "Вторичный рынок", 2015, drive_bays_35=1, max_gpu_mm=240, max_cooler_mm=145, supports_atx=False, supports_aio240=False, supports_aio280=False, supports_aio360=False, supported_form_factors=["mATX", "Mini-ITX"], case_size="старый mATX"),
@@ -232,6 +280,65 @@ PC_CASES: list[dict[str, Any]] = [
     _pc_part("itx_airflow_2025", "Mini-ITX airflow · компактная мощная сборка", 11900, "Производительный", 2025, drive_bays_35=1, max_gpu_mm=330, max_cooler_mm=165, supports_atx=False, supports_aio240=True, supports_aio280=False, supports_aio360=False, supported_form_factors=["Mini-ITX"], case_size="Mini-ITX tower"),
 ]
 
+_CASE_ADDITIONAL_FAN_SLOTS = {
+    "used_office_case": (1, 0), "budget_mini": (2, 1), "compact_itx": (2, 1), "matx_mini": (4, 2),
+    "mid_tower_budget": (4, 2), "lancool_216": (5, 3), "lianli_o11": (8, 3), "full_tower": (8, 4),
+    "sff_legacy": (0, 0), "budget_atx_legacy": (3, 2), "mesh_compact_2024": (4, 2),
+    "airflow_atx_2025": (6, 4), "showcase_eatx_2025": (8, 5), "itx_airflow_2025": (2, 1),
+}
+for _case in PC_CASES:
+    _case["additional_120mm_fan_slots"], _case["additional_140mm_fan_slots"] = _CASE_ADDITIONAL_FAN_SLOTS[_case["id"]]
+    _case["supported_psu_form_factors"] = ["SFX", "SFX-L"] if _case["id"] == "sff_legacy" else ["ATX", "SFX", "SFX-L"]
+
+PC_CASE_FANS: list[dict[str, Any]] = [
+    _pc_part("fans_none", "Без дополнительных корпусных вентиляторов", 0, "Опционально", None, segment="optional", fan_size_mm=0, quantity=0, rpm="—", connector="—"),
+    _pc_part("fan_120_basic", "120 мм PWM · один тихий корпусной вентилятор", 700, "Бюджетный", 2022, fan_size_mm=120, quantity=1, rpm="до 1500", connector="4-pin PWM"),
+    _pc_part("fan_120_triple", "120 мм PWM · комплект из трёх вентиляторов", 2100, "Начальный", 2023, fan_size_mm=120, quantity=3, rpm="до 1800", connector="4-pin PWM / splitter"),
+    _pc_part("fan_140_pair", "140 мм PWM · пара вентиляторов для тихого airflow", 2200, "Средний", 2023, fan_size_mm=140, quantity=2, rpm="до 1600", connector="4-pin PWM"),
+    _pc_part("fan_120_argb_triple", "120 мм PWM ARGB · комплект из трёх вентиляторов", 3900, "Производительный", 2024, fan_size_mm=120, quantity=3, rpm="до 2000", connector="4-pin PWM + 3-pin ARGB"),
+]
+
+PC_WIFI_ADAPTERS: list[dict[str, Any]] = [
+    _pc_part("wifi_none", "Без отдельного Wi-Fi адаптера", 0, "Опционально", None, segment="optional", interface="—", wifi_standard="—", bluetooth=False),
+    _pc_part("wifi_pcie5", "PCIe Wi-Fi 5 + Bluetooth · доступный адаптер", 1600, "Бюджетный", 2020, interface="PCIe x1", wifi_standard="Wi-Fi 5 (802.11ac)", bluetooth=True),
+    _pc_part("wifi6e_pcie", "PCIe Wi-Fi 6E + Bluetooth 5.3", 2900, "Средний", 2023, interface="PCIe x1", wifi_standard="Wi-Fi 6E (802.11ax)", bluetooth=True),
+    _pc_part("wifi7_pcie", "PCIe Wi-Fi 7 + Bluetooth 5.4", 6900, "Производительный", 2025, interface="PCIe x1", wifi_standard="Wi-Fi 7 (802.11be)", bluetooth=True),
+    _pc_part("wifi7_usb", "USB Wi-Fi 6 · компактный адаптер без PCIe слота", 1900, "Бюджетный", 2024, interface="USB 3.0", wifi_standard="Wi-Fi 6 (802.11ax)", bluetooth=False),
+]
+
+PC_MONITORS: list[dict[str, Any]] = [
+    _pc_part("monitor_none", "Монитор не выбран / уже есть", 0, "Опционально", None, segment="optional", diagonal_in=0, resolution="—", refresh_hz=0, panel="—"),
+    _pc_part("monitor_24_fhd_75", "24″ Full HD IPS · базовый офисный монитор", 8900, "Бюджетный", 2023, diagonal_in=24, resolution="1920×1080", refresh_hz=75, panel="IPS"),
+    _pc_part("monitor_24_fhd_180", "24″ Full HD IPS · игровой монитор 180 Гц", 16900, "Средний", 2024, diagonal_in=24, resolution="1920×1080", refresh_hz=180, panel="IPS"),
+    _pc_part("monitor_27_qhd_165", "27″ QHD IPS · 165 Гц, сбалансированный игровой", 27900, "Средний", 2024, diagonal_in=27, resolution="2560×1440", refresh_hz=165, panel="IPS"),
+    _pc_part("monitor_32_4k_144", "32″ 4K IPS · 144 Гц для игр и работы", 64900, "Производительный", 2024, diagonal_in=32, resolution="3840×2160", refresh_hz=144, panel="IPS"),
+    _pc_part("monitor_27_oled_240", "27″ QHD OLED · 240 Гц, флагманский дисплей", 89900, "Флагманский", 2025, diagonal_in=27, resolution="2560×1440", refresh_hz=240, panel="OLED"),
+    _pc_part("monitor_34_ultrawide", "34″ UltraWide QHD OLED · 175 Гц", 109900, "Флагманский", 2025, diagonal_in=34, resolution="3440×1440", refresh_hz=175, panel="OLED"),
+]
+
+PC_KEYBOARDS: list[dict[str, Any]] = [
+    _pc_part("keyboard_none", "Клавиатура не выбрана / уже есть", 0, "Опционально", None, segment="optional", layout="—", connection="—", switch_type="—"),
+    _pc_part("keyboard_office", "Полноразмерная офисная клавиатура · проводная", 900, "Бюджетный", 2022, layout="100%", connection="USB-A", switch_type="мембранная"),
+    _pc_part("keyboard_membrane_gaming", "Игровая мембранная клавиатура · подсветка", 2200, "Начальный", 2023, layout="100%", connection="USB-A", switch_type="мембранная"),
+    _pc_part("keyboard_tkl_mech", "Механическая TKL · hot-swap, линейные переключатели", 7900, "Средний", 2024, layout="TKL 80%", connection="USB-C", switch_type="механическая, hot-swap"),
+    _pc_part("keyboard_wireless_mech", "Беспроводная механическая 75% · Bluetooth + 2.4 ГГц", 14900, "Производительный", 2025, layout="75%", connection="USB-C / Bluetooth / 2.4 ГГц", switch_type="механическая"),
+]
+
+PC_MICE: list[dict[str, Any]] = [
+    _pc_part("mouse_none", "Мышь не выбрана / уже есть", 0, "Опционально", None, segment="optional", connection="—", sensor_dpi=0, weight_g=0),
+    _pc_part("mouse_office", "Офисная оптическая мышь · проводная", 600, "Бюджетный", 2022, connection="USB-A", sensor_dpi=1600, weight_g=90),
+    _pc_part("mouse_gaming_wired", "Игровая мышь · проводная, 8000 Гц", 2900, "Средний", 2024, connection="USB-A", sensor_dpi=26000, weight_g=65),
+    _pc_part("mouse_wireless_gaming", "Лёгкая беспроводная игровая мышь · 2.4 ГГц + Bluetooth", 8900, "Производительный", 2024, connection="USB-C / 2.4 ГГц / Bluetooth", sensor_dpi=30000, weight_g=55),
+    _pc_part("mouse_ergonomic", "Эргономичная вертикальная мышь · для работы", 3900, "Средний", 2023, connection="USB-A / Bluetooth", sensor_dpi=4000, weight_g=110),
+]
+
+PC_THERMAL_PASTES: list[dict[str, Any]] = [
+    _pc_part("paste_none", "Термопаста не нужна / уже нанесена на кулер", 0, "Опционально", None, segment="optional", quantity_g=0, conductivity_w_mk=0),
+    _pc_part("paste_basic", "Термопаста 2 г · базовая замена", 350, "Бюджетный", 2023, quantity_g=2, conductivity_w_mk=5),
+    _pc_part("paste_mid", "Термопаста 4 г · универсальный апгрейд", 750, "Средний", 2024, quantity_g=4, conductivity_w_mk=8),
+    _pc_part("paste_premium", "Термопаста 4 г · высокопроизводительный состав", 1290, "Производительный", 2025, quantity_g=4, conductivity_w_mk=12),
+]
+
 def get_pc_parts_catalog() -> dict[str, Any]:
     return {
         "cpus": PC_CPUS,
@@ -243,6 +350,12 @@ def get_pc_parts_catalog() -> dict[str, Any]:
         "hdds": PC_HDDS,
         "psus": PC_PSUS,
         "cases": PC_CASES,
+        "case_fans": PC_CASE_FANS,
+        "wifi_adapters": PC_WIFI_ADAPTERS,
+        "monitors": PC_MONITORS,
+        "keyboards": PC_KEYBOARDS,
+        "mice": PC_MICE,
+        "thermal_pastes": PC_THERMAL_PASTES,
     }
 
 
@@ -256,6 +369,12 @@ def evaluate_pc_build(
     hdd_id: str = "hdd_none",
     psu_id: str = "psu_450",
     case_id: str = "used_office_case",
+    case_fans_id: str = "fans_none",
+    wifi_adapter_id: str = "wifi_none",
+    monitor_id: str = "monitor_none",
+    keyboard_id: str = "keyboard_none",
+    mouse_id: str = "mouse_none",
+    thermal_paste_id: str = "paste_none",
 ) -> dict[str, Any]:
     cpu = next((x for x in PC_CPUS if x["id"] == cpu_id), next(x for x in PC_CPUS if x["id"] == "i5_6500"))
     gpu = next((x for x in PC_GPUS if x["id"] == gpu_id), next(x for x in PC_GPUS if x["id"] == "gtx_1050ti"))
@@ -266,6 +385,12 @@ def evaluate_pc_build(
     hdd = next((x for x in PC_HDDS if x["id"] == hdd_id), PC_HDDS[0])
     psu = next((x for x in PC_PSUS if x["id"] == psu_id), next(x for x in PC_PSUS if x["id"] == "psu_450"))
     case = next((x for x in PC_CASES if x["id"] == case_id), next(x for x in PC_CASES if x["id"] == "used_office_case"))
+    case_fans = next((x for x in PC_CASE_FANS if x["id"] == case_fans_id), PC_CASE_FANS[0])
+    wifi_adapter = next((x for x in PC_WIFI_ADAPTERS if x["id"] == wifi_adapter_id), PC_WIFI_ADAPTERS[0])
+    monitor = next((x for x in PC_MONITORS if x["id"] == monitor_id), PC_MONITORS[0])
+    keyboard = next((x for x in PC_KEYBOARDS if x["id"] == keyboard_id), PC_KEYBOARDS[0])
+    mouse = next((x for x in PC_MICE if x["id"] == mouse_id), PC_MICE[0])
+    thermal_paste = next((x for x in PC_THERMAL_PASTES if x["id"] == thermal_paste_id), PC_THERMAL_PASTES[0])
 
     errors: list[str] = []
     warnings: list[str] = []
@@ -273,6 +398,9 @@ def evaluate_pc_build(
         ("CPU", cpu_id, PC_CPUS), ("GPU", gpu_id, PC_GPUS), ("материнскую плату", mb_id, PC_MOTHERBOARDS),
         ("RAM", ram_id, PC_RAMS), ("кулер", cooler_id, PC_COOLERS), ("SSD", ssd_id, PC_SSDS),
         ("HDD", hdd_id, PC_HDDS), ("БП", psu_id, PC_PSUS), ("корпус", case_id, PC_CASES),
+        ("корпусные вентиляторы", case_fans_id, PC_CASE_FANS), ("Wi-Fi адаптер", wifi_adapter_id, PC_WIFI_ADAPTERS),
+        ("монитор", monitor_id, PC_MONITORS), ("клавиатура", keyboard_id, PC_KEYBOARDS),
+        ("мышь", mouse_id, PC_MICE), ("термопаста", thermal_paste_id, PC_THERMAL_PASTES),
     ]
     for label, requested_id, options in requested_parts:
         if not any(option["id"] == requested_id for option in options):
@@ -286,26 +414,57 @@ def evaluate_pc_build(
         errors.append("Поколение/чипсет платы не заявлены как совместимые с выбранным процессором, даже если название сокета совпадает.")
     if mb["ram_type"] != ram["ram_type"]:
         errors.append(f"Несовместимость стандарта памяти: плата поддерживает {mb['ram_type']}, выбрана ОЗУ {ram['ram_type']}.")
+    if ram["capacity_gb"] > mb.get("max_ram_gb", 0):
+        errors.append(f"Комплект ОЗУ {ram['capacity_gb']} ГБ превышает заявленный предел платы {mb['name']} ({mb.get('max_ram_gb', 0)} ГБ).")
+    if ram.get("modules", 1) > mb.get("dimm_slots", 0):
+        errors.append(f"Для комплекта памяти требуется {ram.get('modules', 1)} слота DIMM, а на плате {mb['name']} указано {mb.get('dimm_slots', 0)}.")
+    if cpu.get("release_year") and mb.get("release_year") and cpu["release_year"] >= mb["release_year"] + 4:
+        warnings.append(f"Процессор {cpu['name']} заметно новее платы {mb['name']}; перед сборкой проверьте поддерживаемую версию BIOS и официальный CPU support list.")
     if ram["capacity_gb"] < 8:
         warnings.append("Менее 8 ГБ ОЗУ — минимальный объём; современные ОС и игры могут работать с ограничениями.")
-    if mb.get("max_ram_mhz") and ram["speed_mhz"] > mb["max_ram_mhz"]:
-        warnings.append(f"Выбранная память рассчитана на {ram['speed_mhz']} МГц, а для этой платы в каталоге указан предел {mb['max_ram_mhz']} МГц; фактическая частота может быть снижена.")
+    memory_speed_limits = [
+        ("платы", mb.get("max_ram_mhz")),
+        ("контроллера памяти CPU", cpu.get("max_ram_mhz")),
+    ]
+    applicable_memory_limits = [(label, limit) for label, limit in memory_speed_limits if limit]
+    if applicable_memory_limits and ram["speed_mhz"] > min(limit for _, limit in applicable_memory_limits):
+        limiting_label, limiting_speed = min(applicable_memory_limits, key=lambda entry: entry[1])
+        warnings.append(f"Выбранная память рассчитана на {ram['speed_mhz']} MT/s, а для {limiting_label} указан предел {limiting_speed} MT/s; фактическая частота может быть снижена.")
     if ram.get("kit", "").startswith("1×"):
         warnings.append("Выбран один модуль памяти: двухканальный режим обычно требует согласованного комплекта модулей и установки в правильные слоты.")
     if ssd.get("drive_kind") == "nvme" and mb.get("m2_slots") == 0:
         errors.append(f"Для NVMe SSD на плате {mb['name']} не указано место M.2; выберите SATA SSD или проверьте точную ревизию платы.")
     if hdd["capacity_gb"] and case.get("drive_bays_35", 0) < 1:
         errors.append(f"Для 3.5-дюймового HDD в корпусе {case['name']} не указано посадочное место.")
-    if hdd["capacity_gb"] and mb.get("sata_ports", 0) < 1:
-        errors.append(f"Для дополнительного HDD нужна свободная SATA-позиция на плате {mb['name']}.")
+    sata_device_count = int(ssd.get("drive_kind") == "sata_ssd") + int(hdd["capacity_gb"] > 0)
+    if sata_device_count > mb.get("sata_ports", 0):
+        errors.append(f"Для выбранных SATA-накопителей нужно {sata_device_count} порта, а у платы {mb['name']} указано {mb.get('sata_ports', 0)}.")
     if mb["form_factor"] == "ATX" and not case["supports_atx"]:
         errors.append(f"Материнская плата формата ATX не поместится в корпус ({case['name']}).")
     if case.get("supported_form_factors") and mb["form_factor"] not in case["supported_form_factors"]:
         errors.append(f"Формат платы {mb['form_factor']} не указан в списке поддерживаемых для корпуса {case['name']}.")
+    if psu.get("form_factor") not in case.get("supported_psu_form_factors", ["ATX"]):
+        errors.append(f"Формат блока питания {psu.get('form_factor')} не заявлен для корпуса {case['name']}.")
+    required_8pin = int(gpu.get("required_8pin_connectors", 0))
+    if required_8pin > psu.get("pcie_8pin_count", 0) and not (psu.get("native_12v_2x6") and gpu.get("accepts_native_12v_2x6", False)):
+        errors.append(f"Для видеокарты заявлено до {required_8pin} разъёмов PCIe 8-pin, а у БП указано {psu.get('pcie_8pin_count', 0)}; проверьте кабели точной модели.")
     if cooler.get("supported_sockets") and cpu["socket"] not in cooler["supported_sockets"]:
         errors.append(f"Для кулера {cooler['name']} не заявлено крепление на сокет {cpu['socket']}.")
     if gpu["length_mm"] > case["max_gpu_mm"]:
-        errors.append(f"Видеокарта длиной {gpu['length_mm']} мм не войдёт в корпус (максимум {case['max_gpu_mm']} мм).")
+        fit_message = f"Видеокарта длиной {gpu['length_mm']} мм превышает лимит корпуса {case['name']} ({case['max_gpu_mm']} мм)."
+        (warnings if gpu.get("length_is_estimate") else errors).append(fit_message + (" Длина дана как типичный ориентир; проверьте конкретную модель карты." if gpu.get("length_is_estimate") else ""))
+    if case_fans.get("quantity", 0):
+        fan_size = case_fans["fan_size_mm"]
+        slot_key = f"additional_{fan_size}mm_fan_slots"
+        available_fan_slots = case.get(slot_key)
+        if available_fan_slots is not None and case_fans["quantity"] > available_fan_slots:
+            errors.append(f"Для корпуса {case['name']} указано только {available_fan_slots} дополнительных мест под вентиляторы {fan_size} мм, выбран комплект из {case_fans['quantity']} шт.")
+        if case_fans.get("connector", "").find("ARGB") >= 0:
+            warnings.append("Для ARGB подсветки проверьте наличие 5V 3-pin разъёма и совместимой адресной подсветки на плате.")
+    if wifi_adapter.get("interface") == "PCIe x1" and mb.get("pcie_x1_slots", 0) < 1:
+        errors.append(f"Для Wi-Fi адаптера PCIe x1 не указан свободный слот расширения на плате {mb['name']}.")
+    if wifi_adapter_id != "wifi_none" and mb.get("wifi_integrated"):
+        warnings.append(f"На плате {mb['name']} уже указана встроенная Wi-Fi связь; отдельный адаптер может быть лишним.")
     cooler_kind = cooler.get("cooler_kind", "tower")
     radiator_sizes = {"aio_240": 240, "aio_280": 280, "aio_360": 360}
     if cooler_kind in radiator_sizes:
@@ -320,11 +479,13 @@ def evaluate_pc_build(
     if cooler["max_tdp_w"] < cpu["tdp_w"]:
         warnings.append(f"Теплопакет CPU ({cpu['tdp_w']} Вт) превышает паспортный отвод кулера ({cooler['max_tdp_w']} Вт) — возможен троттлинг.")
 
-    if gpu["tdp_w"] >= 300 and not psu.get("pcie_5"):
-        warnings.append("Для видеокарты такого класса проверьте требования производителя к кабелю питания и стандарту БП: в каталоге выбран более старый тип БП.")
+    if gpu["tdp_w"] >= 250 and not psu.get("pcie_5"):
+        connector_note = gpu.get("power_connectors")
+        warnings.append(f"Для видеокарты такого класса проверьте кабель питания {connector_note or 'и рекомендации производителя'} и требования к БП; у выбранного блока не заявлен нативный PCIe 5.x кабель.")
 
     est_peak_draw_w = int(cpu["tdp_w"] + gpu["tdp_w"] + 75)
-    recommended_psu_w = int(math.ceil((est_peak_draw_w * 1.28) / 50.0) * 50)
+    calculated_psu_w = int(math.ceil((est_peak_draw_w * 1.28) / 50.0) * 50)
+    recommended_psu_w = max(calculated_psu_w, int(gpu.get("recommended_psu_w", 0)))
     if psu["watts"] < est_peak_draw_w:
         errors.append(f"Мощности БП ({psu['watts']} Вт) недостаточно для пикового потребления системы (~{est_peak_draw_w} Вт).")
     elif psu["watts"] < recommended_psu_w:
@@ -379,7 +540,8 @@ def evaluate_pc_build(
         },
     ]
 
-    total_rub = sum(x["price_rub"] for x in (cpu, gpu, mb, ram, cooler, ssd, hdd, psu, case))
+    total_rub = sum(x["price_rub"] for x in (cpu, gpu, mb, ram, cooler, ssd, hdd, psu, case, case_fans, wifi_adapter, monitor, keyboard, mouse, thermal_paste))
+    optional_equipment_rub = sum(x["price_rub"] for x in (case_fans, wifi_adapter, monitor, keyboard, mouse, thermal_paste))
     return {
         "compatible": len(errors) == 0,
         "errors": errors,
@@ -389,11 +551,16 @@ def evaluate_pc_build(
         "bottleneck_pct": bottleneck_pct,
         "bottleneck_verdict": bottleneck_side,
         "total_price_rub": total_rub,
+        "optional_equipment_price_rub": optional_equipment_rub,
         "storage_capacity_gb": int(ssd["capacity_gb"] + hdd["capacity_gb"]),
         "fps_benchmarks": fps_benchmarks,
         "performance_note": "Производительные баллы и FPS здесь — ориентировочная внутренняя модель, не результаты тестирования этих конкретных комплектующих. Реальные значения зависят от версий игры, разрешения, настроек, драйвера, охлаждения и конкретных моделей карт.",
         "price_note": "Цены — справочные ориентиры для сравнения конфигураций, а не актуальные предложения магазинов; б/у-комплектующие особенно сильно зависят от состояния и комплектации.",
-        "selected": {"cpu": cpu, "gpu": gpu, "mb": mb, "ram": ram, "cooler": cooler, "ssd": ssd, "hdd": hdd, "psu": psu, "case": case},
+        "selected": {
+            "cpu": cpu, "gpu": gpu, "mb": mb, "ram": ram, "cooler": cooler, "ssd": ssd, "hdd": hdd, "psu": psu, "case": case,
+            "case_fans": case_fans, "wifi_adapter": wifi_adapter, "monitor": monitor, "keyboard": keyboard, "mouse": mouse,
+            "thermal_paste": thermal_paste,
+        },
     }
 
 

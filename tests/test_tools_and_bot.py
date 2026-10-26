@@ -1305,10 +1305,17 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             assert len(pc_catalog["cpus"]) >= 25 and len(pc_catalog["gpus"]) >= 20
             assert {"DDR3", "DDR4", "DDR5"} <= {item["ram_type"] for item in pc_catalog["rams"]}
             assert len(pc_catalog["hdds"]) >= 4 and len(pc_catalog["ssds"]) >= 8
+            assert {"case_fans", "wifi_adapters", "monitors", "keyboards", "mice", "thermal_pastes"} <= set(pc_catalog)
+            assert next(item for item in pc_catalog["gpus"] if item["id"] == "gpu_none")["segment"] == "optional"
             pc_default = await client.post("/api/v6/pc/evaluate", json={})
             assert pc_default.status_code == 200 and pc_default.json()["compatible"] is True
             assert pc_default.json()["selected"]["cpu"]["id"] == "i5_6500"
             assert pc_default.json()["price_note"] and pc_default.json()["performance_note"]
+            assert pc_default.json()["optional_equipment_price_rub"] == 0
+            pc_workspace = await client.post("/api/v6/pc/evaluate", json={"monitor_id": "monitor_27_qhd_165", "keyboard_id": "keyboard_tkl_mech", "mouse_id": "mouse_wireless_gaming", "thermal_paste_id": "paste_premium"})
+            assert pc_workspace.status_code == 200
+            assert pc_workspace.json()["optional_equipment_price_rub"] == 27900 + 7900 + 8900 + 1290
+            assert pc_workspace.json()["selected"]["monitor"]["id"] == "monitor_27_qhd_165"
             pc_apu = await client.post("/api/v6/pc/evaluate", json={"cpu_id": "r5_5600g", "gpu_id": "gpu_none", "mb_id": "b550_tuf", "ram_id": "ddr4_16_3200", "cooler_id": "stock_am4", "ssd_id": "sata_480", "hdd_id": "hdd_1tb", "psu_id": "psu_450", "case_id": "budget_mini"})
             assert pc_apu.status_code == 200 and pc_apu.json()["compatible"] is True
             assert pc_apu.json()["storage_capacity_gb"] == 1480

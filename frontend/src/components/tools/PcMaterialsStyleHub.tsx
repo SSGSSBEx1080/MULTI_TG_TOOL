@@ -22,9 +22,15 @@ import { CarComparison3D, Mini3DSceneBadge, PcBuilderShowcase3D, RouteGlobe3D } 
 
 const PC_SAVED_BUILDS_KEY = 'multi-tg-tool.pc-saved-builds.v1';
 const PC_SAVED_BUILDS_LIMIT = 12;
-const PC_BUILD_PART_KEYS = ['cpu', 'gpu', 'mb', 'ram', 'cooler', 'ssd', 'hdd', 'psu', 'case'] as const;
+const PC_CORE_PART_KEYS = ['cpu', 'gpu', 'mb', 'ram', 'cooler', 'ssd', 'hdd', 'psu', 'case'] as const;
+const PC_OPTIONAL_PART_KEYS = ['case_fans', 'wifi_adapter', 'monitor', 'keyboard', 'mouse', 'thermal_paste'] as const;
+const PC_BUILD_PART_KEYS = [...PC_CORE_PART_KEYS, ...PC_OPTIONAL_PART_KEYS] as const;
 type PcBuildPartKey = (typeof PC_BUILD_PART_KEYS)[number];
 type PcBuildParts = Record<PcBuildPartKey, string>;
+const PC_DEFAULT_OPTIONAL_PARTS = {
+  case_fans: 'fans_none', wifi_adapter: 'wifi_none', monitor: 'monitor_none',
+  keyboard: 'keyboard_none', mouse: 'mouse_none', thermal_paste: 'paste_none',
+} as const;
 type SavedPcBuild = {
   id: string;
   name: string;
@@ -43,7 +49,8 @@ type PcComparison = {
 
 const PC_PART_CATALOG_KEYS: Record<PcBuildPartKey, string> = {
   cpu: 'cpus', gpu: 'gpus', mb: 'motherboards', ram: 'rams', cooler: 'coolers',
-  ssd: 'ssds', hdd: 'hdds', psu: 'psus', case: 'cases',
+  ssd: 'ssds', hdd: 'hdds', psu: 'psus', case: 'cases', case_fans: 'case_fans',
+  wifi_adapter: 'wifi_adapters', monitor: 'monitors', keyboard: 'keyboards', mouse: 'mice', thermal_paste: 'thermal_pastes',
 };
 
 const PC_SEGMENT_FILTERS = [
@@ -55,18 +62,27 @@ const PC_SEGMENT_FILTERS = [
   { id: 'optional', label: 'Опционально', description: 'Необязательные позиции' },
 ] as const;
 
-const isPcBuildParts = (value: unknown): value is PcBuildParts => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+const normalizePcBuildParts = (value: unknown): PcBuildParts | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
-  return PC_BUILD_PART_KEYS.every((key) => typeof candidate[key] === 'string' && candidate[key].length > 0);
+  if (!PC_CORE_PART_KEYS.every((key) => typeof candidate[key] === 'string' && candidate[key].length > 0)) return null;
+  for (const key of PC_OPTIONAL_PART_KEYS) {
+    if (candidate[key] !== undefined && (typeof candidate[key] !== 'string' || !candidate[key])) return null;
+  }
+  return Object.fromEntries(PC_BUILD_PART_KEYS.map((key) => [
+    key,
+    typeof candidate[key] === 'string' ? candidate[key] : (PC_DEFAULT_OPTIONAL_PARTS as Record<string, string>)[key],
+  ])) as PcBuildParts;
 };
+
+const isPcBuildParts = (value: unknown): value is PcBuildParts => normalizePcBuildParts(value) !== null;
 
 const normalizeSavedPcBuild = (value: unknown): SavedPcBuild | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
   const name = typeof candidate.name === 'string' ? candidate.name.trim().slice(0, 60) : '';
-  const parts = candidate.parts;
-  if (!name || !isPcBuildParts(parts)) return null;
+  const parts = normalizePcBuildParts(candidate.parts);
+  if (!name || !parts) return null;
   const createdAt = typeof candidate.createdAt === 'string' ? candidate.createdAt : new Date().toISOString();
   const updatedAt = typeof candidate.updatedAt === 'string' ? candidate.updatedAt : createdAt;
   const id = typeof candidate.id === 'string' && candidate.id ? candidate.id : `pc-${Date.now().toString(36)}`;
@@ -110,6 +126,9 @@ const PC_BUILD_PRESETS = [
   { id: 'ivy-bridge-rebuild', name: 'Ретро-апгрейд LGA1155', note: 'Недорогая система DDR3 · корпус с запасом по охлаждению', parts: { cpu: 'i5_3570k', gpu: 'gtx_1050ti', mb: 'h61_lga1155', ram: 'ddr3_16_1600', cooler: 'stock_lga1155', ssd: 'sata_480', hdd: 'hdd_none', psu: 'psu_450', case: 'mid_tower_budget' } },
   { id: 'am5-budget', name: 'Доступный вход на AM5', note: 'Свежая платформа с DDR5 и видеокартой среднего уровня', parts: { cpu: 'r5_7500f', gpu: 'rx_9060xt_16', mb: 'a620m_am5', ram: 'ddr5_32_5600', cooler: 'tower_120_budget', ssd: 'nvme_1tb_gen3', hdd: 'hdd_none', psu: 'psu_650_gold', case: 'airflow_atx_2025' } },
   { id: 'new-mainstream-1440p', name: 'Новое поколение · 1440p', note: 'Современная видеокарта, быстрый SSD и резерв мощности', parts: { cpu: 'r5_9600x', gpu: 'rtx_5070', mb: 'b850m_am5', ram: 'ddr5_32_6000', cooler: 'ak620', ssd: 'nvme_2tb_gen4', hdd: 'hdd_none', psu: 'psu_750', case: 'airflow_atx_2025' } },
+  { id: '2026-value-gaming', name: 'Актуальный бюджет · 1080p', note: 'Core Ultra 5 Plus + RTX 5060 · полный комплект рабочего места', parts: { cpu: 'u5_250k_plus', gpu: 'rtx_5060', mb: 'b860_d5', ram: 'ddr5_32_5600', cooler: 'ak400', ssd: 'nvme_1tb_gen3', hdd: 'hdd_none', psu: 'psu_650_gold', case: 'mid_tower_budget', monitor: 'monitor_24_fhd_180', keyboard: 'keyboard_membrane_gaming', mouse: 'mouse_gaming_wired' } },
+  { id: '2026-amd-gaming', name: 'Ryzen X3D · 1440p', note: 'Ryzen 7 9850X3D + RX 9070 · актуальная AM5-сборка', parts: { cpu: 'r7_9850x3d', gpu: 'rx_9070', mb: 'b850_atx', ram: 'ddr5_32_6000', cooler: 'aio_240', ssd: 'nvme_2tb_gen4', hdd: 'hdd_none', psu: 'psu_850', case: 'lancool_216', monitor: 'monitor_27_qhd_165', wifi_adapter: 'wifi_none', thermal_paste: 'paste_premium' } },
+  { id: '2026-workstation', name: 'Рабочая станция · 4K', note: 'Ryzen 9 9950X3D2 + 128 ГБ DDR5 + комплект периферии', parts: { cpu: 'r9_9950x3d2', gpu: 'rx_9070_gre', mb: 'x870e_tomahawk', ram: 'ddr5_128_5600', cooler: 'aio_360', ssd: 'nvme_4tb_gen4', hdd: 'hdd_8tb', psu: 'psu_1000', case: 'full_tower', monitor: 'monitor_32_4k_144', keyboard: 'keyboard_tkl_mech', mouse: 'mouse_wireless_gaming', thermal_paste: 'paste_premium' } },
 ] as const;
 
 // ============================================================================
@@ -145,6 +164,12 @@ export const PcMaterialsStyleHub: React.FC<{
   const [hddId, setHddId] = useState('hdd_none');
   const [psuId, setPsuId] = useState('psu_450');
   const [caseId, setCaseId] = useState('used_office_case');
+  const [caseFansId, setCaseFansId] = useState('fans_none');
+  const [wifiAdapterId, setWifiAdapterId] = useState('wifi_none');
+  const [monitorId, setMonitorId] = useState('monitor_none');
+  const [keyboardId, setKeyboardId] = useState('keyboard_none');
+  const [mouseId, setMouseId] = useState('mouse_none');
+  const [thermalPasteId, setThermalPasteId] = useState('paste_none');
   const [evalRes, setEvalRes] = useState<any>(null);
   const [evalLoading, setEvalLoading] = useState(false);
   const [evalError, setEvalError] = useState('');
@@ -215,6 +240,12 @@ export const PcMaterialsStyleHub: React.FC<{
       hdd_id: hddId,
       psu_id: psuId,
       case_id: caseId,
+      case_fans_id: caseFansId,
+      wifi_adapter_id: wifiAdapterId,
+      monitor_id: monitorId,
+      keyboard_id: keyboardId,
+      mouse_id: mouseId,
+      thermal_paste_id: thermalPasteId,
     })
       .then((r) => {
         if (id !== evalRequestId.current) return;
@@ -226,7 +257,7 @@ export const PcMaterialsStyleHub: React.FC<{
       })
       .finally(() => { if (id === evalRequestId.current) setEvalLoading(false); });
     return () => { evalRequestId.current += 1; };
-  }, [tab, catalog, cpuId, gpuId, mbId, ramId, coolerId, ssdId, hddId, psuId, caseId]);
+  }, [tab, catalog, cpuId, gpuId, mbId, ramId, coolerId, ssdId, hddId, psuId, caseId, caseFansId, wifiAdapterId, monitorId, keyboardId, mouseId, thermalPasteId]);
 
   useEffect(() => {
     if (tab !== 'materials' || matData) return;
@@ -251,9 +282,16 @@ export const PcMaterialsStyleHub: React.FC<{
   }, [tab, styleLoaded, styleRetry]);
 
   const applyPcPreset = (preset: (typeof PC_BUILD_PRESETS)[number]) => {
-    setCpuId(preset.parts.cpu); setGpuId(preset.parts.gpu); setMbId(preset.parts.mb);
-    setRamId(preset.parts.ram); setCoolerId(preset.parts.cooler); setSsdId(preset.parts.ssd);
-    setHddId(preset.parts.hdd); setPsuId(preset.parts.psu); setCaseId(preset.parts.case);
+    const parts = preset.parts as Partial<PcBuildParts> & Pick<PcBuildParts, (typeof PC_CORE_PART_KEYS)[number]>;
+    setCpuId(parts.cpu); setGpuId(parts.gpu); setMbId(parts.mb);
+    setRamId(parts.ram); setCoolerId(parts.cooler); setSsdId(parts.ssd);
+    setHddId(parts.hdd); setPsuId(parts.psu); setCaseId(parts.case);
+    setCaseFansId(parts.case_fans || PC_DEFAULT_OPTIONAL_PARTS.case_fans);
+    setWifiAdapterId(parts.wifi_adapter || PC_DEFAULT_OPTIONAL_PARTS.wifi_adapter);
+    setMonitorId(parts.monitor || PC_DEFAULT_OPTIONAL_PARTS.monitor);
+    setKeyboardId(parts.keyboard || PC_DEFAULT_OPTIONAL_PARTS.keyboard);
+    setMouseId(parts.mouse || PC_DEFAULT_OPTIONAL_PARTS.mouse);
+    setThermalPasteId(parts.thermal_paste || PC_DEFAULT_OPTIONAL_PARTS.thermal_paste);
     onToast(`Загружен пресет «${preset.name}»; детали можно менять по отдельности.`);
   };
 
@@ -268,6 +306,8 @@ export const PcMaterialsStyleHub: React.FC<{
   const currentPcParts = (): PcBuildParts => ({
     cpu: cpuId, gpu: gpuId, mb: mbId, ram: ramId, cooler: coolerId,
     ssd: ssdId, hdd: hddId, psu: psuId, case: caseId,
+    case_fans: caseFansId, wifi_adapter: wifiAdapterId, monitor: monitorId,
+    keyboard: keyboardId, mouse: mouseId, thermal_paste: thermalPasteId,
   });
 
   const persistSavedPcBuilds = (next: SavedPcBuild[]) => {
@@ -298,6 +338,9 @@ export const PcMaterialsStyleHub: React.FC<{
     setCpuId(build.parts.cpu); setGpuId(build.parts.gpu); setMbId(build.parts.mb);
     setRamId(build.parts.ram); setCoolerId(build.parts.cooler); setSsdId(build.parts.ssd);
     setHddId(build.parts.hdd); setPsuId(build.parts.psu); setCaseId(build.parts.case);
+    setCaseFansId(build.parts.case_fans); setWifiAdapterId(build.parts.wifi_adapter);
+    setMonitorId(build.parts.monitor); setKeyboardId(build.parts.keyboard); setMouseId(build.parts.mouse);
+    setThermalPasteId(build.parts.thermal_paste);
     onToast(`Загружена сохранённая сборка «${build.name}».`);
   };
 
@@ -453,6 +496,8 @@ export const PcMaterialsStyleHub: React.FC<{
     const apiParts = (parts: PcBuildParts) => ({
       cpu_id: parts.cpu, gpu_id: parts.gpu, mb_id: parts.mb, ram_id: parts.ram,
       cooler_id: parts.cooler, ssd_id: parts.ssd, hdd_id: parts.hdd, psu_id: parts.psu, case_id: parts.case,
+      case_fans_id: parts.case_fans, wifi_adapter_id: parts.wifi_adapter, monitor_id: parts.monitor,
+      keyboard_id: parts.keyboard, mouse_id: parts.mouse, thermal_paste_id: parts.thermal_paste,
     });
     try {
       const result = await apiPost('/api/v6/pc/compare', { left: apiParts(left.parts), right: apiParts(right.parts) });
@@ -504,7 +549,7 @@ export const PcMaterialsStyleHub: React.FC<{
         <section className="rounded-2xl border border-indigo-300/20 bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950/40 p-4">
           <div className="flex flex-wrap items-end justify-between gap-2"><div><div className="text-[9px] font-bold uppercase tracking-[.22em] text-indigo-300">КОНФИГУРАТОР · ОТ СТАРОГО ДО ФЛАГМАНСКОГО</div><h3 className="mt-1 text-sm font-bold text-white">Выберите стартовую сборку, затем меняйте любую деталь</h3></div><span className="text-[9px] text-slate-500">Цены — ориентиры, не live-предложения</span></div>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">{PC_BUILD_PRESETS.map((preset) => <button key={preset.id} type="button" onClick={() => applyPcPreset(preset)} className="group min-w-0 rounded-xl border border-white/10 bg-slate-950/80 p-3 text-left transition hover:-translate-y-0.5 hover:border-indigo-300/40 hover:bg-indigo-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300"><span className="flex items-start justify-between gap-2"><span className="min-w-0"><b className="block truncate text-xs text-white">{preset.name}</b><span className="mt-1 block text-[10px] leading-relaxed text-slate-400">{preset.note}</span></span><span className="shrink-0 font-mono text-[10px] font-bold text-amber-200">≈ {estimatePresetPrice(preset).toLocaleString('ru-RU')} ₽</span></span><span className="mt-2 flex flex-wrap gap-1">{[preset.parts.cpu, preset.parts.gpu, preset.parts.ram].map((id) => <span key={id} className="max-w-full truncate rounded-md border border-white/5 bg-white/[.04] px-1.5 py-0.5 text-[9px] text-slate-400">{catalog.cpus.find((x: any) => x.id === id)?.name || catalog.gpus.find((x: any) => x.id === id)?.name || catalog.rams.find((x: any) => x.id === id)?.name || id}</span>)}</span></button>)}</div>
-          <div className="mt-3 grid grid-cols-2 gap-1.5 text-center sm:grid-cols-4 lg:grid-cols-9">{[['Процессоры', catalog.cpus], ['Видеокарты', catalog.gpus], ['Платы', catalog.motherboards], ['ОЗУ', catalog.rams], ['Охлаждение', catalog.coolers], ['SSD', catalog.ssds], ['HDD', catalog.hdds], ['БП', catalog.psus], ['Корпуса', catalog.cases]].map(([label, items]: any) => <div key={label} className="rounded-lg border border-white/5 bg-black/20 px-2 py-1.5"><b className="block text-xs text-white">{items?.length || 0}</b><span className="text-[9px] text-slate-500">{label}</span></div>)}</div>
+          <div className="mt-3 grid grid-cols-2 gap-1.5 text-center sm:grid-cols-4 xl:grid-cols-8">{[['Процессоры', catalog.cpus], ['Видеокарты', catalog.gpus], ['Платы', catalog.motherboards], ['ОЗУ', catalog.rams], ['Охлаждение', catalog.coolers], ['SSD', catalog.ssds], ['HDD', catalog.hdds], ['БП', catalog.psus], ['Корпуса', catalog.cases], ['Вентиляторы', catalog.case_fans], ['Wi-Fi', catalog.wifi_adapters], ['Мониторы', catalog.monitors], ['Клавиатуры', catalog.keyboards], ['Мыши', catalog.mice], ['Термопаста', catalog.thermal_pastes]].map(([label, items]: any) => <div key={label} className="rounded-lg border border-white/5 bg-black/20 px-2 py-1.5"><b className="block text-xs text-white">{items?.length || 0}</b><span className="text-[9px] text-slate-500">{label}</span></div>)}</div>
           <p className="mt-2 text-[9px] leading-relaxed text-slate-500">Б/у детали требуют проверки состояния, модели платы, BIOS и комплектации. Совместимость носит справочный характер: сверяйте конкретные ревизии и руководства производителей.</p>
         </section>
 
@@ -579,7 +624,7 @@ export const PcMaterialsStyleHub: React.FC<{
                 <tbody className="divide-y divide-white/5 text-slate-300">
                   <tr><th className="px-2 py-2 font-medium text-slate-500">Оценка цены</th><td className="px-2 py-2">{Number(pcComparison.left?.total_price_rub || 0).toLocaleString('ru-RU')} ₽</td><td className="px-2 py-2">{Number(pcComparison.right?.total_price_rub || 0).toLocaleString('ru-RU')} ₽</td></tr>
                   <tr><th className="px-2 py-2 font-medium text-slate-500">Совместимость</th><td className="px-2 py-2">{pcComparison.left?.compatible ? '✓ Совместима' : `⚠ ${pcComparison.left?.errors?.length || 0} ошибок`}</td><td className="px-2 py-2">{pcComparison.right?.compatible ? '✓ Совместима' : `⚠ ${pcComparison.right?.errors?.length || 0} ошибок`}</td></tr>
-                  {(['cpu', 'gpu', 'ram', 'ssd', 'psu'] as const).map((key) => <tr key={key}><th className="px-2 py-2 font-medium uppercase text-slate-500">{key}</th><td className="max-w-[180px] truncate px-2 py-2" title={pcComparison.left?.selected?.[key]?.name}>{pcComparison.left?.selected?.[key]?.name || '—'}</td><td className="max-w-[180px] truncate px-2 py-2" title={pcComparison.right?.selected?.[key]?.name}>{pcComparison.right?.selected?.[key]?.name || '—'}</td></tr>)}
+                  {(['cpu', 'gpu', 'ram', 'ssd', 'psu', 'monitor', 'keyboard', 'mouse'] as const).map((key) => <tr key={key}><th className="px-2 py-2 font-medium uppercase text-slate-500">{key}</th><td className="max-w-[180px] truncate px-2 py-2" title={pcComparison.left?.selected?.[key]?.name}>{pcComparison.left?.selected?.[key]?.name || '—'}</td><td className="max-w-[180px] truncate px-2 py-2" title={pcComparison.right?.selected?.[key]?.name}>{pcComparison.right?.selected?.[key]?.name || '—'}</td></tr>)}
                   <tr><th className="px-2 py-2 font-medium text-slate-500">Разница в цене B − A</th><td colSpan={2} className="px-2 py-2 font-semibold text-amber-100">{pcComparison.price_delta_rub > 0 ? '+' : ''}{pcComparison.price_delta_rub.toLocaleString('ru-RU')} ₽{pcComparison.cheaper_side === 'equal' ? ' · цена равна' : ` · дешевле: ${pcComparison.cheaper_side === 'left' ? 'A' : 'B'}`}</td></tr>
                 </tbody>
               </table>
@@ -609,7 +654,7 @@ export const PcMaterialsStyleHub: React.FC<{
                   return <button key={segment.id} type="button" aria-pressed={active} title={segment.description} onClick={() => setPcSegmentFilter(segment.id)} className={`min-h-10 rounded-lg border px-2 py-1.5 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300 ${active ? 'border-indigo-300/50 bg-indigo-500/15 text-indigo-100' : 'border-white/5 bg-white/[.025] text-slate-400 hover:border-white/15 hover:text-white'}`}><span className="block truncate text-[10px] font-semibold">{segment.label}</span><span className="block text-[9px] opacity-70">{count} поз.</span></button>;
                 })}
               </div>
-              <p className="mt-2 text-[9px] leading-relaxed text-slate-500">Сегмент фильтрует детали во всех девяти категориях. Текущий выбор всегда остаётся доступен, чтобы не терять совместимость сборки.</p>
+              <p className="mt-2 text-[9px] leading-relaxed text-slate-500">Сегмент фильтрует все 15 категорий. Текущий выбор всегда остаётся доступен, чтобы не терять совместимость сборки.</p>
             </fieldset>
 
             {[
@@ -622,6 +667,12 @@ export const PcMaterialsStyleHub: React.FC<{
               { label: 'Дополнительный HDD (необязательно)', val: hddId, set: setHddId, list: catalog.hdds, extra: (x: any) => `${x.capacity_gb} ГБ · ${x.interface}${x.rpm ? ` · ${x.rpm} об/мин` : ''}` },
               { label: 'Блок питания (PSU)', val: psuId, set: setPsuId, list: catalog.psus, extra: (x: any) => `${x.watts} Вт · ${x.efficiency} · ${x.atx_version}` },
               { label: 'Корпус ПК', val: caseId, set: setCaseId, list: catalog.cases, extra: (x: any) => `${x.case_size} · GPU до ${x.max_gpu_mm} мм · кулер до ${x.max_cooler_mm} мм` },
+              { label: 'Корпусные вентиляторы', val: caseFansId, set: setCaseFansId, list: catalog.case_fans, extra: (x: any) => `${x.quantity} шт. · ${x.fan_size_mm || '—'} мм · ${x.rpm} · ${x.connector}` },
+              { label: 'Wi-Fi / Bluetooth', val: wifiAdapterId, set: setWifiAdapterId, list: catalog.wifi_adapters, extra: (x: any) => `${x.wifi_standard} · ${x.interface}${x.bluetooth ? ' · Bluetooth' : ''}` },
+              { label: 'Монитор', val: monitorId, set: setMonitorId, list: catalog.monitors, extra: (x: any) => `${x.diagonal_in ? `${x.diagonal_in}″ · ` : ''}${x.resolution} · ${x.refresh_hz ? `${x.refresh_hz} Гц` : 'без дисплея'} · ${x.panel}` },
+              { label: 'Клавиатура', val: keyboardId, set: setKeyboardId, list: catalog.keyboards, extra: (x: any) => `${x.layout} · ${x.connection} · ${x.switch_type}` },
+              { label: 'Мышь', val: mouseId, set: setMouseId, list: catalog.mice, extra: (x: any) => `${x.connection} · ${x.sensor_dpi ? `${x.sensor_dpi.toLocaleString('ru-RU')} DPI` : 'не нужна'} · ${x.weight_g ? `${x.weight_g} г` : ''}` },
+              { label: 'Термопаста', val: thermalPasteId, set: setThermalPasteId, list: catalog.thermal_pastes, extra: (x: any) => `${x.quantity_g ? `${x.quantity_g} г · ` : ''}${x.conductivity_w_mk ? `${x.conductivity_w_mk} Вт/(м·К)` : 'не требуется'}` },
             ].map((row) => (
               <div key={row.label} className="space-y-1">
                 <div className="text-[11px] font-semibold text-slate-300">{row.label}</div>
