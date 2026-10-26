@@ -22,7 +22,7 @@ from backend.tools.knowledge_hub import (
     search_constitutions,
     search_formulas,
 )
-from backend.tools.mega_expansion_v5 import calculate_fuel_trip, compare_tires, compute_world_timezones
+from backend.tools.mega_expansion_v5 import calculate_fuel_trip, compare_tires, compute_world_timezones, split_group_expenses
 from backend.tools.omni_detector import smart_omni_detect
 from backend.tools.party_and_fun import (
     LIGURIA_TEXT,
@@ -76,6 +76,65 @@ def test_tire_specs_reject_impossible_dimensions() -> None:
     for spec in ("205/999 R16", "205/55 R99", "999/55 R16"):
         with pytest.raises(ValueError):
             compare_tires("205/55 R16", spec)
+
+
+def test_group_bill_splitter_supports_weights_items_and_cent_exact_settlement() -> None:
+    weighted = split_group_expenses([
+        {"name": "Alex", "paid": 30, "share_weight": 2},
+        {"name": "Bea", "paid": 15, "share_weight": 1},
+        {"name": "Chris", "paid": 0, "share_weight": 1},
+    ], tip_pct=10, currency_code="EUR")
+    assert weighted["currency_code"] == "EUR"
+    assert weighted["expense_mode"] == "weighted"
+    assert weighted["raw_total"] == 45 and weighted["tip_amount"] == 4.5
+    assert sum(item["share"] for item in weighted["settlements"]) == weighted["total_with_tip"]
+    assert round(sum(item["amount"] for item in weighted["transfers"]), 2) == 12.37
+    assert {item["name"] for item in weighted["settlements"] if item["status"] == "owes"} == {"Chris"}
+
+    itemized = split_group_expenses(
+        [{"name": "Alex", "paid": 0}, {"name": "Bea", "paid": 0}, {"name": "Chris", "paid": 0}],
+        tip_pct=10,
+        expenses=[
+            {"description": "Pizza", "amount": 90, "payer": "Alex", "participants": ["Alex", "Bea"]},
+            {"description": "Juice", "amount": 30, "payer": "Bea", "participants": ["Bea", "Chris"]},
+        ],
+    )
+    assert itemized["expense_mode"] == "items" and itemized["expense_count"] == 2
+    assert itemized["raw_total"] == 120 and itemized["total_with_tip"] == 132
+    shares = {item["name"]: item["share"] for item in itemized["settlements"]}
+    assert shares == {"Alex": 49.5, "Bea": 66, "Chris": 16.5}
+    assert round(sum(item["amount"] for item in itemized["transfers"]), 2) == 49.5
+
+
+def test_group_bill_splitter_rejects_ambiguous_or_impossible_input() -> None:
+    invalid_cases = [
+        ([], 0, None),
+        ([{"name": "Alex", "paid": 10}, {"name": " alex ", "paid": 0}], 0, None),
+        ([{"name": "Alex", "paid": 10, "share_weight": 0}], 0, None),
+        ([{"name": "Alex", "paid": float("nan")}], 0, None),
+        ([{"name": "Alex", "paid": 10}], 0, [{"amount": 10, "payer": "Alex", "participants": []}]),
+        ([{"name": "Alex", "paid": 10}], 0, [{"amount": float("inf"), "payer": "Alex", "participants": ["Alex"]}]),
+    ]
+    for participants, tip, expenses in invalid_cases:
+        with pytest.raises(ValueError):
+            split_group_expenses(participants, tip, expenses)
+    with pytest.raises(ValueError):
+        split_group_expenses([{"name": "Alex", "paid": 1}], currency_code="XYZ")
+
+
+def test_bill_split_rounding_and_transfer_reconciliation_are_exact() -> None:
+    result = split_group_expenses([
+        {"name": "One", "paid": 0.05},
+        {"name": "Two", "paid": 0},
+        {"name": "Three", "paid": 0},
+    ], tip_pct=10)
+    assert result["tip_amount"] == 0.01 and result["total_with_tip"] == 0.06
+    assert [entry["share"] for entry in result["settlements"]] == [0.03, 0.02, 0.01]
+    balances = {entry["name"]: round(entry["balance"], 2) for entry in result["settlements"]}
+    for transfer in result["transfers"]:
+        balances[transfer["from"]] = round(balances[transfer["from"]] + transfer["amount"], 2)
+        balances[transfer["to"]] = round(balances[transfer["to"]] - transfer["amount"], 2)
+    assert set(balances.values()) == {0}
 
 
 def test_world_time_planner_uses_dst_and_reports_local_day_changes() -> None:
@@ -1189,6 +1248,17 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             finance_bad = await client.post("/api/tools/calc/finance", json={"mode": "loan", "principal": 100000, "months": 12, "monthly_extra_payment": 100001})
             assert finance_bad.status_code == 400
             assert (await client.post("/api/v2/v5/bill-split", json={"entries": [{"name": "A", "paid": 2000}, {"name": "B", "paid": 0}]})).json()["transfers"][0]["amount"] == 1000.0
+            bill_items = await client.post("/api/v2/v5/bill-split", json={
+                "entries": [{"name": "A", "paid": 0}, {"name": "B", "paid": 0}, {"name": "C", "paid": 0}],
+                "tip_pct": 10,
+                "currency_code": "EUR",
+                "expenses": [{"description": "Shared meal", "amount": 90, "payer": "A", "participants": ["A", "B"]}, {"description": "Drink", "amount": 30, "payer": "B", "participants": ["B", "C"]}],
+            })
+            assert bill_items.status_code == 200 and bill_items.json()["expense_mode"] == "items"
+            assert bill_items.json()["currency_code"] == "EUR"
+            assert bill_items.json()["total_with_tip"] == 132 and len(bill_items.json()["settlements"]) == 3
+            bill_bad_item = await client.post("/api/v2/v5/bill-split", json={"entries": [{"name": "A", "paid": 0}], "expenses": [{"amount": 10, "payer": "A", "participants": []}]})
+            assert bill_bad_item.status_code == 400
             assert (await client.get("/api/v2/v5/periodic-table?formula=C6H12O6")).json()["molar"]["molar_mass_g_mol"] == pytest.approx(180.156, rel=1e-2)
             assert (await client.post("/api/v2/v5/color-harmony", json={"hex_color": "#0ea5e9"})).status_code == 200
             assert (await client.get("/api/v2/v5/http-chmod?octal=750&q=404")).json()["chmod_symbolic"] == "-rwxr-x---"
