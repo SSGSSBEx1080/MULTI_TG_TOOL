@@ -1344,6 +1344,9 @@ async def handle_todo_add_text(message: Message, state: FSMContext) -> None:
     raw = (message.text or "").strip()
     prio = "high" if raw.startswith("!") else "normal"
     clean = raw.lstrip("! ").strip()
+    if len(clean) > 200:
+        await message.answer("Текст задачи слишком длинный: максимум 200 символов. Отправьте сокращённую задачу.")
+        return
     if clean:
         await db.add_todo(message.from_user.id, clean, priority=prio)
         await db.record_tool_use(message.from_user.id, "todo_board", "workspace", "bot", clean[:30])

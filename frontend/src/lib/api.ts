@@ -46,12 +46,18 @@ export interface NoteItem {
   updated_at: string;
 }
 
+export type TodoPriority = 'normal' | 'high' | 'urgent';
+export type TodoCategory = 'general' | 'work' | 'personal' | 'study' | 'health' | 'shopping';
+
 export interface TodoItem {
   id: number;
   text: string;
-  priority: string;
+  priority: TodoPriority;
+  due_date: string | null;
+  category: TodoCategory;
+  estimated_minutes: number;
   done: number;
-  created_at: string;
+  created_at: number;
 }
 
 export interface HabitDayCell {
@@ -189,6 +195,15 @@ export async function apiGet<T = any>(path: string): Promise<T> {
 export async function apiPost<T = any>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method: 'POST',
+    headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: body !== undefined ? JSON.stringify(body) : '{}',
+  });
+  return parseApiResponse<T>(res);
+}
+
+export async function apiPatch<T = any>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'PATCH',
     headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
     body: body !== undefined ? JSON.stringify(body) : '{}',
   });
