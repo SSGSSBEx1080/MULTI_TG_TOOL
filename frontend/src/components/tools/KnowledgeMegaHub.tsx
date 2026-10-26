@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   ChevronDown,
@@ -57,6 +57,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
   const [wikiQuery, setWikiQuery] = useState('');
   const [wikiData, setWikiData] = useState<any>({ jojo_stands: [], concepts: [], prog_langs: [] });
   const [wikiPhotos, setWikiPhotos] = useState<Array<{ title: string; extract: string; thumb: string; url: string }>>([]);
+  const wikiPhotoRequestRef = useRef(0);
+  const [wikiPhotosStatus, setWikiPhotosStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [standUser, setStandUser] = useState('');
   const [rolledStand, setRolledStand] = useState<any>(null);
 
@@ -66,6 +68,36 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
 
   const [popQuery, setPopQuery] = useState('');
   const [popData, setPopData] = useState<any>(null);
+
+  const loadWikiPhotos = async () => {
+    const searchPhrase = wikiQuery.trim();
+    if (!searchPhrase) return;
+    const requestId = ++wikiPhotoRequestRef.current;
+    setWikiPhotos([]);
+    setWikiPhotosStatus('loading');
+    try {
+      const response = await fetch(
+        `https://ru.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(searchPhrase)}&gsrlimit=6&prop=pageimages|extracts&exintro=1&explaintext=1&exchars=240&pithumbsize=560&format=json&origin=*`,
+        {referrerPolicy: 'no-referrer'}
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const pages = Object.values((data?.query?.pages || {}) as Record<string, any>);
+      const illustrated = pages
+        .filter((page: any) => page?.thumbnail?.source && page?.extract)
+        .map((page: any) => ({
+          title: String(page.title),
+          extract: String(page.extract),
+          thumb: String(page.thumbnail.source),
+          url: `https://ru.wikipedia.org/wiki/${encodeURIComponent(String(page.title).replace(/ /g, '_'))}`,
+        }));
+      if (requestId !== wikiPhotoRequestRef.current) return;
+      setWikiPhotos(illustrated);
+      setWikiPhotosStatus('done');
+    } catch {
+      if (requestId === wikiPhotoRequestRef.current) setWikiPhotosStatus('error');
+    }
+  };
 
   useEffect(() => {
     setSubTab(toolToKnowledgeTab(activeTool));
@@ -99,30 +131,6 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
     apiGet(`/api/v2/knowledge/wiki?section=${wikiSection}&q=${encodeURIComponent(wikiQuery)}`)
       .then(setWikiData)
       .catch(() => {});
-
-    const searchPhrase = wikiQuery.trim() || 'Космос квантовая физика архитектура живопись';
-    const timer = window.setTimeout(() => {
-      fetch(
-        `https://ru.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
-          searchPhrase
-        )}&gsrlimit=6&prop=pageimages|extracts&exintro=1&explaintext=1&exchars=240&pithumbsize=560&format=json&origin=*`
-      )
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          const pages = Object.values((d?.query?.pages || {}) as Record<string, any>);
-          const illustrated = pages
-            .filter((p) => p?.thumbnail?.source && p?.extract)
-            .map((p) => ({
-              title: String(p.title),
-              extract: String(p.extract),
-              thumb: String(p.thumbnail.source),
-              url: `https://ru.wikipedia.org/wiki/${encodeURIComponent(String(p.title).replace(/ /g, '_'))}`,
-            }));
-          setWikiPhotos(illustrated);
-        })
-        .catch(() => {});
-    }, 240);
-    return () => window.clearTimeout(timer);
   }, [subTab, wikiSection, wikiQuery]);
 
   useEffect(() => {
@@ -515,7 +523,7 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
           )}
 
           <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-3">
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { id: 'all', label: '📚 Вся Мульти-Вики' },
@@ -525,6 +533,7 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                 ].map((s) => (
                   <button
                     key={s.id}
+                    type="button"
                     onClick={() => setWikiSection(s.id as any)}
                     className={`px-3 py-1.5 rounded-xl text-xs border transition ${
                       wikiSection === s.id
@@ -536,19 +545,33 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                   </button>
                 ))}
               </div>
-              <input
-                value={wikiQuery}
-                onChange={(e) => setWikiQuery(e.target.value)}
-                placeholder="Поиск: промискуитет, Wonder of U, Rust, Гамаз..."
-                className="w-full sm:w-72 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-              />
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <input
+                  value={wikiQuery}
+                  onChange={(e) => { wikiPhotoRequestRef.current += 1; setWikiQuery(e.target.value); setWikiPhotos([]); setWikiPhotosStatus('idle'); }}
+                  placeholder="Поиск в локальной базе: Wonder of U, Rust…"
+                  className="w-full min-w-0 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+                  aria-label="Поиск по встроенной энциклопедии"
+                />
+                <button
+                  type="button"
+                  onClick={loadWikiPhotos}
+                  disabled={!wikiQuery.trim() || wikiPhotosStatus === 'loading'}
+                  className="px-3 py-2 rounded-xl border border-amber-300/20 bg-amber-400/10 text-xs font-semibold text-amber-100 disabled:opacity-50"
+                >
+                  {wikiPhotosStatus === 'loading' ? 'Загрузка…' : 'Иллюстрации из Wikipedia'}
+                </button>
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-500">Локальный каталог работает без внешнего поиска. Только по нажатию кнопки введённая фраза отправляется в Wikipedia; после ответа браузер загружает выбранные миниатюры с её серверов.</p>
+              {wikiPhotosStatus === 'error' && <p role="status" className="text-xs text-rose-200">Внешний поиск Wikipedia не удался. Каталог на этой странице продолжает работать.</p>}
+              {wikiPhotosStatus === 'done' && wikiPhotos.length === 0 && <p role="status" className="text-xs text-slate-400">Wikipedia не вернула статей с изображениями для этого запроса.</p>}
             </div>
 
             <div className="space-y-5 max-h-[680px] overflow-y-auto pr-1">
               {wikiPhotos.length > 0 && (
                 <div className="space-y-2.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300">
-                    🖼️ Иллюстрированные статьи Энциклопедии (Wikipedia)
+                    🖼️ Иллюстрированные статьи Wikipedia · запрос «{wikiQuery.trim()}»
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {wikiPhotos.map((art) => (
@@ -556,13 +579,15 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                         key={art.title}
                         href={art.url}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
+                        referrerPolicy="no-referrer"
                         className="rounded-xl bg-slate-950/90 border border-white/10 hover:border-amber-400/45 overflow-hidden flex flex-col transition group"
                       >
                         <img
                           src={art.thumb}
                           alt={art.title}
                           loading="lazy"
+                          referrerPolicy="no-referrer"
                           className="w-full h-36 object-cover group-hover:scale-[1.03] transition"
                         />
                         <div className="p-3 space-y-1 text-xs">

@@ -8,6 +8,36 @@ const card = 'rounded-2xl border border-white/10 bg-slate-900/75 p-4 sm:p-5';
 const field = 'w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-cyan-400/50';
 const btn = 'inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 text-sm text-slate-100 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 active:scale-[.98]';
 
+type FoodLogEntry = {
+  id: string; date: string; food: string; grams: number;
+  kcal: number; kj: number; protein_g: number; fat_g: number; carbs_g: number; fiber_g: number;
+};
+const FOOD_LOG_KEY = 'multi-food-log-v1';
+const localDateISO = (date = new Date()) => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+const addDaysToLocalISO = (iso: string, days: number): Date | null => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (localDateISO(date) !== iso) return null;
+  date.setDate(date.getDate() + days);
+  return Number.isFinite(date.getTime()) ? date : null;
+};
+const parseFoodLog = (value: unknown): FoodLogEntry[] => {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-1000).filter((row): row is FoodLogEntry => {
+    if (!row || typeof row !== 'object') return false;
+    const item = row as Partial<FoodLogEntry>;
+    return typeof item.id === 'string' && item.id.length <= 100
+      && typeof item.date === 'string' && addDaysToLocalISO(item.date, 0) !== null
+      && typeof item.food === 'string' && item.food.length > 0 && item.food.length <= 120
+      && [item.grams, item.kcal, item.kj, item.protein_g, item.fat_g, item.carbs_g, item.fiber_g]
+        .every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1_000_000);
+  });
+};
+
 const APPLIANCES = [
   ['Холодильник','Компрессор гонит хладагент по замкнутому контуру: испаритель забирает тепло из камеры, конденсатор отдаёт его комнате.','Не перекрывайте вентиляцию; при утечке, запахе или повреждении контура обратитесь в сервис.'],
   ['Стиральная машина','Набор воды, нагрев (если выбран), вращение барабана, слив и отжим; насос и датчики контролируют цикл.','Перед обслуживанием отключите питание и воду. Не вскрывайте сетевую часть под напряжением.'],
@@ -33,6 +63,11 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
   const [foodQuery, setFoodQuery] = useState('');
   const [grams, setGrams] = useState(60);
   const [nutrition, setNutrition] = useState<any>(null);
+  const [foodLog, setFoodLog] = useState<FoodLogEntry[]>([]);
+  const [foodLogDay, setFoodLogDay] = useState(localDateISO);
+  const [foodLogLoaded, setFoodLogLoaded] = useState(false);
+  const [foodLogCanPersist, setFoodLogCanPersist] = useState(false);
+  const [foodLogStorageError, setFoodLogStorageError] = useState(false);
   const [wake, setWake] = useState('07:30');
   const [latency, setLatency] = useState(15);
   const [sleep, setSleep] = useState<any>(null);
@@ -68,8 +103,27 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
   useEffect(() => { apiGet('/api/life/catalog').then(setCatalog).catch((e:any) => onToast(e.message)); }, []);
   useEffect(() => {
     try {
+      const raw = localStorage.getItem(FOOD_LOG_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) throw new Error('Stored food log is not an array');
+      setFoodLog(parseFoodLog(parsed)); setFoodLogCanPersist(true);
+    } catch { setFoodLogStorageError(true); }
+    finally { setFoodLogLoaded(true); }
+  }, []);
+  useEffect(() => {
+    if (!foodLogLoaded || !foodLogCanPersist) return;
+    try {
+      localStorage.setItem(FOOD_LOG_KEY, JSON.stringify(foodLog));
+      setFoodLogStorageError(false);
+    } catch { setFoodLogStorageError(true); }
+  }, [foodLog, foodLogLoaded, foodLogCanPersist]);
+  useEffect(() => {
+    try {
       const saved = JSON.parse(localStorage.getItem('multi-cycle-local') || '{}');
-      if (saved.date) { setCycleDate(saved.date); setCycleDays(saved.days || 28); }
+      if (typeof saved.date === 'string' && addDaysToLocalISO(saved.date, 0)
+        && Number.isInteger(saved.days) && saved.days >= 15 && saved.days <= 60) {
+        setCycleDate(saved.date); setCycleDays(saved.days); setCycleSaved(true);
+      }
     } catch { /* ignore invalid local settings */ }
   }, []);
   useEffect(() => {
@@ -102,7 +156,51 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
     } catch (e:any) { onToast(`Звук недоступен: ${e.message || 'разрешите аудио'}`); }
   };
 
-  const runNutrition = async () => { try { setNutrition(await apiPost('/api/life/nutrition', {food, grams})); } catch (e:any) { onToast(e.message); } };
+  const runNutrition = async () => { setNutrition(null); try { setNutrition(await apiPost('/api/life/nutrition', {food, grams})); } catch (e:any) { onToast(e.message); } };
+  const dayFoodLog = foodLog.filter((entry) => entry.date === foodLogDay);
+  const foodLogTotals = dayFoodLog.reduce((sum, entry) => ({
+    kcal: sum.kcal + entry.kcal, kj: sum.kj + entry.kj, protein_g: sum.protein_g + entry.protein_g,
+    fat_g: sum.fat_g + entry.fat_g, carbs_g: sum.carbs_g + entry.carbs_g,
+    fiber_g: sum.fiber_g + entry.fiber_g,
+  }), {kcal: 0, kj: 0, protein_g: 0, fat_g: 0, carbs_g: 0, fiber_g: 0});
+  const addNutritionToFoodLog = () => {
+    if (!addDaysToLocalISO(foodLogDay, 0)) { onToast('Выберите корректную дату для записи'); return; }
+    if (!nutrition || !Number.isFinite(Number(nutrition.grams)) || Number(nutrition.grams) <= 0) {
+      onToast('Сначала рассчитайте положительную массу порции');
+      return;
+    }
+    const uuid = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const entry: FoodLogEntry = {
+      id: uuid, date: foodLogDay, food: String(nutrition.food).slice(0, 120),
+      grams: Number(nutrition.grams), kcal: Number(nutrition.kcal), kj: Number(nutrition.kj),
+      protein_g: Number(nutrition.protein_g), fat_g: Number(nutrition.fat_g),
+      carbs_g: Number(nutrition.carbs_g), fiber_g: Number(nutrition.fiber_g),
+    };
+    setFoodLog((items) => [...items, entry].slice(-1000));
+    onToast(`Добавлено в локальный дневник на ${foodLogDay}`);
+  };
+  const removeFoodLogEntry = (id: string) => setFoodLog((items) => items.filter((entry) => entry.id !== id));
+  const clearFoodLogDay = () => {
+    if (!dayFoodLog.length || !window.confirm(`Удалить ${dayFoodLog.length} записей за ${foodLogDay} с этого устройства?`)) return;
+    setFoodLog((items) => items.filter((entry) => entry.date !== foodLogDay));
+  };
+  const exportFoodLog = () => {
+    if (!dayFoodLog.length) return;
+    const csvCell = (value: string | number) => {
+      let text = String(value).replace(/[\r\n]+/g, ' ');
+      if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
+      return `"${text.replaceAll('"', '""')}"`;
+    };
+    const rows = [
+      ['Дата', 'Продукт', 'Масса, г', 'ккал', 'кДж', 'Белки, г', 'Жиры, г', 'Углеводы, г', 'Клетчатка, г'],
+      ...dayFoodLog.map((entry) => [entry.date, entry.food, entry.grams, entry.kcal, entry.kj, entry.protein_g, entry.fat_g, entry.carbs_g, entry.fiber_g]),
+    ];
+    const content = `\uFEFF${rows.map((row) => row.map(csvCell).join(';')).join('\r\n')}`;
+    const url = URL.createObjectURL(new Blob([content], {type: 'text/csv;charset=utf-8'}));
+    const link = document.createElement('a'); link.href = url; link.download = `food-log-${foodLogDay}.csv`;
+    document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
   const runSleep = async () => { try { setSleep(await apiPost('/api/life/sleep', {wake_time:wake, latency_min:latency})); } catch (e:any) { onToast(e.message); } };
   const runBouquet = async () => { try { setBouquet(await apiPost('/api/life/bouquet', {stems:bouquetRows, wrapping:8, labor:12, markup_pct:25})); } catch (e:any) { onToast(e.message); } };
   const submitChat = async (ev: React.FormEvent) => { ev.preventDefault(); if (!chatText.trim() || chatBusy) return; setChatBusy(true); try { setChat(await apiPost('/api/life/chat', {user_id:userId, topic:chatTopic, text:chatText, reply_to_id:replyTo?.id || 0})); setChatText(''); setReplyTo(null); } catch(e:any) { onToast(e.message); } finally { setChatBusy(false); } };
@@ -118,8 +216,16 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
     if (last && first !== last) { setGameMessage(`Нужно слово на букву «${last.toUpperCase()}».`); return; }
     setGameWords((v) => [...v, word]); setGameEntry(''); setGameMessage(`Принято: ${word}. Следующая буква — «${word.replace(/[^а-яa-z]/gi,'').slice(-1).toUpperCase()}».`);
   };
-  const saveCycle = () => { if (!cycleDate) { onToast('Укажите дату начала последней менструации'); return; } localStorage.setItem('multi-cycle-local', JSON.stringify({date:cycleDate, days:cycleDays})); setCycleSaved(true); onToast('Данные цикла сохранены только в этом браузере'); };
-  const nextPeriod = cycleDate ? new Date(new Date(cycleDate).getTime() + cycleDays * 86400000).toLocaleDateString() : '';
+  const saveCycle = () => {
+    if (!addDaysToLocalISO(cycleDate, 0) || cycleDate > localDateISO()) { onToast('Укажите корректную дату не позже сегодняшнего дня'); return; }
+    if (!Number.isInteger(cycleDays) || cycleDays < 15 || cycleDays > 60) { onToast('Длина цикла должна быть целым числом от 15 до 60 дней'); return; }
+    try {
+      localStorage.setItem('multi-cycle-local', JSON.stringify({date:cycleDate, days:cycleDays}));
+      setCycleSaved(true); onToast('Данные цикла сохранены только в этом браузере');
+    } catch { setCycleSaved(false); onToast('Браузер не смог сохранить данные цикла'); }
+  };
+  const nextPeriodDate = cycleDate ? addDaysToLocalISO(cycleDate, cycleDays) : null;
+  const nextPeriod = nextPeriodDate ? new Intl.DateTimeFormat('ru-RU', {dateStyle:'long'}).format(nextPeriodDate) : '';
   const phaseAngle = snell.n1 * Math.sin(snell.angle * Math.PI / 180) / snell.n2;
   const refracted = Math.abs(phaseAngle) <= 1 ? Math.asin(phaseAngle) * 180 / Math.PI : null;
 
@@ -141,9 +247,40 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
     <form className="mt-3 space-y-2" onSubmit={submitChat}>{replyTo&&<div className="flex items-center justify-between rounded-lg bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">Ответ: {replyTo.sender_name} — {(replyTo.text||'').slice(0,70)}<button type="button" onClick={()=>setReplyTo(null)}>×</button></div>}<div className="flex gap-2"><input className={field} value={chatText} onChange={e=>setChatText(e.target.value)} placeholder="Сообщение в общий чат" maxLength={1200}/><button className={`${btn} shrink-0`} disabled={!userId||chatBusy}><Send className="h-4 w-4"/>Отправить</button></div></form>
   </section>;
 
-  if (selected('nutrition_bju_calc')) return <div className="space-y-4">{header('ПИТАНИЕ · СПРАВОЧНЫЙ РАСЧЁТ','БЖУ, ккал, кДж и хлебные единицы','Выберите продукт и массу порции. Справочные значения усреднены; фактический состав зависит от производителя и приготовления.')}
-    <div className={card}><div className="grid gap-3 sm:grid-cols-[1fr_1fr_160px_auto]"><label className="text-xs text-slate-400">Поиск продукта<input className={`${field} mt-1`} value={foodQuery} onChange={e=>setFoodQuery(e.target.value)} placeholder="Например, фасоль, лосось…"/></label><label className="text-xs text-slate-400">Продукт<select className={`${field} mt-1`} value={food} onChange={e=>setFood(e.target.value)}>{(catalog.foods||[]).filter((x:any)=>x.name===food||!foodQuery||x.name.toLocaleLowerCase('ru').includes(foodQuery.toLocaleLowerCase('ru'))).map((x:any)=><option key={x.name}>{x.name}</option>)}</select></label><label className="text-xs text-slate-400">Масса, г<input className={`${field} mt-1`} type="number" min="0" max="10000" value={grams} onChange={e=>setGrams(Number(e.target.value))}/></label><button className={`${btn} self-end`} onClick={runNutrition}><Activity className="h-4 w-4"/>Посчитать</button></div>
-      {nutrition&&<div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Энергия',`${nutrition.kcal} ккал`],['Энергия',`${nutrition.kj} кДж`],['Белки',`${nutrition.protein_g} г`],['Жиры',`${nutrition.fat_g} г`],['Углеводы',`${nutrition.carbs_g} г`],['Клетчатка',`${nutrition.fiber_g} г`],['ХЕ*',nutrition.bread_units],['Порция',`${nutrition.grams} г`]].map(([k,v])=><div key={k+v} className="rounded-xl bg-slate-950 p-3"><div className="text-[11px] text-slate-500">{k}</div><b className="mt-1 block text-lg text-white">{v}</b></div>)}</div>}{nutrition&&<p className="mt-3 text-xs text-slate-500">{nutrition.reference}</p>}</div>
+  if (selected('nutrition_bju_calc')) return <div className="space-y-4">
+    {header('ПИТАНИЕ · СПРАВОЧНЫЙ РАСЧЁТ','БЖУ, ккал, кДж и дневник продуктов','Посчитайте справочный состав порции и при желании запишите её в дневник на выбранную дату. Дневник хранится только в этом браузере; он не задаёт норму питания и не оценивает рацион.')}
+    <section className={card}>
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_160px_auto]">
+        <label className="text-xs text-slate-400">Поиск продукта<input className={`${field} mt-1`} value={foodQuery} onChange={e=>setFoodQuery(e.target.value)} placeholder="Например, фасоль, лосось…"/></label>
+        <label className="text-xs text-slate-400">Продукт<select className={`${field} mt-1`} value={food} onChange={e=>{setFood(e.target.value);setNutrition(null)}}>{(catalog.foods||[]).filter((x:any)=>x.name===food||!foodQuery||x.name.toLocaleLowerCase('ru').includes(foodQuery.toLocaleLowerCase('ru'))).map((x:any)=><option key={x.name} value={x.name}>{x.name}</option>)}</select></label>
+        <label className="text-xs text-slate-400">Масса, г<input className={`${field} mt-1`} type="number" min="0" max="10000" step="0.1" value={grams} onChange={e=>{setGrams(Number(e.target.value));setNutrition(null)}}/></label>
+        <button className={`${btn} self-end`} onClick={runNutrition}><Activity className="h-4 w-4"/>Посчитать</button>
+      </div>
+      {nutrition&&<>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Энергия',`${nutrition.kcal} ккал`],['Энергия',`${nutrition.kj} кДж`],['Белки',`${nutrition.protein_g} г`],['Жиры',`${nutrition.fat_g} г`],['Углеводы',`${nutrition.carbs_g} г`],['Клетчатка',`${nutrition.fiber_g} г`],['ХЕ*',nutrition.bread_units],['Порция',`${nutrition.grams} г`]].map(([k,v])=><div key={k+v} className="rounded-xl bg-slate-950 p-3"><div className="text-[11px] text-slate-500">{k}</div><b className="mt-1 block text-lg text-white">{v}</b></div>)}</div>
+        <p className="mt-3 text-xs text-slate-500">{nutrition.reference}</p>
+        <button className={`${btn} mt-3`} onClick={addNutritionToFoodLog} disabled={!foodLogLoaded || Number(nutrition.grams)<=0}>＋ Записать эту порцию в дневник за {foodLogDay}</button>
+      </>}
+    </section>
+
+    <section className={card}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="min-w-48 flex-1 text-xs text-slate-400">Дата дневника<input className={`${field} mt-1 max-w-xs`} type="date" value={foodLogDay} onChange={e=>setFoodLogDay(e.target.value)}/></label>
+        <div className="flex flex-wrap gap-2">
+          <button className={btn} onClick={exportFoodLog} disabled={!dayFoodLog.length}>Экспорт CSV</button>
+          <button className={`${btn} border-rose-300/15 text-rose-200`} onClick={clearFoodLogDay} disabled={!dayFoodLog.length}>Очистить этот день</button>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+        {[[`Записано · ${dayFoodLog.length}`, 'порций'], ['Энергия', `${foodLogTotals.kcal.toFixed(1)} ккал`], ['Энергия', `${foodLogTotals.kj.toFixed(1)} кДж`], ['Белки', `${foodLogTotals.protein_g.toFixed(1)} г`], ['Жиры', `${foodLogTotals.fat_g.toFixed(1)} г`], ['Углеводы', `${foodLogTotals.carbs_g.toFixed(1)} г`], ['Клетчатка', `${foodLogTotals.fiber_g.toFixed(1)} г`]].map(([label,value], index)=><div className="rounded-xl bg-slate-950 p-3" key={`${label}-${index}`}><div className="text-[11px] text-slate-500">{label}</div><b className="mt-1 block text-sm text-white">{value}</b></div>)}
+      </div>
+      {dayFoodLog.length===0?<p className="mt-4 rounded-xl border border-dashed border-white/10 p-4 text-center text-sm text-slate-500">За эту дату записей пока нет. Рассчитайте порцию выше и добавьте её вручную.</p>:<ul className="mt-4 space-y-2">{dayFoodLog.map(entry=><li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/5 bg-slate-950/70 p-3">
+        <div className="min-w-0"><b className="text-sm text-white">{entry.food}</b><div className="mt-1 text-xs text-slate-400">{entry.grams} г · {entry.kcal.toFixed(1)} ккал · Б {entry.protein_g.toFixed(1)} г · Ж {entry.fat_g.toFixed(1)} г · У {entry.carbs_g.toFixed(1)} г · Клетчатка {entry.fiber_g.toFixed(1)} г</div></div>
+        <button type="button" className="rounded-lg px-2 py-1 text-xs text-rose-200 hover:bg-rose-400/10" aria-label={`Удалить запись: ${entry.food}`} onClick={()=>removeFoodLogEntry(entry.id)}>Удалить</button>
+      </li>)}</ul>}
+      <p className="mt-3 text-xs text-slate-500">Значения ориентировочные и не учитывают точную марку, рецепт и приготовление. Данные остаются на устройстве; экспорт создаёт CSV-файл вручную.</p>
+      {foodLogStorageError&&<p role="status" className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/[.06] p-3 text-xs text-amber-100">Браузер не смог прочитать или сохранить дневник. Экспортируйте нужные записи, если они доступны, и проверьте настройки хранилища.</p>}
+    </section>
   </div>;
 
   if (selected('sleep_calculator')) return <div className="space-y-4">{header('РЕЖИМ · СОН','Планировщик времени сна','Обратный расчёт времени, когда лечь, по времени подъёма. 90 минут — условная длительность цикла, а не точное предсказание фаз.')}
@@ -151,8 +288,8 @@ export const EverydayLifeHub: React.FC<Props> = ({ activeTool, onToast }) => {
     {sleep?.options&&<div className="grid gap-3 sm:grid-cols-3">{sleep.options.map((x:any)=><article className={card} key={x.cycles}><div className="text-xs text-slate-400">{x.cycles} условных циклов · {x.sleep_hours} ч</div><div className="mt-2 text-3xl font-black text-cyan-200">{x.bedtime}</div><p className="mt-2 text-xs text-slate-500">{x.note}</p></article>)}</div>}{safe(sleep?.note||'Сонный калькулятор не диагностирует расстройства сна. При стойких проблемах обратитесь к врачу.')}</div>;
 
   if (selected('menstrual_cycle_tracker')) return <div className="space-y-4">{header('ПРИВАТНОСТЬ · ЦИКЛ','Календарь менструального цикла','Даты хранятся только в localStorage этого браузера и не отправляются на сервер. Прогноз приблизительный: циклы и кровотечения могут меняться.')}
-    <div className={`${card} grid gap-3 sm:grid-cols-3`}><label className="text-xs text-slate-400">Первый день последней менструации<input className={`${field} mt-1`} type="date" value={cycleDate} onChange={e=>{setCycleDate(e.target.value);setCycleSaved(false)}}/></label><label className="text-xs text-slate-400">Средняя длина цикла, дней<input className={`${field} mt-1`} type="number" min="15" max="60" value={cycleDays} onChange={e=>setCycleDays(Math.max(15,Math.min(60,Number(e.target.value))))}/></label><button className={`${btn} self-end`} onClick={saveCycle}><Heart className="h-4 w-4"/>Сохранить локально</button></div>
-    {nextPeriod&&<div className={card}><div className="text-sm text-slate-400">Ориентировочная дата следующего начала</div><div className="mt-2 text-3xl font-black text-pink-200">{nextPeriod}</div><p className="mt-2 text-xs text-slate-500">Это календарная экстраполяция, не медицинский прогноз и не метод контрацепции. При необычной боли, кровотечении или задержке обратитесь за медпомощью.</p>{cycleSaved&&<span className="mt-3 inline-flex items-center gap-1 text-xs text-emerald-300"><Check className="h-4 w-4"/>Данные сохранены на устройстве</span>}</div>}{safe('Если нужна точная конфиденциальность, не используйте общий или чужой браузер. Можно очистить данные сайта, чтобы удалить сохранённую запись.')}</div>;
+    <div className={`${card} grid gap-3 sm:grid-cols-3`}><label className="text-xs text-slate-400">Первый день последней менструации<input className={`${field} mt-1`} type="date" max={localDateISO()} value={cycleDate} onChange={e=>{setCycleDate(e.target.value);setCycleSaved(false)}}/></label><label className="text-xs text-slate-400">Введённая средняя длина цикла, дней<input className={`${field} mt-1`} type="number" min="15" max="60" step="1" value={cycleDays} onChange={e=>{const value=Number(e.target.value);if(Number.isFinite(value))setCycleDays(Math.max(15,Math.min(60,Math.trunc(value))))}}/></label><button className={`${btn} self-end`} onClick={saveCycle}><Heart className="h-4 w-4"/>Сохранить локально</button></div>
+    {nextPeriod&&<div className={card}><div className="text-sm text-slate-400">Календарный расчёт по введённой длине цикла</div><div className="mt-2 text-3xl font-black text-pink-200">{nextPeriod}</div><p className="mt-2 text-xs text-slate-500">Это только дата, полученная прибавлением введённого числа дней к выбранной дате. Она не предсказывает фактическое кровотечение, не диагностирует состояние и не является методом контрацепции. При необычной боли, кровотечении или тревожных симптомах обратитесь за медицинской помощью.</p>{cycleSaved&&<span className="mt-3 inline-flex items-center gap-1 text-xs text-emerald-300"><Check className="h-4 w-4"/>Данные сохранены на устройстве</span>}</div>}{safe('Если нужна точная конфиденциальность, не используйте общий или чужой браузер. Можно очистить данные сайта, чтобы удалить сохранённую запись.')}</div>;
 
   if (selected('alarm_clock')) return <div className="space-y-4">{header('ЛОКАЛЬНО · БУДИЛЬНИК','Будильник браузера','Работает пока вкладка открыта. Браузер может приостанавливать фоновые вкладки — для критичного будильника используйте системное приложение.')}
     <div className={`${card} flex flex-col items-center gap-4 py-8`}><div className="font-mono text-5xl font-black tabular-nums text-cyan-200">{alarmTick||new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</div><div className="flex flex-wrap justify-center gap-3"><input className={`${field} max-w-[170px] text-center text-lg`} type="time" value={alarmTime} onChange={e=>setAlarmTime(e.target.value)}/><button className={`${btn} ${alarmOn?'border-rose-400/40 bg-rose-500/10':''}`} onClick={async()=>{if(!alarmOn&&'Notification'in window&&Notification.permission==='default') await Notification.requestPermission(); setAlarmOn(!alarmOn)}}>{alarmOn?<Pause className="h-4 w-4"/>:<Play className="h-4 w-4"/>}{alarmOn?'Остановить':'Включить'}</button></div><div className="text-sm text-slate-400">{alarmOn?`Установлен на ${alarmTime}`:'Будильник выключен'}</div></div>{safe('Звук и уведомления зависят от разрешений и ограничений браузера. Не полагайтесь на страницу для экстренных или жизненно важных напоминаний.')}</div>;
