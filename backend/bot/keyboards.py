@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from backend.bot.gamepiada import DISCORD_URL, REGISTRATION_URL, gamepiada_is_over
 from backend.config import DEFAULT_PUBLIC_WEBAPP_URL, WEBAPP_URL
 from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
 
@@ -19,9 +21,17 @@ def webapp_button(text: str = "📱 Открыть приложение", tab: s
     return _webapp_button(text=text, tab=tab)
 
 
-def main_menu_kb(favorites_count: int = 0) -> InlineKeyboardMarkup:
+def main_menu_kb(favorites_count: int = 0, now: datetime | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(_webapp_button("📱 Открыть приложение MULTI_TG_TOOL"))
+    if not gamepiada_is_over(now):
+        builder.row(
+            InlineKeyboardButton(text="📝 Заявка GAMEpiada", url=REGISTRATION_URL),
+            InlineKeyboardButton(text="💬 Discord", url=DISCORD_URL),
+        )
+        builder.row(InlineKeyboardButton(text="⏱ Обновить таймер GAMEpiada", callback_data="event:gamepiada:refresh"))
+    else:
+        builder.row(InlineKeyboardButton(text="💬 Discord GAMEpiada · итоги", url=DISCORD_URL))
 
     cat_buttons = [
         InlineKeyboardButton(
