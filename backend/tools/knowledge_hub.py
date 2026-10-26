@@ -343,7 +343,7 @@ def search_formulas(subject: str = "all", query: str = "", *, q: str = "") -> li
 # 5. Демографический Атлас: от Планеты Земля до Деревень и ПГТ
 # ==============================================================================
 POPULATION_PLACES: list[dict[str, Any]] = [
-    {"name": "Планета Земля (Весь мир)", "aliases": ["земля", "мир", "планета", "world", "earth"], "type": "Планета 🌍", "country": "Солнечная система", "pop": 8_185_400_000, "growth_per_sec": 2.25, "note": "Каждую секунду рождается ~4.3 человека и умирает ~2.0 человека."},
+    {"name": "Планета Земля (Весь мир)", "aliases": ["земля", "мир", "планета", "world", "earth"], "type": "Планета 🌍", "country": "Солнечная система", "pop": None, "note": "Проверенный актуальный глобальный показатель не подключён. Не имитируем счётчик роста населения."},
     {"name": "Азия", "aliases": ["азия", "asia"], "type": "Часть света", "country": "Евразия", "pop": 4_790_000_000, "note": "Около 59% всего человечества проживает в Азии."},
     {"name": "Индия", "aliases": ["индия", "india"], "type": "Страна 🇮🇳", "country": "Южная Азия", "pop": 1_450_900_000, "note": "Крупнейшая по численности населения страна планеты (обогнала Китай в 2023 г.)."},
     {"name": "Китай (КНР)", "aliases": ["китай", "china", "кнр"], "type": "Страна 🇨🇳", "country": "Восточная Азия", "pop": 1_409_670_000, "note": "Вторая страна мира с гигантскими мегаполисами (Чунцин, Шанхай, Пекин)."},
@@ -389,46 +389,37 @@ POPULATION_PLACES: list[dict[str, Any]] = [
 
 
 def query_population(search_name: str = "") -> dict[str, Any]:
-    # Live Earth counter anchored to Oct 2026
-    base_epoch = 1760000000.0
-    delta_sec = max(0.0, time.time() - base_epoch)
-    live_earth = int(8_185_400_000 + delta_sec * 2.25)
-
-    q = (search_name or "").strip().lower()
+    """Search the bundled population reference list without fabricating current data."""
+    q = (search_name or "").strip().casefold()
     matches: list[dict[str, Any]] = []
 
     for item in POPULATION_PLACES:
-        entry = dict(item)
-        if entry["name"].startswith("Планета Земля"):
-            entry["pop"] = live_earth
-        entry["formatted_pop"] = f"{entry['pop']:,}".replace(",", " ")
-        if not q:
-            matches.append(entry)
-        else:
-            if q in entry["name"].lower() or q in entry["country"].lower() or any(q in a for a in entry["aliases"]):
-                matches.append(entry)
+        if q and not (
+            q in item["name"].casefold()
+            or q in item["country"].casefold()
+            or any(q in alias.casefold() for alias in item["aliases"])
+        ):
+            continue
 
-    # If user typed a village/town not in curated list, estimate deterministically as local settlement directory fallback with clear label
-    custom_note = None
-    if q and not matches:
-        h = int(hashlib.md5(q.encode("utf-8")).hexdigest()[:6], 16)
-        is_village = any(w in q for w in ("дер", "село", "пос", "хутор", "станиц", "аул"))
-        est = (85 + (h % 2400)) if is_village else (12_000 + (h % 280_000))
-        matches.append({
-            "name": search_name.strip().title(),
-            "type": "Сельский населённый пункт 🏡" if is_village else "Населённый пункт 🏙",
-            "country": "Локальная оценка справочника",
-            "pop": est,
-            "formatted_pop": f"~{est:,}".replace(",", " "),
-            "note": "Оценочная демографическая модель (точный муниципальный реестр офлайн-базы содержит топ-40 эталонных пунктов и стран).",
-        })
-        custom_note = True
+        entry = dict(item)
+        population = entry.get("pop")
+        entry["formatted_pop"] = (
+            f"~{population:,}".replace(",", " ")
+            if population is not None
+            else "нет проверенного значения"
+        )
+        entry["is_approximate"] = population is not None
+        matches.append(entry)
 
     return {
-        "live_earth_population": f"{live_earth:,}".replace(",", " "),
+        "live_earth_population": None,
         "count": len(matches),
         "places": matches[:20],
-        "estimated": bool(custom_note),
+        "data_notice": (
+            "Офлайн-справочник содержит ограниченные ориентировочные значения без единого года и "
+            "определения административных границ. Это не live-данные; проверяйте актуальные числа "
+            "по национальным статистическим службам. Неизвестные запросы не оцениваются автоматически."
+        ),
     }
 
 

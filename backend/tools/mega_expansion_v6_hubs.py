@@ -13,73 +13,163 @@ from PIL import Image
 # 1. FULL PC BUILDER & COMPATIBILITY / FPS / BOTTLENECK ENGINE (2026)
 # ==============================================================================
 
+def _pc_part(part_id: str, name: str, price_rub: int, tier: str, release_year: int | None = None, **spec: Any) -> dict[str, Any]:
+    """Build one catalog record. Prices are broad planning estimates, not live offers."""
+    return {
+        "id": part_id,
+        "name": name,
+        "price_rub": price_rub,
+        "tier": tier,
+        "release_year": release_year,
+        **spec,
+    }
+
+
+# Broad consumer range: legacy/used, entry, mainstream, performance and flagship.
+# Relative performance scores are intentionally approximate, not benchmark results.
 PC_CPUS: list[dict[str, Any]] = [
-    {"id": "r7_9800x3d", "name": "AMD Ryzen 7 9800X3D", "socket": "AM5", "ram_type": "DDR5", "cores": "8C / 16T (3D V-Cache)", "boost_ghz": 5.2, "tdp_w": 120, "score": 100, "price_rub": 54900},
-    {"id": "r9_9950x", "name": "AMD Ryzen 9 9950X", "socket": "AM5", "ram_type": "DDR5", "cores": "16C / 32T", "boost_ghz": 5.7, "tdp_w": 170, "score": 97, "price_rub": 66500},
-    {"id": "r7_7800x3d", "name": "AMD Ryzen 7 7800X3D", "socket": "AM5", "ram_type": "DDR5", "cores": "8C / 16T (3D V-Cache)", "boost_ghz": 5.0, "tdp_w": 120, "score": 92, "price_rub": 41900},
-    {"id": "r5_7500f", "name": "AMD Ryzen 5 7500F", "socket": "AM5", "ram_type": "DDR5", "cores": "6C / 12T", "boost_ghz": 5.0, "tdp_w": 65, "score": 74, "price_rub": 15900},
-    {"id": "r7_5700x3d", "name": "AMD Ryzen 7 5700X3D", "socket": "AM4", "ram_type": "DDR4", "cores": "8C / 16T", "boost_ghz": 4.1, "tdp_w": 105, "score": 76, "price_rub": 21500},
-    {"id": "r5_5600", "name": "AMD Ryzen 5 5600", "socket": "AM4", "ram_type": "DDR4", "cores": "6C / 12T", "boost_ghz": 4.4, "tdp_w": 65, "score": 61, "price_rub": 10900},
-    {"id": "u9_285k", "name": "Intel Core Ultra 9 285K", "socket": "LGA1851", "ram_type": "DDR5", "cores": "24C (8P+16E)", "boost_ghz": 5.7, "tdp_w": 250, "score": 94, "price_rub": 64900},
-    {"id": "u7_265k", "name": "Intel Core Ultra 7 265K", "socket": "LGA1851", "ram_type": "DDR5", "cores": "20C (8P+12E)", "boost_ghz": 5.5, "tdp_w": 250, "score": 88, "price_rub": 43900},
-    {"id": "i7_14700k", "name": "Intel Core i7-14700K", "socket": "LGA1700", "ram_type": "DDR5", "cores": "20C / 28T", "boost_ghz": 5.6, "tdp_w": 253, "score": 89, "price_rub": 39500},
-    {"id": "i5_13400f", "name": "Intel Core i5-13400F", "socket": "LGA1700", "ram_type": "DDR4", "cores": "10C / 16T", "boost_ghz": 4.6, "tdp_w": 148, "score": 66, "price_rub": 16500},
+    _pc_part("i5_4590", "Intel Core i5-4590 · 4 ядра, Haswell", 2500, "Вторичный рынок", 2014, socket="LGA1150", platform_key="lga1150", ram_type="DDR3", cores="4C / 4T", boost_ghz=3.7, tdp_w=84, score=22, integrated_graphics=True),
+    _pc_part("i7_4790", "Intel Core i7-4790 · 4 ядра / 8 потоков", 5000, "Вторичный рынок", 2014, socket="LGA1150", platform_key="lga1150", ram_type="DDR3", cores="4C / 8T", boost_ghz=4.0, tdp_w=84, score=30, integrated_graphics=True),
+    _pc_part("i5_6500", "Intel Core i5-6500 · Skylake", 3500, "Вторичный рынок", 2015, socket="LGA1151", platform_key="lga1151_100_200", ram_type="DDR4", cores="4C / 4T", boost_ghz=3.6, tdp_w=65, score=27, integrated_graphics=True),
+    _pc_part("i5_9400f", "Intel Core i5-9400F · 6 ядер", 6500, "Старый бюджет", 2019, socket="LGA1151", platform_key="lga1151_300", ram_type="DDR4", cores="6C / 6T", boost_ghz=4.1, tdp_w=65, score=42, integrated_graphics=False),
+    _pc_part("i3_10100f", "Intel Core i3-10100F · 4 ядра / 8 потоков", 5500, "Старый бюджет", 2020, socket="LGA1200", platform_key="lga1200", ram_type="DDR4", cores="4C / 8T", boost_ghz=4.3, tdp_w=65, score=43, integrated_graphics=False),
+    _pc_part("i5_10400f", "Intel Core i5-10400F · 6 ядер / 12 потоков", 8500, "Старый бюджет", 2020, socket="LGA1200", platform_key="lga1200", ram_type="DDR4", cores="6C / 12T", boost_ghz=4.3, tdp_w=65, score=49, integrated_graphics=False),
+    _pc_part("r5_3600", "AMD Ryzen 5 3600 · 6 ядер / 12 потоков", 6500, "Старый бюджет", 2019, socket="AM4", platform_key="am4", ram_type="DDR4", cores="6C / 12T", boost_ghz=4.2, tdp_w=65, score=48, integrated_graphics=False),
+    _pc_part("i3_12100f", "Intel Core i3-12100F · 4 ядра / 8 потоков", 8500, "Начальный", 2022, socket="LGA1700", platform_key="lga1700", ram_type="DDR4", cores="4C / 8T", boost_ghz=4.3, tdp_w=58, score=57, integrated_graphics=False),
+    _pc_part("r5_5500", "AMD Ryzen 5 5500 · 6 ядер / 12 потоков", 8500, "Начальный", 2022, socket="AM4", platform_key="am4", ram_type="DDR4", cores="6C / 12T", boost_ghz=4.2, tdp_w=65, score=57, integrated_graphics=False),
+    _pc_part("r5_5600", "AMD Ryzen 5 5600 · 6 ядер / 12 потоков", 10900, "Начальный", 2022, socket="AM4", platform_key="am4", ram_type="DDR4", cores="6C / 12T", boost_ghz=4.4, tdp_w=65, score=61, integrated_graphics=False),
+    _pc_part("r5_5600g", "AMD Ryzen 5 5600G · встроенная графика Radeon", 12000, "Начальный", 2021, socket="AM4", platform_key="am4", ram_type="DDR4", cores="6C / 12T", boost_ghz=4.4, tdp_w=65, score=58, integrated_graphics=True),
+    _pc_part("i5_12400f", "Intel Core i5-12400F · 6 ядер / 12 потоков", 11500, "Начальный", 2022, socket="LGA1700", platform_key="lga1700", ram_type="DDR4", cores="6C / 12T", boost_ghz=4.4, tdp_w=65, score=66, integrated_graphics=False),
+    _pc_part("r7_5700x", "AMD Ryzen 7 5700X · 8 ядер / 16 потоков", 17500, "Средний", 2022, socket="AM4", platform_key="am4", ram_type="DDR4", cores="8C / 16T", boost_ghz=4.6, tdp_w=65, score=73, integrated_graphics=False),
+    _pc_part("i5_13400f", "Intel Core i5-13400F · 10 ядер", 16500, "Средний", 2023, socket="LGA1700", platform_key="lga1700", ram_type="DDR4", cores="10C / 16T", boost_ghz=4.6, tdp_w=148, score=69, integrated_graphics=False),
+    _pc_part("i5_14400f", "Intel Core i5-14400F · 10 ядер", 19500, "Средний", 2024, socket="LGA1700", platform_key="lga1700", ram_type="DDR4", cores="10C / 16T", boost_ghz=4.7, tdp_w=148, score=73, integrated_graphics=False),
+    _pc_part("r5_7500f", "AMD Ryzen 5 7500F · 6 ядер / 12 потоков", 15900, "Средний", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", cores="6C / 12T", boost_ghz=5.0, tdp_w=65, score=74, integrated_graphics=False),
+    _pc_part("r5_7600", "AMD Ryzen 5 7600 · 6 ядер, встроенная графика", 20900, "Средний", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", cores="6C / 12T", boost_ghz=5.1, tdp_w=65, score=78, integrated_graphics=True),
+    _pc_part("i5_12600kf", "Intel Core i5-12600KF · 10 ядер", 18500, "Средний", 2021, socket="LGA1700", platform_key="lga1700", ram_type="DDR4", cores="10C / 16T", boost_ghz=4.9, tdp_w=150, score=74, integrated_graphics=False),
+    _pc_part("i5_14600k", "Intel Core i5-14600K · 14 ядер", 28900, "Производительный", 2023, socket="LGA1700", platform_key="lga1700", ram_type="DDR5", cores="14C / 20T", boost_ghz=5.3, tdp_w=181, score=84, integrated_graphics=True),
+    _pc_part("r7_7700", "AMD Ryzen 7 7700 · 8 ядер / 16 потоков", 26900, "Производительный", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", cores="8C / 16T", boost_ghz=5.3, tdp_w=65, score=84, integrated_graphics=True),
+    _pc_part("r7_5700x3d", "AMD Ryzen 7 5700X3D · AM4, 3D V-Cache", 21500, "Производительный", 2024, socket="AM4", platform_key="am4", ram_type="DDR4", cores="8C / 16T", boost_ghz=4.1, tdp_w=105, score=76, integrated_graphics=False),
+    _pc_part("i7_12700k", "Intel Core i7-12700K · 12 ядер", 26900, "Производительный", 2021, socket="LGA1700", platform_key="lga1700", ram_type="DDR5", cores="12C / 20T", boost_ghz=5.0, tdp_w=190, score=82, integrated_graphics=True),
+    _pc_part("r7_7800x3d", "AMD Ryzen 7 7800X3D · 3D V-Cache", 41900, "Производительный", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", cores="8C / 16T", boost_ghz=5.0, tdp_w=120, score=92, integrated_graphics=True),
+    _pc_part("i7_14700k", "Intel Core i7-14700K · 20 ядер", 39500, "Производительный", 2023, socket="LGA1700", platform_key="lga1700", ram_type="DDR5", cores="20C / 28T", boost_ghz=5.6, tdp_w=253, score=89, integrated_graphics=True),
+    _pc_part("u5_245k", "Intel Core Ultra 5 245K", 29900, "Производительный", 2024, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", cores="14C", boost_ghz=5.2, tdp_w=159, score=82, integrated_graphics=True),
+    _pc_part("u7_265k", "Intel Core Ultra 7 265K", 43900, "Флагманский", 2024, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", cores="20C", boost_ghz=5.5, tdp_w=250, score=88, integrated_graphics=True),
+    _pc_part("r7_9800x3d", "AMD Ryzen 7 9800X3D · 3D V-Cache", 54900, "Флагманский", 2024, socket="AM5", platform_key="am5", ram_type="DDR5", cores="8C / 16T", boost_ghz=5.2, tdp_w=120, score=100, integrated_graphics=True),
+    _pc_part("u9_285k", "Intel Core Ultra 9 285K", 64900, "Флагманский", 2024, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", cores="24C", boost_ghz=5.7, tdp_w=250, score=94, integrated_graphics=True),
+    _pc_part("r9_9950x", "AMD Ryzen 9 9950X · 16 ядер", 66500, "Флагманский", 2024, socket="AM5", platform_key="am5", ram_type="DDR5", cores="16C / 32T", boost_ghz=5.7, tdp_w=170, score=97, integrated_graphics=True),
 ]
 
 PC_GPUS: list[dict[str, Any]] = [
-    {"id": "rtx_5090", "name": "NVIDIA GeForce RTX 5090 32GB GDDR7", "vram_gb": 32, "length_mm": 336, "tdp_w": 575, "score": 135, "price_rub": 249000},
-    {"id": "rtx_5080", "name": "NVIDIA GeForce RTX 5080 16GB GDDR7", "vram_gb": 16, "length_mm": 310, "tdp_w": 360, "score": 106, "price_rub": 129000},
-    {"id": "rtx_5070ti", "name": "NVIDIA GeForce RTX 5070 Ti 16GB GDDR7", "vram_gb": 16, "length_mm": 300, "tdp_w": 300, "score": 93, "price_rub": 94000},
-    {"id": "rx_9070xt", "name": "AMD Radeon RX 9070 XT 16GB", "vram_gb": 16, "length_mm": 295, "tdp_w": 304, "score": 90, "price_rub": 79000},
-    {"id": "rtx_4070s", "name": "NVIDIA GeForce RTX 4070 SUPER 12GB", "vram_gb": 12, "length_mm": 267, "tdp_w": 220, "score": 76, "price_rub": 67000},
-    {"id": "rx_7800xt", "name": "AMD Radeon RX 7800 XT 16GB", "vram_gb": 16, "length_mm": 280, "tdp_w": 263, "score": 73, "price_rub": 56000},
-    {"id": "rtx_4060ti", "name": "NVIDIA GeForce RTX 4060 Ti 16GB", "vram_gb": 16, "length_mm": 245, "tdp_w": 165, "score": 58, "price_rub": 47000},
-    {"id": "rtx_4060", "name": "NVIDIA GeForce RTX 4060 8GB", "vram_gb": 8, "length_mm": 240, "tdp_w": 115, "score": 47, "price_rub": 33500},
-    {"id": "arc_b580", "name": "Intel Arc B580 12GB Battlemage", "vram_gb": 12, "length_mm": 272, "tdp_w": 190, "score": 50, "price_rub": 28900},
+    _pc_part("gpu_none", "Без отдельной видеокарты · использовать встроенную графику CPU", 0, "Офис / iGPU", None, vram_gb=0, length_mm=0, tdp_w=0, score=20, vendor="iGPU"),
+    _pc_part("gtx_750ti", "NVIDIA GeForce GTX 750 Ti 2GB · вторичный рынок", 2500, "Вторичный рынок", 2014, vram_gb=2, length_mm=195, tdp_w=60, score=8, vendor="NVIDIA"),
+    _pc_part("rx_580_8", "AMD Radeon RX 580 8GB · вторичный рынок", 5500, "Вторичный рынок", 2017, vram_gb=8, length_mm=270, tdp_w=185, score=24, vendor="AMD"),
+    _pc_part("gtx_1050ti", "NVIDIA GeForce GTX 1050 Ti 4GB", 4500, "Вторичный рынок", 2016, vram_gb=4, length_mm=229, tdp_w=75, score=15, vendor="NVIDIA"),
+    _pc_part("gtx_1650", "NVIDIA GeForce GTX 1650 4GB", 8500, "Старый бюджет", 2019, vram_gb=4, length_mm=229, tdp_w=75, score=22, vendor="NVIDIA"),
+    _pc_part("gtx_1660s", "NVIDIA GeForce GTX 1660 SUPER 6GB", 10500, "Старый бюджет", 2019, vram_gb=6, length_mm=229, tdp_w=125, score=32, vendor="NVIDIA"),
+    _pc_part("rx_6600", "AMD Radeon RX 6600 8GB", 18500, "Начальный", 2021, vram_gb=8, length_mm=204, tdp_w=132, score=43, vendor="AMD"),
+    _pc_part("rtx_2060_12", "NVIDIA GeForce RTX 2060 12GB", 16500, "Начальный", 2021, vram_gb=12, length_mm=229, tdp_w=185, score=40, vendor="NVIDIA"),
+    _pc_part("rx_6650xt", "AMD Radeon RX 6650 XT 8GB", 22900, "Начальный", 2022, vram_gb=8, length_mm=267, tdp_w=176, score=53, vendor="AMD"),
+    _pc_part("rtx_3060_12", "NVIDIA GeForce RTX 3060 12GB", 23900, "Начальный", 2021, vram_gb=12, length_mm=242, tdp_w=170, score=48, vendor="NVIDIA"),
+    _pc_part("arc_a750", "Intel Arc A750 8GB", 17900, "Начальный", 2022, vram_gb=8, length_mm=267, tdp_w=225, score=45, vendor="Intel"),
+    _pc_part("rtx_4060", "NVIDIA GeForce RTX 4060 8GB", 33500, "Средний", 2023, vram_gb=8, length_mm=240, tdp_w=115, score=58, vendor="NVIDIA"),
+    _pc_part("arc_a580", "Intel Arc A580 8GB", 15900, "Средний", 2023, vram_gb=8, length_mm=271, tdp_w=185, score=42, vendor="Intel"),
+    _pc_part("rx_7600", "AMD Radeon RX 7600 8GB", 29900, "Средний", 2023, vram_gb=8, length_mm=267, tdp_w=165, score=54, vendor="AMD"),
+    _pc_part("rtx_4060ti", "NVIDIA GeForce RTX 4060 Ti 16GB", 47000, "Средний", 2023, vram_gb=16, length_mm=245, tdp_w=165, score=68, vendor="NVIDIA"),
+    _pc_part("rx_6700xt", "AMD Radeon RX 6700 XT 12GB", 34900, "Средний", 2021, vram_gb=12, length_mm=267, tdp_w=230, score=62, vendor="AMD"),
+    _pc_part("arc_b580", "Intel Arc B580 12GB Battlemage", 28900, "Средний", 2024, vram_gb=12, length_mm=272, tdp_w=190, score=61, vendor="Intel"),
+    _pc_part("rx_7800xt", "AMD Radeon RX 7800 XT 16GB", 56000, "Производительный", 2023, vram_gb=16, length_mm=280, tdp_w=263, score=82, vendor="AMD"),
+    _pc_part("rtx_4070s", "NVIDIA GeForce RTX 4070 SUPER 12GB", 67000, "Производительный", 2024, vram_gb=12, length_mm=267, tdp_w=220, score=84, vendor="NVIDIA"),
+    _pc_part("rx_9070xt", "AMD Radeon RX 9070 XT 16GB", 79000, "Производительный", 2025, vram_gb=16, length_mm=320, tdp_w=304, score=96, vendor="AMD"),
+    _pc_part("rtx_5070ti", "NVIDIA GeForce RTX 5070 Ti 16GB GDDR7", 94000, "Производительный", 2025, vram_gb=16, length_mm=300, tdp_w=300, score=98, vendor="NVIDIA"),
+    _pc_part("rtx_5080", "NVIDIA GeForce RTX 5080 16GB GDDR7", 129000, "Флагманский", 2025, vram_gb=16, length_mm=310, tdp_w=360, score=116, vendor="NVIDIA"),
+    _pc_part("rtx_5090", "NVIDIA GeForce RTX 5090 32GB GDDR7", 249000, "Флагманский", 2025, vram_gb=32, length_mm=336, tdp_w=575, score=140, vendor="NVIDIA"),
 ]
 
 PC_MOTHERBOARDS: list[dict[str, Any]] = [
-    {"id": "x870e_tomahawk", "name": "MSI MAG X870E TOMAHAWK WIFI", "socket": "AM5", "ram_type": "DDR5", "form_factor": "ATX", "pcie": "5.0", "price_rub": 34900},
-    {"id": "b650_aorus", "name": "GIGABYTE B650 AORUS ELITE AX V2", "socket": "AM5", "ram_type": "DDR5", "form_factor": "ATX", "pcie": "4.0/5.0", "price_rub": 20900},
-    {"id": "b550_tuf", "name": "ASUS TUF GAMING B550M-PLUS", "socket": "AM4", "ram_type": "DDR4", "form_factor": "mATX", "pcie": "4.0", "price_rub": 12900},
-    {"id": "z890_pro", "name": "ASUS PRIME Z890-P WIFI", "socket": "LGA1851", "ram_type": "DDR5", "form_factor": "ATX", "pcie": "5.0", "price_rub": 28900},
-    {"id": "z790_ud", "name": "GIGABYTE Z790 UD AX", "socket": "LGA1700", "ram_type": "DDR5", "form_factor": "ATX", "pcie": "5.0", "price_rub": 21500},
-    {"id": "b760m_d4", "name": "MSI PRO B760M-A WIFI DDR4", "socket": "LGA1700", "ram_type": "DDR4", "form_factor": "mATX", "pcie": "4.0", "price_rub": 14500},
+    _pc_part("h81_lga1150", "H81 mATX · LGA1150 / DDR3 · базовая плата", 3500, "Вторичный рынок", 2014, socket="LGA1150", platform_key="lga1150", ram_type="DDR3", max_ram_mhz=1600, m2_slots=0, sata_ports=4, form_factor="mATX", pcie="3.0", supports_atx=False),
+    _pc_part("h110_lga1151", "H110 mATX · LGA1151 6/7 поколение / DDR4", 4500, "Вторичный рынок", 2015, socket="LGA1151", platform_key="lga1151_100_200", ram_type="DDR4", max_ram_mhz=2133, m2_slots=0, sata_ports=4, form_factor="mATX", pcie="3.0", supports_atx=False),
+    _pc_part("b365_lga1151", "B365 mATX · LGA1151 8/9 поколение / DDR4", 6500, "Старый бюджет", 2019, socket="LGA1151", platform_key="lga1151_300", ram_type="DDR4", max_ram_mhz=2666, m2_slots=1, sata_ports=6, form_factor="mATX", pcie="3.0", supports_atx=False),
+    _pc_part("b450m", "B450 mATX · AM4 / DDR4", 6900, "Старый бюджет", 2018, socket="AM4", platform_key="am4", ram_type="DDR4", max_ram_mhz=3600, m2_slots=1, sata_ports=4, form_factor="mATX", pcie="3.0/4.0", supports_atx=False),
+    _pc_part("b550_tuf", "ASUS TUF GAMING B550M-PLUS · AM4 / DDR4", 12900, "Средний", 2020, socket="AM4", platform_key="am4", ram_type="DDR4", max_ram_mhz=4400, m2_slots=2, sata_ports=6, form_factor="mATX", pcie="4.0", supports_atx=False),
+    _pc_part("b550_atx", "B550 ATX · AM4 / DDR4 · расширение и слоты", 13900, "Средний", 2020, socket="AM4", platform_key="am4", ram_type="DDR4", max_ram_mhz=4400, m2_slots=2, sata_ports=6, form_factor="ATX", pcie="4.0", supports_atx=True),
+    _pc_part("b560_lga1200", "B560 mATX · LGA1200 / DDR4", 7900, "Старый бюджет", 2021, socket="LGA1200", platform_key="lga1200", ram_type="DDR4", max_ram_mhz=3200, m2_slots=2, sata_ports=6, form_factor="mATX", pcie="4.0", supports_atx=False),
+    _pc_part("b660_d4", "B660 mATX · LGA1700 / DDR4", 9900, "Начальный", 2022, socket="LGA1700", platform_key="lga1700", ram_type="DDR4", max_ram_mhz=3200, m2_slots=2, sata_ports=4, form_factor="mATX", pcie="4.0", supports_atx=False),
+    _pc_part("b760m_d4", "MSI PRO B760M-A WIFI DDR4 · LGA1700", 14500, "Средний", 2023, socket="LGA1700", platform_key="lga1700", ram_type="DDR4", max_ram_mhz=3200, m2_slots=2, sata_ports=4, form_factor="mATX", pcie="4.0", supports_atx=False),
+    _pc_part("b760m_d5", "B760 mATX · LGA1700 / DDR5", 15900, "Средний", 2023, socket="LGA1700", platform_key="lga1700", ram_type="DDR5", max_ram_mhz=6800, m2_slots=2, sata_ports=4, form_factor="mATX", pcie="4.0/5.0", supports_atx=False),
+    _pc_part("z790_ud", "GIGABYTE Z790 UD AX · LGA1700 / DDR5", 21500, "Производительный", 2023, socket="LGA1700", platform_key="lga1700", ram_type="DDR5", max_ram_mhz=7600, m2_slots=4, sata_ports=6, form_factor="ATX", pcie="5.0", supports_atx=True),
+    _pc_part("b650_aorus", "GIGABYTE B650 AORUS ELITE AX V2 · AM5", 20900, "Средний", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=6400, m2_slots=3, sata_ports=4, form_factor="ATX", pcie="4.0/5.0", supports_atx=True),
+    _pc_part("b650m", "B650 mATX · AM5 / DDR5", 14900, "Средний", 2023, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=6400, m2_slots=2, sata_ports=4, form_factor="mATX", pcie="4.0/5.0", supports_atx=False),
+    _pc_part("x870e_tomahawk", "MSI MAG X870E TOMAHAWK WIFI · AM5", 34900, "Флагманский", 2024, socket="AM5", platform_key="am5", ram_type="DDR5", max_ram_mhz=8000, m2_slots=4, sata_ports=4, form_factor="ATX", pcie="5.0", supports_atx=True),
+    _pc_part("z890_pro", "ASUS PRIME Z890-P WIFI · LGA1851 / DDR5", 28900, "Флагманский", 2024, socket="LGA1851", platform_key="lga1851", ram_type="DDR5", max_ram_mhz=8800, m2_slots=4, sata_ports=4, form_factor="ATX", pcie="5.0", supports_atx=True),
 ]
 
 PC_RAMS: list[dict[str, Any]] = [
-    {"id": "ddr5_32_6000", "name": "32GB (2×16) G.Skill Trident Z5 DDR5-6000 CL30", "ram_type": "DDR5", "capacity_gb": 32, "speed_mhz": 6000, "price_rub": 13500},
-    {"id": "ddr5_64_6400", "name": "64GB (2×32) Kingston FURY Renegade DDR5-6400 CL32", "ram_type": "DDR5", "capacity_gb": 64, "speed_mhz": 6400, "price_rub": 25900},
-    {"id": "ddr4_32_3600", "name": "32GB (2×16) Kingston FURY Beast DDR4-3600 CL16", "ram_type": "DDR4", "capacity_gb": 32, "speed_mhz": 3600, "price_rub": 7900},
-    {"id": "ddr4_16_3200", "name": "16GB (2×8) Crucial Ballistix DDR4-3200 CL16", "ram_type": "DDR4", "capacity_gb": 16, "speed_mhz": 3200, "price_rub": 4500},
+    _pc_part("ddr3_8_1600", "8GB (2×4) DDR3-1600 · базовый апгрейд", 1200, "Вторичный рынок", 2014, ram_type="DDR3", capacity_gb=8, speed_mhz=1600, kit="2×4 ГБ"),
+    _pc_part("ddr3_16_1600", "16GB (2×8) DDR3-1600", 2500, "Вторичный рынок", 2015, ram_type="DDR3", capacity_gb=16, speed_mhz=1600, kit="2×8 ГБ"),
+    _pc_part("ddr4_16_2133", "16GB (2×8) DDR4-2133 · для старых LGA1151 плат", 3300, "Вторичный рынок", 2016, ram_type="DDR4", capacity_gb=16, speed_mhz=2133, kit="2×8 ГБ"),
+    _pc_part("ddr4_8_2666", "8GB DDR4-2666 · один модуль", 1800, "Старый бюджет", 2018, ram_type="DDR4", capacity_gb=8, speed_mhz=2666, kit="1×8 ГБ"),
+    _pc_part("ddr4_16_3200", "16GB (2×8) DDR4-3200", 4500, "Начальный", 2020, ram_type="DDR4", capacity_gb=16, speed_mhz=3200, kit="2×8 ГБ"),
+    _pc_part("ddr4_32_3200", "32GB (2×16) DDR4-3200", 6900, "Средний", 2021, ram_type="DDR4", capacity_gb=32, speed_mhz=3200, kit="2×16 ГБ"),
+    _pc_part("ddr4_32_3600", "32GB (2×16) Kingston FURY Beast DDR4-3600 CL16", 7900, "Средний", 2022, ram_type="DDR4", capacity_gb=32, speed_mhz=3600, kit="2×16 ГБ"),
+    _pc_part("ddr5_16_5200", "16GB (2×8) DDR5-5200 · начальный комплект", 5900, "Начальный", 2022, ram_type="DDR5", capacity_gb=16, speed_mhz=5200, kit="2×8 ГБ"),
+    _pc_part("ddr5_32_5600", "32GB (2×16) DDR5-5600", 9900, "Средний", 2023, ram_type="DDR5", capacity_gb=32, speed_mhz=5600, kit="2×16 ГБ"),
+    _pc_part("ddr5_32_6000", "32GB (2×16) G.Skill Trident Z5 DDR5-6000 CL30", 13500, "Средний", 2023, ram_type="DDR5", capacity_gb=32, speed_mhz=6000, kit="2×16 ГБ"),
+    _pc_part("ddr5_64_6000", "64GB (2×32) DDR5-6000", 19900, "Производительный", 2024, ram_type="DDR5", capacity_gb=64, speed_mhz=6000, kit="2×32 ГБ"),
+    _pc_part("ddr5_64_6400", "64GB (2×32) Kingston FURY Renegade DDR5-6400 CL32", 25900, "Производительный", 2024, ram_type="DDR5", capacity_gb=64, speed_mhz=6400, kit="2×32 ГБ"),
+    _pc_part("ddr5_96_6000", "96GB (2×48) DDR5-6000 · рабочая станция", 32900, "Флагманский", 2024, ram_type="DDR5", capacity_gb=96, speed_mhz=6000, kit="2×48 ГБ"),
 ]
 
 PC_COOLERS: list[dict[str, Any]] = [
-    {"id": "aio_360", "name": "Arctic Liquid Freezer III 360 СЖО", "max_tdp_w": 320, "height_mm": 65, "is_aio_360": True, "price_rub": 11900},
-    {"id": "ak620", "name": "DeepCool AK620 Dual-Tower (6 трубок)", "max_tdp_w": 260, "height_mm": 160, "is_aio_360": False, "price_rub": 6400},
-    {"id": "se224xts", "name": "ID-COOLING SE-224-XTS (4 трубки)", "max_tdp_w": 180, "height_mm": 151, "is_aio_360": False, "price_rub": 2400},
+    _pc_part("stock_am4", "Штатный кулер AMD Wraith · только совместимые AM4 CPU", 0, "Бюджетный", 2019, max_tdp_w=65, height_mm=55, is_aio_360=False, supported_sockets=["AM4"], cooler_kind="stock"),
+    _pc_part("stock_intel", "Штатный кулер Intel Laminar · базовый режим", 0, "Бюджетный", 2022, max_tdp_w=65, height_mm=55, is_aio_360=False, supported_sockets=["LGA1151", "LGA1200", "LGA1700"], cooler_kind="stock"),
+    _pc_part("se224xts", "ID-COOLING SE-224-XTS · башня 4 теплотрубки", 2400, "Начальный", 2022, max_tdp_w=180, height_mm=151, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="tower"),
+    _pc_part("ag400", "DeepCool AG400 · компактная башня", 2100, "Начальный", 2022, max_tdp_w=180, height_mm=150, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="tower"),
+    _pc_part("ak400", "DeepCool AK400 · башня с 4 трубками", 3200, "Средний", 2022, max_tdp_w=220, height_mm=155, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="tower"),
+    _pc_part("ak620", "DeepCool AK620 Dual-Tower · 6 теплотрубок", 6400, "Производительный", 2022, max_tdp_w=260, height_mm=160, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="dual_tower"),
+    _pc_part("aio_240", "СЖО 240 мм · радиатор в зависимости от корпуса", 7900, "Производительный", 2023, max_tdp_w=260, height_mm=55, is_aio_360=False, supported_sockets=["AM4", "AM5", "LGA1150", "LGA1151", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="aio_240"),
+    _pc_part("aio_360", "Arctic Liquid Freezer III 360 · СЖО", 11900, "Флагманский", 2024, max_tdp_w=320, height_mm=65, is_aio_360=True, supported_sockets=["AM4", "AM5", "LGA1200", "LGA1700", "LGA1851"], cooler_kind="aio_360"),
 ]
 
 PC_SSDS: list[dict[str, Any]] = [
-    {"id": "990pro_2tb", "name": "Samsung 990 PRO 2TB NVMe PCIe 4.0 (7450 МБ/с)", "capacity_gb": 2000, "price_rub": 19900},
-    {"id": "t705_2tb", "name": "Crucial T705 2TB NVMe PCIe 5.0 (14500 МБ/с)", "capacity_gb": 2000, "price_rub": 31500},
-    {"id": "kc3000_1tb", "name": "Kingston KC3000 1TB NVMe PCIe 4.0 (7000 МБ/с)", "capacity_gb": 1000, "price_rub": 9800},
+    _pc_part("sata_240", "240GB SATA SSD · бюджетное обновление старого ПК", 1900, "Бюджетный", 2020, capacity_gb=240, interface="SATA III", speed_mbps=500, drive_kind="sata_ssd"),
+    _pc_part("sata_480", "480GB SATA SSD · повседневная система", 2900, "Начальный", 2021, capacity_gb=480, interface="SATA III", speed_mbps=550, drive_kind="sata_ssd"),
+    _pc_part("sata_1tb", "1TB SATA SSD", 5900, "Средний", 2022, capacity_gb=1000, interface="SATA III", speed_mbps=550, drive_kind="sata_ssd"),
+    _pc_part("nvme_500", "500GB NVMe PCIe 3.0 SSD", 3900, "Начальный", 2021, capacity_gb=500, interface="NVMe PCIe 3.0", speed_mbps=3500, drive_kind="nvme"),
+    _pc_part("kc3000_1tb", "Kingston KC3000 1TB NVMe PCIe 4.0", 9800, "Средний", 2022, capacity_gb=1000, interface="NVMe PCIe 4.0", speed_mbps=7000, drive_kind="nvme"),
+    _pc_part("nvme_1tb_gen3", "1TB NVMe PCIe 3.0 · массовый накопитель", 6200, "Начальный", 2022, capacity_gb=1000, interface="NVMe PCIe 3.0", speed_mbps=3500, drive_kind="nvme"),
+    _pc_part("990pro_2tb", "Samsung 990 PRO 2TB NVMe PCIe 4.0", 19900, "Производительный", 2023, capacity_gb=2000, interface="NVMe PCIe 4.0", speed_mbps=7450, drive_kind="nvme"),
+    _pc_part("nvme_2tb_gen4", "2TB NVMe PCIe 4.0 · объёмный вариант", 14900, "Средний", 2023, capacity_gb=2000, interface="NVMe PCIe 4.0", speed_mbps=7000, drive_kind="nvme"),
+    _pc_part("t705_2tb", "Crucial T705 2TB NVMe PCIe 5.0", 31500, "Флагманский", 2024, capacity_gb=2000, interface="NVMe PCIe 5.0", speed_mbps=14500, drive_kind="nvme"),
+]
+
+PC_HDDS: list[dict[str, Any]] = [
+    _pc_part("hdd_none", "Без дополнительного HDD", 0, "Опционально", None, capacity_gb=0, interface="—", rpm=0),
+    _pc_part("hdd_1tb", "1TB HDD 3.5″ · архив и файлы", 3900, "Бюджетный", 2021, capacity_gb=1000, interface="SATA III", rpm=7200),
+    _pc_part("hdd_2tb", "2TB HDD 3.5″ · массовое хранилище", 5900, "Начальный", 2022, capacity_gb=2000, interface="SATA III", rpm=7200),
+    _pc_part("hdd_4tb", "4TB HDD 3.5″ · архив больших файлов", 9900, "Средний", 2023, capacity_gb=4000, interface="SATA III", rpm=5400),
 ]
 
 PC_PSUS: list[dict[str, Any]] = [
-    {"id": "psu_1200", "name": " Seasonic VERTEX GX-1200W 80+ Gold ATX 3.1 (12V-2x6)", "watts": 1200, "price_rub": 24900},
-    {"id": "psu_850", "name": "DeepCool PQ850M / PX850G 850W 80+ Gold ATX 3.0", "watts": 850, "price_rub": 12900},
-    {"id": "psu_750", "name": "be quiet! Pure Power 12 M 750W 80+ Gold", "watts": 750, "price_rub": 11500},
-    {"id": "psu_600", "name": "MONTECH GAMMA II 600W 80+ Gold", "watts": 600, "price_rub": 6200},
+    _pc_part("psu_450", "450W 80+ Bronze · офисные и маломощные сборки", 3500, "Бюджетный", 2020, watts=450, efficiency="80+ Bronze", atx_version="ATX 2.x", pcie_5=False),
+    _pc_part("psu_500", "500W 80+ Bronze · базовый запас", 4300, "Начальный", 2021, watts=500, efficiency="80+ Bronze", atx_version="ATX 2.x", pcie_5=False),
+    _pc_part("psu_600", "MONTECH GAMMA II 600W 80+ Gold", 6200, "Начальный", 2022, watts=600, efficiency="80+ Gold", atx_version="ATX 2.x", pcie_5=False),
+    _pc_part("psu_650", "650W 80+ Bronze · массовый игровой ПК", 6900, "Средний", 2022, watts=650, efficiency="80+ Bronze", atx_version="ATX 2.x", pcie_5=False),
+    _pc_part("psu_750", "be quiet! Pure Power 12 M 750W 80+ Gold", 11500, "Средний", 2023, watts=750, efficiency="80+ Gold", atx_version="ATX 3.0", pcie_5=True),
+    _pc_part("psu_850", "DeepCool PQ850M / PX850G 850W 80+ Gold", 12900, "Производительный", 2023, watts=850, efficiency="80+ Gold", atx_version="ATX 3.0", pcie_5=True),
+    _pc_part("psu_1000", "1000W 80+ Gold ATX 3.1 · мощный GPU", 18900, "Флагманский", 2024, watts=1000, efficiency="80+ Gold", atx_version="ATX 3.1", pcie_5=True),
+    _pc_part("psu_1200", "Seasonic VERTEX GX-1200W 80+ Gold ATX 3.1", 24900, "Флагманский", 2024, watts=1200, efficiency="80+ Gold", atx_version="ATX 3.1", pcie_5=True),
 ]
 
 PC_CASES: list[dict[str, Any]] = [
-    {"id": "lianli_o11", "name": "Lian Li O11 Dynamic EVO (ATX, закалённое стекло)", "max_gpu_mm": 422, "max_cooler_mm": 167, "supports_atx": True, "supports_aio360": True, "price_rub": 16900},
-    {"id": "lancool_216", "name": "Lian Li LANCOOL 216 Mesh RGB (ATX)", "max_gpu_mm": 392, "max_cooler_mm": 180, "supports_atx": True, "supports_aio360": True, "price_rub": 10900},
-    {"id": "matx_mini", "name": "ASUS Prime AP201 Mesh (компактный mATX)", "max_gpu_mm": 338, "max_cooler_mm": 170, "supports_atx": False, "supports_aio360": True, "price_rub": 8500},
-    {"id": "compact_itx", "name": "Компактный Mini-Tower (до 285 мм GPU)", "max_gpu_mm": 285, "max_cooler_mm": 155, "supports_atx": False, "supports_aio360": False, "price_rub": 5200},
+    _pc_part("used_office_case", "Обычный офисный корпус · вторичный рынок, mATX", 1500, "Вторичный рынок", 2015, drive_bays_35=1, max_gpu_mm=240, max_cooler_mm=145, supports_atx=False, supports_aio240=False, supports_aio360=False, supported_form_factors=["mATX", "Mini-ITX"], case_size="старый mATX"),
+    _pc_part("budget_mini", "Бюджетный компактный корпус mATX", 3200, "Бюджетный", 2020, drive_bays_35=1, max_gpu_mm=260, max_cooler_mm=150, supports_atx=False, supports_aio240=False, supports_aio360=False, supported_form_factors=["mATX", "Mini-ITX"], case_size="mini tower"),
+    _pc_part("compact_itx", "Компактный Mini-Tower · GPU до 285 мм", 5200, "Начальный", 2021, drive_bays_35=1, max_gpu_mm=285, max_cooler_mm=155, supports_atx=False, supports_aio240=False, supports_aio360=False, supported_form_factors=["mATX", "Mini-ITX"], case_size="compact"),
+    _pc_part("matx_mini", "ASUS Prime AP201 Mesh · компактный mATX", 8500, "Средний", 2022, drive_bays_35=1, max_gpu_mm=338, max_cooler_mm=170, supports_atx=False, supports_aio240=True, supports_aio360=True, supported_form_factors=["mATX", "Mini-ITX"], case_size="mATX mesh"),
+    _pc_part("mid_tower_budget", "Mid-Tower ATX · базовая вентиляция", 4900, "Начальный", 2021, drive_bays_35=2, max_gpu_mm=320, max_cooler_mm=160, supports_atx=True, supports_aio240=True, supports_aio360=False, supported_form_factors=["ATX", "mATX", "Mini-ITX"], case_size="ATX mid-tower"),
+    _pc_part("lancool_216", "Lian Li LANCOOL 216 Mesh RGB · ATX", 10900, "Производительный", 2023, drive_bays_35=2, max_gpu_mm=392, max_cooler_mm=180, supports_atx=True, supports_aio240=True, supports_aio360=True, supported_form_factors=["ATX", "mATX", "Mini-ITX"], case_size="ATX airflow"),
+    _pc_part("lianli_o11", "Lian Li O11 Dynamic EVO · ATX / стекло", 16900, "Производительный", 2022, drive_bays_35=2, max_gpu_mm=422, max_cooler_mm=167, supports_atx=True, supports_aio240=True, supports_aio360=True, supported_form_factors=["ATX", "mATX", "Mini-ITX"], case_size="ATX dual-chamber"),
+    _pc_part("full_tower", "Full-Tower · просторный корпус для рабочей станции", 18900, "Флагманский", 2023, drive_bays_35=3, max_gpu_mm=450, max_cooler_mm=190, supports_atx=True, supports_aio240=True, supports_aio360=True, supported_form_factors=["E-ATX", "ATX", "mATX", "Mini-ITX"], case_size="full tower"),
 ]
-
 
 def get_pc_parts_catalog() -> dict[str, Any]:
     return {
@@ -89,47 +179,83 @@ def get_pc_parts_catalog() -> dict[str, Any]:
         "rams": PC_RAMS,
         "coolers": PC_COOLERS,
         "ssds": PC_SSDS,
+        "hdds": PC_HDDS,
         "psus": PC_PSUS,
         "cases": PC_CASES,
     }
 
 
 def evaluate_pc_build(
-    cpu_id: str = "r7_9800x3d",
-    gpu_id: str = "rtx_5070ti",
-    mb_id: str = "b650_aorus",
-    ram_id: str = "ddr5_32_6000",
-    cooler_id: str = "ak620",
-    ssd_id: str = "990pro_2tb",
-    psu_id: str = "psu_850",
-    case_id: str = "lancool_216",
+    cpu_id: str = "i5_6500",
+    gpu_id: str = "gtx_1050ti",
+    mb_id: str = "h110_lga1151",
+    ram_id: str = "ddr4_16_2133",
+    cooler_id: str = "stock_intel",
+    ssd_id: str = "sata_480",
+    hdd_id: str = "hdd_none",
+    psu_id: str = "psu_450",
+    case_id: str = "used_office_case",
 ) -> dict[str, Any]:
-    cpu = next((x for x in PC_CPUS if x["id"] == cpu_id), PC_CPUS[0])
-    gpu = next((x for x in PC_GPUS if x["id"] == gpu_id), PC_GPUS[2])
-    mb = next((x for x in PC_MOTHERBOARDS if x["id"] == mb_id), PC_MOTHERBOARDS[1])
-    ram = next((x for x in PC_RAMS if x["id"] == ram_id), PC_RAMS[0])
-    cooler = next((x for x in PC_COOLERS if x["id"] == cooler_id), PC_COOLERS[1])
-    ssd = next((x for x in PC_SSDS if x["id"] == ssd_id), PC_SSDS[0])
-    psu = next((x for x in PC_PSUS if x["id"] == psu_id), PC_PSUS[1])
-    case = next((x for x in PC_CASES if x["id"] == case_id), PC_CASES[1])
+    cpu = next((x for x in PC_CPUS if x["id"] == cpu_id), next(x for x in PC_CPUS if x["id"] == "i5_6500"))
+    gpu = next((x for x in PC_GPUS if x["id"] == gpu_id), next(x for x in PC_GPUS if x["id"] == "gtx_1050ti"))
+    mb = next((x for x in PC_MOTHERBOARDS if x["id"] == mb_id), next(x for x in PC_MOTHERBOARDS if x["id"] == "h110_lga1151"))
+    ram = next((x for x in PC_RAMS if x["id"] == ram_id), next(x for x in PC_RAMS if x["id"] == "ddr4_16_2133"))
+    cooler = next((x for x in PC_COOLERS if x["id"] == cooler_id), next(x for x in PC_COOLERS if x["id"] == "stock_intel"))
+    ssd = next((x for x in PC_SSDS if x["id"] == ssd_id), next(x for x in PC_SSDS if x["id"] == "sata_480"))
+    hdd = next((x for x in PC_HDDS if x["id"] == hdd_id), PC_HDDS[0])
+    psu = next((x for x in PC_PSUS if x["id"] == psu_id), next(x for x in PC_PSUS if x["id"] == "psu_450"))
+    case = next((x for x in PC_CASES if x["id"] == case_id), next(x for x in PC_CASES if x["id"] == "used_office_case"))
 
     errors: list[str] = []
     warnings: list[str] = []
+    requested_parts = [
+        ("CPU", cpu_id, PC_CPUS), ("GPU", gpu_id, PC_GPUS), ("материнскую плату", mb_id, PC_MOTHERBOARDS),
+        ("RAM", ram_id, PC_RAMS), ("кулер", cooler_id, PC_COOLERS), ("SSD", ssd_id, PC_SSDS),
+        ("HDD", hdd_id, PC_HDDS), ("БП", psu_id, PC_PSUS), ("корпус", case_id, PC_CASES),
+    ]
+    for label, requested_id, options in requested_parts:
+        if not any(option["id"] == requested_id for option in options):
+            errors.append(f"Неизвестный идентификатор детали ({label}); проверьте актуальный каталог.")
 
     if cpu["socket"] != mb["socket"]:
         errors.append(f"Несовместимость сокета: процессор {cpu['socket']}, а материнская плата {mb['socket']}.")
+    if gpu["id"] == "gpu_none" and not cpu.get("integrated_graphics"):
+        errors.append("Выбрана сборка без дискретной видеокарты, но у этого процессора нет заявленной встроенной графики.")
+    if mb.get("platform_key") and cpu.get("platform_key") and mb["platform_key"] != cpu["platform_key"]:
+        errors.append("Поколение/чипсет платы не заявлены как совместимые с выбранным процессором, даже если название сокета совпадает.")
     if mb["ram_type"] != ram["ram_type"]:
         errors.append(f"Несовместимость стандарта памяти: плата поддерживает {mb['ram_type']}, выбрана ОЗУ {ram['ram_type']}.")
+    if ram["capacity_gb"] < 8:
+        warnings.append("Менее 8 ГБ ОЗУ — минимальный объём; современные ОС и игры могут работать с ограничениями.")
+    if mb.get("max_ram_mhz") and ram["speed_mhz"] > mb["max_ram_mhz"]:
+        warnings.append(f"Выбранная память рассчитана на {ram['speed_mhz']} МГц, а для этой платы в каталоге указан предел {mb['max_ram_mhz']} МГц; фактическая частота может быть снижена.")
+    if ram.get("kit", "").startswith("1×"):
+        warnings.append("Выбран один модуль памяти: двухканальный режим обычно требует согласованного комплекта модулей и установки в правильные слоты.")
+    if ssd.get("drive_kind") == "nvme" and mb.get("m2_slots") == 0:
+        errors.append(f"Для NVMe SSD на плате {mb['name']} не указано место M.2; выберите SATA SSD или проверьте точную ревизию платы.")
+    if hdd["capacity_gb"] and case.get("drive_bays_35", 0) < 1:
+        errors.append(f"Для 3.5-дюймового HDD в корпусе {case['name']} не указано посадочное место.")
+    if hdd["capacity_gb"] and mb.get("sata_ports", 0) < 1:
+        errors.append(f"Для дополнительного HDD нужна свободная SATA-позиция на плате {mb['name']}.")
     if mb["form_factor"] == "ATX" and not case["supports_atx"]:
-        errors.append(f"Материнская плата формата ATX не поместится в корпус mATX ({case['name']}).")
+        errors.append(f"Материнская плата формата ATX не поместится в корпус ({case['name']}).")
+    if case.get("supported_form_factors") and mb["form_factor"] not in case["supported_form_factors"]:
+        errors.append(f"Формат платы {mb['form_factor']} не указан в списке поддерживаемых для корпуса {case['name']}.")
+    if cooler.get("supported_sockets") and cpu["socket"] not in cooler["supported_sockets"]:
+        errors.append(f"Для кулера {cooler['name']} не заявлено крепление на сокет {cpu['socket']}.")
     if gpu["length_mm"] > case["max_gpu_mm"]:
         errors.append(f"Видеокарта длиной {gpu['length_mm']} мм не войдёт в корпус (максимум {case['max_gpu_mm']} мм).")
     if cooler["is_aio_360"] and not case["supports_aio360"]:
         errors.append(f"Радиатор СЖО 360 мм не поддерживается выбранным корпусом ({case['name']}).")
+    if cooler.get("cooler_kind") == "aio_240" and case.get("supports_aio240") is False:
+        errors.append(f"Корпус {case['name']} не поддерживает установку радиатора 240 мм по карточке совместимости.")
     if not cooler["is_aio_360"] and cooler["height_mm"] > case["max_cooler_mm"]:
         errors.append(f"Башенный кулер {cooler['height_mm']} мм упрётся в крышку корпуса (лимит {case['max_cooler_mm']} мм).")
     if cooler["max_tdp_w"] < cpu["tdp_w"]:
         warnings.append(f"Теплопакет CPU ({cpu['tdp_w']} Вт) превышает паспортный отвод кулера ({cooler['max_tdp_w']} Вт) — возможен троттлинг.")
+
+    if gpu["tdp_w"] >= 300 and not psu.get("pcie_5"):
+        warnings.append("Для видеокарты такого класса проверьте требования производителя к кабелю питания и стандарту БП: в каталоге выбран более старый тип БП.")
 
     est_peak_draw_w = int(cpu["tdp_w"] + gpu["tdp_w"] + 75)
     recommended_psu_w = int(math.ceil((est_peak_draw_w * 1.28) / 50.0) * 50)
@@ -141,11 +267,14 @@ def evaluate_pc_build(
     # Bottleneck & FPS estimation across 1080p / 1440p / 4K
     ratio = gpu["score"] / max(1.0, cpu["score"])
     bottleneck_pct = round(min(45.0, abs(ratio - 1.02) * 28.0), 1)
-    bottleneck_side = "Баланс оптимален"
-    if ratio > 1.24:
-        bottleneck_side = f"Упор в процессор в 1080p (~{bottleneck_pct}%)"
+    bottleneck_side = "Баланс оптимален по условному индексу"
+    if gpu["id"] == "gpu_none":
+        bottleneck_pct = 0.0
+        bottleneck_side = "Используется встроенная графика CPU; FPS-показатель особенно условен"
+    elif ratio > 1.24:
+        bottleneck_side = f"Условный перекос в CPU при низком разрешении (~{bottleneck_pct}%)"
     elif ratio < 0.76:
-        bottleneck_side = f"Упор в видеокарту (~{bottleneck_pct}%)"
+        bottleneck_side = f"Условный перекос в GPU (~{bottleneck_pct}%)"
 
     eff_1080 = min(cpu["score"] * 1.18, gpu["score"] * 1.0)
     eff_1440 = min(cpu["score"] * 1.32, gpu["score"] * 0.74)
@@ -184,7 +313,7 @@ def evaluate_pc_build(
         },
     ]
 
-    total_rub = sum(x["price_rub"] for x in (cpu, gpu, mb, ram, cooler, ssd, psu, case))
+    total_rub = sum(x["price_rub"] for x in (cpu, gpu, mb, ram, cooler, ssd, hdd, psu, case))
     return {
         "compatible": len(errors) == 0,
         "errors": errors,
@@ -194,8 +323,11 @@ def evaluate_pc_build(
         "bottleneck_pct": bottleneck_pct,
         "bottleneck_verdict": bottleneck_side,
         "total_price_rub": total_rub,
+        "storage_capacity_gb": int(ssd["capacity_gb"] + hdd["capacity_gb"]),
         "fps_benchmarks": fps_benchmarks,
-        "selected": {"cpu": cpu, "gpu": gpu, "mb": mb, "ram": ram, "cooler": cooler, "ssd": ssd, "psu": psu, "case": case},
+        "performance_note": "Производительные баллы и FPS здесь — ориентировочная внутренняя модель, не результаты тестирования этих конкретных комплектующих. Реальные значения зависят от версий игры, разрешения, настроек, драйвера, охлаждения и конкретных моделей карт.",
+        "price_note": "Цены — справочные ориентиры для сравнения конфигураций, а не актуальные предложения магазинов; б/у-комплектующие особенно сильно зависят от состояния и комплектации.",
+        "selected": {"cpu": cpu, "gpu": gpu, "mb": mb, "ram": ram, "cooler": cooler, "ssd": ssd, "hdd": hdd, "psu": psu, "case": case},
     }
 
 
@@ -582,20 +714,34 @@ WORLD_CITIES_COORDS: dict[str, tuple[float, float, str]] = {
 
 def _resolve_point(spec: str) -> tuple[float, float, str]:
     s = (spec or "").strip()
-    low = s.lower()
+    low = s.casefold().replace("ё", "е")
+    if not low:
+        raise ValueError("Укажите город или координаты в формате широта, долгота")
     if low in WORLD_CITIES_COORDS:
         return WORLD_CITIES_COORDS[low]
-    for k, val in WORLD_CITIES_COORDS.items():
-        if k in low or low in k:
-            return val
-    # Try "lat, lon"
-    parts = [p.strip() for p in s.replace(";", ",").split(",")]
-    if len(parts) >= 2:
+
+    # Permit a full country suffix or a small spelling variation, but don't let
+    # short fragments such as "a" silently resolve to an unrelated city.
+    normalized = low.replace("-", " ")
+    candidates = [
+        (key, value)
+        for key, value in WORLD_CITIES_COORDS.items()
+        if len(normalized) >= 4
+        and (normalized in key.replace("-", " ") or key.replace("-", " ") in normalized)
+    ]
+    if len(candidates) == 1:
+        return candidates[0][1]
+    if len(candidates) > 1:
+        names = ", ".join(value[2].split(",")[0] for _, value in candidates[:5])
+        raise ValueError(f"Запрос «{s}» неоднозначен. Уточните название: {names}")
+
+    # Coordinates are intentionally strict: exactly one latitude and longitude.
+    parts = [part.strip() for part in s.replace(";", ",").split(",")]
+    if len(parts) == 2:
         try:
-            la = float(parts[0])
-            lo = float(parts[1])
-            if -90 <= la <= 90 and -180 <= lo <= 180:
-                return (la, lo, f"{la:.4f}°, {lo:.4f}°")
+            lat, lon = float(parts[0]), float(parts[1])
+            if math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180:
+                return (lat, lon, f"{lat:.4f}°, {lon:.4f}°")
         except ValueError:
             pass
     raise ValueError(f"Не удалось распознать точку «{s}». Укажите известный город (например: Москва, Казань, Сочи, Франкфурт, Токио) или координаты «55.75, 37.61».")
@@ -609,11 +755,19 @@ def calculate_route_plan(
     fuel_l_per_100km: float = 8.2,
     fuel_price_rub: float = 61.5,
 ) -> dict[str, Any]:
+    supported_transport = {"car", "train", "plane", "bike", "walk"}
+    if transport not in supported_transport:
+        raise ValueError("Способ передвижения должен быть car, train, plane, bike или walk")
+    if not math.isfinite(float(fuel_l_per_100km)) or not 0 <= float(fuel_l_per_100km) <= 100:
+        raise ValueError("Расход топлива должен быть от 0 до 100 л/100 км")
+    if not math.isfinite(float(fuel_price_rub)) or not 0 <= float(fuel_price_rub) <= 1000:
+        raise ValueError("Цена топлива должна быть от 0 до 1000 ₽/л")
+
+    via_points = [point.strip() for point in (via or "").split(";") if point.strip()]
+    if len(via_points) > 6:
+        raise ValueError("Можно добавить не более 6 промежуточных точек")
     pts = [_resolve_point(origin)]
-    if (via or "").strip():
-        for v in via.split(";"):
-            if v.strip():
-                pts.append(_resolve_point(v.strip()))
+    pts.extend(_resolve_point(point) for point in via_points)
     pts.append(_resolve_point(destination))
 
     def haversine(p1: tuple[float, float, str], p2: tuple[float, float, str]) -> float:
@@ -632,8 +786,8 @@ def calculate_route_plan(
 
     route_km = round(air_km * tortuosity, 1)
     raw_hours = route_km / speed + (0.75 if transport == "plane" else 0.0)
-    h_int = int(raw_hours)
-    m_int = int(round((raw_hours - h_int) * 60))
+    total_minutes = max(0, int(round(raw_hours * 60)))
+    h_int, m_int = divmod(total_minutes, 60)
 
     fuel_needed_l = round((route_km / 100.0) * max(0.0, float(fuel_l_per_100km)), 1) if transport == "car" else 0.0
     fuel_cost_rub = int(round(fuel_needed_l * max(0.0, float(fuel_price_rub))))
@@ -654,6 +808,11 @@ def calculate_route_plan(
         "fuel_liters": fuel_needed_l,
         "fuel_cost_rub": fuel_cost_rub,
         "legs": legs,
+        "estimate_note": (
+            f"Оценка без дорожного/железнодорожного роутера: прямые расстояния между точками умножены на коэффициент {tortuosity:.2f}. "
+            f"Время рассчитано по усреднённой скорости {speed:g} км/ч{'; для самолёта добавлено 45 мин' if transport == 'plane' else ''}. "
+            "Реальная дорога, расписание, пробки, пересадки, рельеф, границы и платные участки могут существенно изменить результат."
+        ),
         "cities_available": [v[2].split(",")[0] for v in WORLD_CITIES_COORDS.values()],
     }
 

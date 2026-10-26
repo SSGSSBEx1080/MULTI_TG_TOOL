@@ -70,6 +70,10 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
   // --- Leaderboard & Public Profile ---
   const [sortBy, setSortBy] = useState<'xp' | 'games' | 'views' | 'respects' | 'tools'>('xp');
   const [leaders, setLeaders] = useState<any[]>([]);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [socialLoadError, setSocialLoadError] = useState('');
+  const [socialRetry, setSocialRetry] = useState(0);
+  const socialRequestId = useRef(0);
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
   const [myBio, setMyBio] = useState('');
   const [myEmoji, setMyEmoji] = useState('⚡');
@@ -103,6 +107,10 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
   const [anonRoom, setAnonRoom] = useState('global');
   const [anonMsgs, setAnonMsgs] = useState<any[]>([]);
   const [anonInput, setAnonInput] = useState('');
+  const [anonRoomLoading, setAnonRoomLoading] = useState(false);
+  const [anonSending, setAnonSending] = useState(false);
+  const anonRoomRequestId = useRef(0);
+  const anonSendRequestId = useRef(0);
 
   // --- Author Links (QLS) ---
   const [authorInfo, setAuthorInfo] = useState<any>(null);
@@ -111,10 +119,17 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
     setSubTab(toolToSocialTab(activeTool));
   }, [activeTool]);
 
-  const loadLeaders = (s = sortBy) => {
-    apiGet(`/api/v2/social/leaderboard?sort_by=${s}`)
-      .then((r) => setLeaders(r.users || []))
-      .catch(() => {});
+  const loadLeaders = async (s = sortBy) => {
+    const id = ++socialRequestId.current;
+    setSocialLoading(true); setSocialLoadError('');
+    try {
+      const r = await apiGet(`/api/v2/social/leaderboard?sort_by=${s}`);
+      if (id === socialRequestId.current) setLeaders(r.users || []);
+    } catch (error: any) {
+      if (id === socialRequestId.current) setSocialLoadError(error?.message || 'Не удалось загрузить рейтинг игроков');
+    } finally {
+      if (id === socialRequestId.current) setSocialLoading(false);
+    }
   };
 
   const openUserProfile = async (uid: number) => {
@@ -155,39 +170,39 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
     }
   };
 
-  // Lazy-load only active tab data instead of firing 6 simultaneous API requests
+  // Load only the active social view, and expose failed requests with an explicit retry.
   useEffect(() => {
     if (subTab === 'top') {
-      loadLeaders(sortBy);
-    } else if (subTab === 'altushka' && personas.length === 0) {
-      apiGet('/api/v2/social/altushka')
-        .then((r) => {
-          const list = r.personas || [];
-          setPersonas(list);
-          if (list[0]) {
-            setActivePersona(list[0]);
-            setAltMessages([{ from: 'girl', text: list[0].greeting, mood: 'онлайн 🖤' }]);
-          }
-        })
-        .catch(() => {});
-    } else if (subTab === 'bibinto' && bibintoProfiles.length === 0) {
-      apiGet('/api/v2/social/bibinto')
-        .then((r) => setBibintoProfiles(r.profiles || []))
-        .catch(() => {});
-    } else if (subTab === 'turing' && !turingRound) {
-      apiGet('/api/v2/social/turing')
-        .then(setTuringRound)
-        .catch(() => {});
-    } else if (subTab === 'anon' && anonMsgs.length === 0) {
-      apiGet(`/api/v2/social/anon?room=${encodeURIComponent(anonRoom)}`)
-        .then((r) => setAnonMsgs(r.messages || []))
-        .catch(() => {});
-    } else if (subTab === 'author' && !authorInfo) {
-      apiGet('/api/v2/author')
-        .then(setAuthorInfo)
-        .catch(() => {});
+      void loadLeaders(sortBy);
+      return () => { socialRequestId.current += 1; };
     }
-  }, [subTab]);
+    const id = ++socialRequestId.current;
+    let request: Promise<any> | null = null;
+    if (subTab === 'altushka' && personas.length === 0) request = apiGet('/api/v2/social/altushka');
+    else if (subTab === 'bibinto' && bibintoProfiles.length === 0) request = apiGet('/api/v2/social/bibinto');
+    else if (subTab === 'turing' && !turingRound) request = apiGet('/api/v2/social/turing');
+    else if (subTab === 'anon' && anonMsgs.length === 0) request = apiGet(`/api/v2/social/anon?room=${encodeURIComponent(anonRoom)}`);
+    else if (subTab === 'author' && !authorInfo) request = apiGet('/api/v2/author');
+    if (!request) { setSocialLoading(false); setSocialLoadError(''); return () => { socialRequestId.current += 1; }; }
+
+    setSocialLoading(true); setSocialLoadError('');
+    request.then((r) => {
+      if (id !== socialRequestId.current) return;
+      if (subTab === 'altushka') {
+        const list = r.personas || [];
+        setPersonas(list);
+        if (list[0]) { setActivePersona(list[0]); setAltMessages([{ from: 'girl', text: list[0].greeting, mood: 'онлайн 🖤' }]); }
+      } else if (subTab === 'bibinto') setBibintoProfiles(r.profiles || []);
+      else if (subTab === 'turing') setTuringRound(r);
+      else if (subTab === 'anon') setAnonMsgs(r.messages || []);
+      else if (subTab === 'author') setAuthorInfo(r);
+    }).catch((error: any) => {
+      if (id === socialRequestId.current) setSocialLoadError(error?.message || 'Не удалось загрузить данные этого раздела');
+    }).finally(() => {
+      if (id === socialRequestId.current) setSocialLoading(false);
+    });
+    return () => { socialRequestId.current += 1; };
+  }, [subTab, socialRetry]);
 
   const selectPersona = (p: any) => {
     setActivePersona(p);
@@ -281,24 +296,45 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
   };
 
   const switchAnonRoom = async (room: string) => {
+    if (room === anonRoom && !anonRoomLoading) return;
+    const currentRequest = ++anonRoomRequestId.current;
+    anonSendRequestId.current += 1;
+    socialRequestId.current += 1;
     setAnonRoom(room);
+    setAnonMsgs([]);
+    setAnonSending(false);
+    setAnonRoomLoading(true);
+    setSocialLoadError('');
     try {
-      const r = await apiGet(`/api/v2/social/anon?room=${room}`);
+      const r = await apiGet(`/api/v2/social/anon?room=${encodeURIComponent(room)}`);
+      if (currentRequest !== anonRoomRequestId.current) return;
       setAnonMsgs(r.messages || []);
     } catch (e: any) {
-      onToast(e.message || 'Ошибка переключения комнаты');
+      if (currentRequest !== anonRoomRequestId.current) return;
+      const message = e.message || 'Ошибка переключения комнаты';
+      setSocialLoadError(message);
+      onToast(message);
+    } finally {
+      if (currentRequest === anonRoomRequestId.current) setAnonRoomLoading(false);
     }
   };
 
   const sendAnon = async () => {
-    if (!anonInput.trim()) return;
+    const text = anonInput.trim();
+    if (!text || anonRoomLoading || anonSending) return;
+    const room = anonRoom;
+    const currentRequest = ++anonSendRequestId.current;
+    setAnonSending(true);
     try {
-      const r = await apiPost('/api/v2/social/anon', { text: anonInput, room: anonRoom });
+      const r = await apiPost('/api/v2/social/anon', { text, room });
+      if (currentRequest !== anonSendRequestId.current || room !== anonRoom) return;
       setAnonMsgs(r.messages || []);
       setAnonInput('');
       onSync();
     } catch (e: any) {
-      onToast(e.message || 'Ошибка отправки');
+      if (currentRequest === anonSendRequestId.current && room === anonRoom) onToast(e.message || 'Ошибка отправки');
+    } finally {
+      if (currentRequest === anonSendRequestId.current) setAnonSending(false);
     }
   };
 
@@ -306,6 +342,8 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
 
   return (
     <div className="space-y-5 min-w-0">
+      {socialLoading && <p role="status" className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-slate-400">Загружаю данные раздела…</p>}
+      {socialLoadError && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2"><p role="alert" className="text-xs text-rose-100">{socialLoadError}</p><button type="button" onClick={() => setSocialRetry((value) => value + 1)} className="rounded-lg border border-rose-300/25 bg-rose-400/10 px-3 py-1.5 text-[10px] text-rose-100 hover:bg-rose-400/20">Повторить</button></div>}
 
       {/* 1. LEADERBOARD & CLICKABLE USER PROFILES */}
       {subTab === 'top' && (
@@ -795,7 +833,9 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
             </div>
           </div>
 
-          <div className="space-y-2.5 max-h-80 overflow-y-auto p-3 rounded-xl bg-slate-950 border border-white/10">
+          <div aria-live="polite" className="space-y-2.5 max-h-80 overflow-y-auto p-3 rounded-xl bg-slate-950 border border-white/10">
+            {anonRoomLoading && <p role="status" className="text-xs text-slate-400">Загружаем выбранную комнату…</p>}
+            {!anonRoomLoading && anonMsgs.length === 0 && <p className="text-xs text-slate-500">В комнате пока нет сообщений.</p>}
             {anonMsgs.map((m) => (
               <div key={m.id} className="p-2.5 rounded-xl bg-slate-900/90 border border-white/5 text-xs">
                 <span className="font-mono font-bold text-purple-300">{m.alias}:</span>{' '}
@@ -815,9 +855,10 @@ export const SocialDatingHub: React.FC<Props> = ({ activeTool, onSelectTool, onS
             <button
               type="button"
               onClick={sendAnon}
-              className="shrink-0 px-3.5 sm:px-4 py-2.5 rounded-xl bg-purple-500 text-slate-950 font-bold text-xs flex items-center gap-1.5"
+              disabled={anonRoomLoading || anonSending || !anonInput.trim()}
+              className="shrink-0 px-3.5 sm:px-4 py-2.5 rounded-xl bg-purple-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 disabled:opacity-50"
             >
-              <Send className="w-3.5 h-3.5" /> В эфир
+              <Send className="w-3.5 h-3.5" /> {anonSending ? 'Отправка…' : 'В эфир'}
             </button>
           </div>
         </div>

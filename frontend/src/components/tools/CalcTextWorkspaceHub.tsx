@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Calculator,
   CheckSquare,
@@ -45,6 +45,9 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   });
   const [smartUnitInput, setSmartUnitInput] = useState('6 дюймов');
   const [smartUnitRes, setSmartUnitRes] = useState<any>(null);
+  const [smartUnitLoading, setSmartUnitLoading] = useState(false);
+  const [smartUnitError, setSmartUnitError] = useState('');
+  const smartUnitRequestId = useRef(0);
   const [mathExpr, setMathExpr] = useState('sqrt(2048 * 2) + (0xFF & 0x3C) + 2^10');
   const [mathRes, setMathRes] = useState<any>(null);
 
@@ -76,6 +79,9 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   });
   const [rhymeWord, setRhymeWord] = useState('любовь');
   const [rhymeRes, setRhymeRes] = useState<any>(null);
+  const [rhymeLoading, setRhymeLoading] = useState(false);
+  const [rhymeError, setRhymeError] = useState('');
+  const rhymeRequestId = useRef(0);
   const [layoutText, setLayoutText] = useState('Ghbdtn? rfr ltkf&');
   const [layoutRes, setLayoutRes] = useState<any>(null);
 
@@ -130,11 +136,45 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
   }, [activeTool]);
 
   useEffect(() => {
+    // Invalidate requests as the user moves between tools; a late response from a
+    // hidden panel must not repopulate a result for a different input.
+    const smartRequest = ++smartUnitRequestId.current;
+    const rhymeRequest = ++rhymeRequestId.current;
+    setSmartUnitLoading(false);
+    setRhymeLoading(false);
     if (activeCategory === 'calc' && calcTab === 'smart_units' && !smartUnitRes) {
-      apiPost('/api/v2/units/smart', { query: smartUnitInput }).then(setSmartUnitRes).catch(() => {});
+      setSmartUnitLoading(true);
+      setSmartUnitError('');
+      apiPost('/api/v2/units/smart', { query: smartUnitInput })
+        .then((r) => {
+          if (smartRequest === smartUnitRequestId.current) setSmartUnitRes(r);
+        })
+        .catch((err) => {
+          if (smartRequest !== smartUnitRequestId.current) return;
+          const message = err?.message || 'Не удалось преобразовать значение';
+          setSmartUnitError(message);
+          onToast(message);
+        })
+        .finally(() => {
+          if (smartRequest === smartUnitRequestId.current) setSmartUnitLoading(false);
+        });
     }
     if (activeCategory === 'text' && txtTab === 'rhyme' && !rhymeRes) {
-      apiPost('/api/v2/rhyme', { word: rhymeWord }).then(setRhymeRes).catch(() => {});
+      setRhymeLoading(true);
+      setRhymeError('');
+      apiPost('/api/v2/rhyme', { word: rhymeWord })
+        .then((r) => {
+          if (rhymeRequest === rhymeRequestId.current) setRhymeRes(r);
+        })
+        .catch((err) => {
+          if (rhymeRequest !== rhymeRequestId.current) return;
+          const message = err?.message || 'Не удалось подобрать рифмы';
+          setRhymeError(message);
+          onToast(message);
+        })
+        .finally(() => {
+          if (rhymeRequest === rhymeRequestId.current) setRhymeLoading(false);
+        });
     }
   }, [activeCategory, calcTab, txtTab]);
 
@@ -142,24 +182,50 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
     const target = (q ?? smartUnitInput).trim();
     if (!target) return;
     if (q) setSmartUnitInput(q);
+    const currentRequest = ++smartUnitRequestId.current;
+    setSmartUnitRes(null);
+    setSmartUnitError('');
+    setSmartUnitLoading(true);
     apiPost('/api/v2/units/smart', { query: target })
       .then((r) => {
+        if (currentRequest !== smartUnitRequestId.current) return;
         setSmartUnitRes(r);
         onRefreshWorkspace();
       })
-      .catch((err) => onToast(err.message));
+      .catch((err) => {
+        if (currentRequest !== smartUnitRequestId.current) return;
+        const message = err?.message || 'Не удалось преобразовать значение';
+        setSmartUnitError(message);
+        onToast(message);
+      })
+      .finally(() => {
+        if (currentRequest === smartUnitRequestId.current) setSmartUnitLoading(false);
+      });
   };
 
   const runRhyme = (w?: string) => {
     const target = (w ?? rhymeWord).trim();
     if (!target) return;
     if (w) setRhymeWord(w);
+    const currentRequest = ++rhymeRequestId.current;
+    setRhymeRes(null);
+    setRhymeError('');
+    setRhymeLoading(true);
     apiPost('/api/v2/rhyme', { word: target })
       .then((r) => {
+        if (currentRequest !== rhymeRequestId.current) return;
         setRhymeRes(r);
         onRefreshWorkspace();
       })
-      .catch((err) => onToast(err.message));
+      .catch((err) => {
+        if (currentRequest !== rhymeRequestId.current) return;
+        const message = err?.message || 'Не удалось подобрать рифмы';
+        setRhymeError(message);
+        onToast(message);
+      })
+      .finally(() => {
+        if (currentRequest === rhymeRequestId.current) setRhymeLoading(false);
+      });
   };
 
   const unitDefaults: Record<string, string> = {
@@ -237,18 +303,26 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
             <div className="flex gap-2">
               <input
                 value={smartUnitInput}
-                onChange={(e) => setSmartUnitInput(e.target.value)}
+                onChange={(e) => {
+                  setSmartUnitInput(e.target.value);
+                  setSmartUnitRes(null);
+                  setSmartUnitError('');
+                  smartUnitRequestId.current += 1;
+                  setSmartUnitLoading(false);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && runSmartUnits()}
                 placeholder="Например: 6 дюймов, 180 фунтов, 75 л.с., 12 миль..."
                 className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-4 py-2.5 text-sm text-white"
               />
               <button
                 onClick={() => runSmartUnits()}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 text-slate-950 font-semibold text-xs shrink-0"
+                disabled={smartUnitLoading}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 text-slate-950 font-semibold text-xs shrink-0 disabled:opacity-60"
               >
-                Перевести
+                {smartUnitLoading ? 'Считаем…' : 'Перевести'}
               </button>
             </div>
+            {smartUnitError && <p role="alert" className="text-xs text-rose-300">{smartUnitError}</p>}
 
             {smartUnitRes && (
               <div className="space-y-3">
@@ -640,18 +714,26 @@ export const CalcTextWorkspaceHub: React.FC<Props> = ({
             <div className="flex gap-2">
               <input
                 value={rhymeWord}
-                onChange={(e) => setRhymeWord(e.target.value)}
+                onChange={(e) => {
+                  setRhymeWord(e.target.value);
+                  setRhymeRes(null);
+                  setRhymeError('');
+                  rhymeRequestId.current += 1;
+                  setRhymeLoading(false);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && runRhyme()}
                 placeholder="Введите русское слово..."
                 className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-4 py-2.5 text-sm text-white"
               />
               <button
                 onClick={() => runRhyme()}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-500 text-slate-950 font-semibold text-xs shrink-0"
+                disabled={rhymeLoading}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-500 text-slate-950 font-semibold text-xs shrink-0 disabled:opacity-60"
               >
-                Подобрать рифмы
+                {rhymeLoading ? 'Ищем…' : 'Подобрать рифмы'}
               </button>
             </div>
+            {rhymeError && <p role="alert" className="text-xs text-rose-300">{rhymeError}</p>}
 
             {rhymeRes && (
               <div className="space-y-4">

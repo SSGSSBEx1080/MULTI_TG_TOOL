@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   ChevronDown,
@@ -57,6 +57,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
   const [wikiQuery, setWikiQuery] = useState('');
   const [wikiData, setWikiData] = useState<any>({ jojo_stands: [], concepts: [], prog_langs: [] });
   const [wikiPhotos, setWikiPhotos] = useState<Array<{ title: string; extract: string; thumb: string; url: string }>>([]);
+  const wikiPhotoRequestRef = useRef(0);
+  const [wikiPhotosStatus, setWikiPhotosStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [standUser, setStandUser] = useState('');
   const [rolledStand, setRolledStand] = useState<any>(null);
 
@@ -66,6 +68,43 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
 
   const [popQuery, setPopQuery] = useState('');
   const [popData, setPopData] = useState<any>(null);
+  const [panelStatus, setPanelStatus] = useState<Record<string, { loading: boolean; error: string }>>({});
+  const [panelRetries, setPanelRetries] = useState<Record<string, number>>({});
+  const popRequestId = useRef(0);
+  const retryPanel = (key: string) => setPanelRetries((current) => ({ ...current, [key]: (current[key] || 0) + 1 }));
+  const setPanelState = (key: string, loading: boolean, error?: string) => {
+    setPanelStatus((current) => ({ ...current, [key]: { loading, error: error ?? current[key]?.error ?? '' } }));
+  };
+
+  const loadWikiPhotos = async () => {
+    const searchPhrase = wikiQuery.trim();
+    if (!searchPhrase) return;
+    const requestId = ++wikiPhotoRequestRef.current;
+    setWikiPhotos([]);
+    setWikiPhotosStatus('loading');
+    try {
+      const response = await fetch(
+        `https://ru.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(searchPhrase)}&gsrlimit=6&prop=pageimages|extracts&exintro=1&explaintext=1&exchars=240&pithumbsize=560&format=json&origin=*`,
+        {referrerPolicy: 'no-referrer'}
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const pages = Object.values((data?.query?.pages || {}) as Record<string, any>);
+      const illustrated = pages
+        .filter((page: any) => page?.thumbnail?.source && page?.extract)
+        .map((page: any) => ({
+          title: String(page.title),
+          extract: String(page.extract),
+          thumb: String(page.thumbnail.source),
+          url: `https://ru.wikipedia.org/wiki/${encodeURIComponent(String(page.title).replace(/ /g, '_'))}`,
+        }));
+      if (requestId !== wikiPhotoRequestRef.current) return;
+      setWikiPhotos(illustrated);
+      setWikiPhotosStatus('done');
+    } catch {
+      if (requestId === wikiPhotoRequestRef.current) setWikiPhotosStatus('error');
+    }
+  };
 
   useEffect(() => {
     setSubTab(toolToKnowledgeTab(activeTool));
@@ -82,65 +121,75 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
 
   useEffect(() => {
     if (subTab !== 'const') return;
-    apiGet(`/api/v2/knowledge/constitutions?q=${encodeURIComponent(constQuery)}`)
-      .then((r) => setConstItems(r.items || []))
-      .catch(() => {});
-  }, [subTab, constQuery]);
+    let active = true;
+    setPanelState('const', true, '');
+    setConstItems([]);
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v2/knowledge/constitutions?q=${encodeURIComponent(constQuery)}`)
+        .then((r) => { if (active) setConstItems(r.items || []); })
+        .catch((error: any) => { if (active) setPanelState('const', false, error?.message || 'Не удалось загрузить конституции'); })
+        .finally(() => { if (active) setPanelState('const', false); });
+    }, 140);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [subTab, constQuery, panelRetries.const]);
 
   useEffect(() => {
     if (subTab !== 'religions') return;
-    apiGet(`/api/v2/knowledge/religions?q=${encodeURIComponent(relQuery)}`)
-      .then((r) => setRelItems(r.items || []))
-      .catch(() => {});
-  }, [subTab, relQuery]);
+    let active = true;
+    setPanelState('religions', true, '');
+    setRelItems([]);
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v2/knowledge/religions?q=${encodeURIComponent(relQuery)}`)
+        .then((r) => { if (active) setRelItems(r.items || []); })
+        .catch((error: any) => { if (active) setPanelState('religions', false, error?.message || 'Не удалось загрузить статьи'); })
+        .finally(() => { if (active) setPanelState('religions', false); });
+    }, 140);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [subTab, relQuery, panelRetries.religions]);
 
   useEffect(() => {
     if (subTab !== 'wiki') return;
-    apiGet(`/api/v2/knowledge/wiki?section=${wikiSection}&q=${encodeURIComponent(wikiQuery)}`)
-      .then(setWikiData)
-      .catch(() => {});
-
-    const searchPhrase = wikiQuery.trim() || 'Космос квантовая физика архитектура живопись';
+    let active = true;
+    setPanelState('wiki', true, '');
+    setWikiData({ jojo_stands: [], concepts: [], prog_langs: [] });
     const timer = window.setTimeout(() => {
-      fetch(
-        `https://ru.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(
-          searchPhrase
-        )}&gsrlimit=6&prop=pageimages|extracts&exintro=1&explaintext=1&exchars=240&pithumbsize=560&format=json&origin=*`
-      )
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          const pages = Object.values((d?.query?.pages || {}) as Record<string, any>);
-          const illustrated = pages
-            .filter((p) => p?.thumbnail?.source && p?.extract)
-            .map((p) => ({
-              title: String(p.title),
-              extract: String(p.extract),
-              thumb: String(p.thumbnail.source),
-              url: `https://ru.wikipedia.org/wiki/${encodeURIComponent(String(p.title).replace(/ /g, '_'))}`,
-            }));
-          setWikiPhotos(illustrated);
-        })
-        .catch(() => {});
-    }, 240);
-    return () => window.clearTimeout(timer);
-  }, [subTab, wikiSection, wikiQuery]);
+      apiGet(`/api/v2/knowledge/wiki?section=${wikiSection}&q=${encodeURIComponent(wikiQuery)}`)
+        .then((r) => { if (active) setWikiData(r); })
+        .catch((error: any) => { if (active) setPanelState('wiki', false, error?.message || 'Не удалось загрузить энциклопедию'); })
+        .finally(() => { if (active) setPanelState('wiki', false); });
+    }, 140);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [subTab, wikiSection, wikiQuery, panelRetries.wiki]);
 
   useEffect(() => {
     if (subTab !== 'ege') return;
-    apiGet(`/api/v2/knowledge/formulas?subject=${encodeURIComponent(egeSubj)}&q=${encodeURIComponent(egeQuery)}`)
-      .then((r) => setEgeItems(r.items || []))
-      .catch(() => {});
-  }, [subTab, egeSubj, egeQuery]);
+    let active = true;
+    setPanelState('ege', true, '');
+    setEgeItems([]);
+    const timer = window.setTimeout(() => {
+      apiGet(`/api/v2/knowledge/formulas?subject=${encodeURIComponent(egeSubj)}&q=${encodeURIComponent(egeQuery)}`)
+        .then((r) => { if (active) setEgeItems(r.items || []); })
+        .catch((error: any) => { if (active) setPanelState('ege', false, error?.message || 'Не удалось загрузить формулы'); })
+        .finally(() => { if (active) setPanelState('ege', false); });
+    }, 140);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [subTab, egeSubj, egeQuery, panelRetries.ege]);
 
   const loadPop = (q = popQuery) => {
+    const currentRequest = ++popRequestId.current;
+    setPanelState('pop', true, '');
+    setPopData(null);
     apiGet(`/api/v2/knowledge/population?q=${encodeURIComponent(q)}`)
-      .then(setPopData)
-      .catch(() => {});
+      .then((r) => { if (currentRequest === popRequestId.current) setPopData(r); })
+      .catch((error: any) => {
+        if (currentRequest === popRequestId.current) setPanelState('pop', false, error?.message || 'Не удалось загрузить данные о населении');
+      })
+      .finally(() => { if (currentRequest === popRequestId.current) setPanelState('pop', false); });
   };
 
   useEffect(() => {
     if (subTab === 'pop' && !popData) {
-      loadPop('');
+      loadPop(popQuery);
     }
   }, [subTab]);
 
@@ -177,7 +226,6 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
               setSubTab('pop');
               onSelectTool('population_hub');
               setPopQuery(countryName);
-              loadPop(countryName);
             }
             onToast(`🌍 Выбрано на 3D-глобусе: ${countryName}`);
           }}
@@ -235,6 +283,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             </div>
           </div>
 
+          {panelStatus.const?.loading && <p role="status" className="text-xs text-amber-200">Поиск по конституциям…</p>}
+          {panelStatus.const?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.const.error}</p><button type="button" onClick={() => retryPanel('const')} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           <div className="space-y-3.5">
             {constItems.map((c, idx) => {
               const isOpen = expandedConst[c.code] ?? idx === 0;
@@ -399,6 +449,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             />
           </div>
 
+          {panelStatus.religions?.loading && <p role="status" className="text-xs text-purple-200">Ищем статьи…</p>}
+          {panelStatus.religions?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.religions.error}</p><button type="button" onClick={() => retryPanel('religions')} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           <div className="grid grid-cols-1 gap-3.5">
             {relItems.map((r) => {
               const isOpen = expandedRel[r.id] ?? true;
@@ -515,7 +567,7 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
           )}
 
           <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-3">
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { id: 'all', label: '📚 Вся Мульти-Вики' },
@@ -525,6 +577,7 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                 ].map((s) => (
                   <button
                     key={s.id}
+                    type="button"
                     onClick={() => setWikiSection(s.id as any)}
                     className={`px-3 py-1.5 rounded-xl text-xs border transition ${
                       wikiSection === s.id
@@ -536,19 +589,35 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                   </button>
                 ))}
               </div>
-              <input
-                value={wikiQuery}
-                onChange={(e) => setWikiQuery(e.target.value)}
-                placeholder="Поиск: промискуитет, Wonder of U, Rust, Гамаз..."
-                className="w-full sm:w-72 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
-              />
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <input
+                  value={wikiQuery}
+                  onChange={(e) => { wikiPhotoRequestRef.current += 1; setWikiQuery(e.target.value); setWikiPhotos([]); setWikiPhotosStatus('idle'); }}
+                  placeholder="Поиск в локальной базе: Wonder of U, Rust…"
+                  className="w-full min-w-0 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs text-white"
+                  aria-label="Поиск по встроенной энциклопедии"
+                />
+                <button
+                  type="button"
+                  onClick={loadWikiPhotos}
+                  disabled={!wikiQuery.trim() || wikiPhotosStatus === 'loading'}
+                  className="px-3 py-2 rounded-xl border border-amber-300/20 bg-amber-400/10 text-xs font-semibold text-amber-100 disabled:opacity-50"
+                >
+                  {wikiPhotosStatus === 'loading' ? 'Загрузка…' : 'Иллюстрации из Wikipedia'}
+                </button>
+              </div>
+              <p className="text-[11px] leading-relaxed text-slate-500">Локальный каталог работает без внешнего поиска. Только по нажатию кнопки введённая фраза отправляется в Wikipedia; после ответа браузер загружает выбранные миниатюры с её серверов.</p>
+              {wikiPhotosStatus === 'error' && <p role="status" className="text-xs text-rose-200">Внешний поиск Wikipedia не удался. Каталог на этой странице продолжает работать.</p>}
+              {wikiPhotosStatus === 'done' && wikiPhotos.length === 0 && <p role="status" className="text-xs text-slate-400">Wikipedia не вернула статей с изображениями для этого запроса.</p>}
             </div>
 
             <div className="space-y-5 max-h-[680px] overflow-y-auto pr-1">
+              {panelStatus.wiki?.loading && <p role="status" className="text-xs text-purple-200">Поиск по встроенной энциклопедии…</p>}
+              {panelStatus.wiki?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.wiki.error}</p><button type="button" onClick={() => retryPanel('wiki')} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
               {wikiPhotos.length > 0 && (
                 <div className="space-y-2.5">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300">
-                    🖼️ Иллюстрированные статьи Энциклопедии (Wikipedia)
+                    🖼️ Иллюстрированные статьи Wikipedia · запрос «{wikiQuery.trim()}»
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {wikiPhotos.map((art) => (
@@ -556,13 +625,15 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                         key={art.title}
                         href={art.url}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
+                        referrerPolicy="no-referrer"
                         className="rounded-xl bg-slate-950/90 border border-white/10 hover:border-amber-400/45 overflow-hidden flex flex-col transition group"
                       >
                         <img
                           src={art.thumb}
                           alt={art.title}
                           loading="lazy"
+                          referrerPolicy="no-referrer"
                           className="w-full h-36 object-cover group-hover:scale-[1.03] transition"
                         />
                         <div className="p-3 space-y-1 text-xs">
@@ -735,6 +806,8 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             ))}
           </div>
 
+          {panelStatus.ege?.loading && <p role="status" className="text-xs text-sky-200">Подбираем формулы…</p>}
+          {panelStatus.ege?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.ege.error}</p><button type="button" onClick={() => retryPanel('ege')} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {egeItems.map((f, idx) => (
               <div
@@ -760,13 +833,13 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
       {subTab === 'pop' && (
         <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-950/70 to-sky-950/70 border border-emerald-400/30">
-            <div>
-              <div className="text-xs text-emerald-300 uppercase tracking-wider font-semibold">🌍 Живой демографический счётчик Планеты Земля</div>
-              <div className="text-2xl sm:text-3xl font-black font-mono text-white mt-0.5">
-                {popData?.live_earth_population || '8 185 400 000'} <span className="text-sm font-normal text-slate-300">человек</span>
-              </div>
+            <div className="min-w-0">
+              <div className="text-xs text-emerald-300 uppercase tracking-wider font-semibold">🌍 Офлайн-справочник населения</div>
+              <p className="text-sm text-slate-200 mt-1 max-w-3xl">
+                Здесь нет проверенного live-счётчика. Значения в каталоге — ориентиры без единого года и определения границ; для актуальных цифр сверяйтесь с национальными статистическими службами.
+              </p>
             </div>
-            <Globe2 className="w-10 h-10 text-emerald-400/70 hidden sm:block" />
+            <Globe2 className="w-10 h-10 text-emerald-400/70 hidden sm:block shrink-0" />
           </div>
 
           <div className="flex flex-wrap gap-1.5">
@@ -798,7 +871,7 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
               value={popQuery}
               onChange={(e) => setPopQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && loadPop(popQuery)}
-              placeholder="Введите страну, мегаполис, город, ПГТ или деревню (например: село Оймякон)..."
+              placeholder="Поиск по встроенному каталогу (например: Россия, Москва, Оймякон)..."
               className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-4 py-2.5 text-xs sm:text-sm text-white"
             />
             <button
@@ -809,6 +882,14 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             </button>
           </div>
 
+          {panelStatus.pop?.loading && <p role="status" className="text-xs text-emerald-200">Загружаем данные о населении…</p>}
+          {panelStatus.pop?.error && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{panelStatus.pop.error}</p><button type="button" onClick={() => loadPop(popQuery)} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
+          {popData?.count === 0 && (
+            <p role="status" className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">
+              Встроенный каталог не содержит совпадений. Мы не генерируем оценку для неизвестного населённого пункта.
+            </p>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {(popData?.places || []).map((p: any) => (
               <div key={p.name} className="p-4 rounded-xl bg-slate-950/90 border border-white/10 space-y-1.5">
@@ -816,7 +897,9 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                   <span className="font-bold text-sm text-white">{p.name}</span>
                   <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 shrink-0">{p.type}</span>
                 </div>
-                <div className="text-xl font-mono font-extrabold text-amber-300">{p.formatted_pop} чел.</div>
+                <div className="text-xl font-mono font-extrabold text-amber-300">
+                  {p.pop == null ? 'Нет проверенного значения' : `${p.formatted_pop} чел. (ориентир)`}
+                </div>
                 <div className="text-[11px] text-slate-400">{p.country}</div>
                 <p className="text-xs text-slate-300">{p.note}</p>
               </div>

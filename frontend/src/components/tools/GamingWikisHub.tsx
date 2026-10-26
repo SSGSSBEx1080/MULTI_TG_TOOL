@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, Crosshair, Pickaxe, Search, Shield } from 'lucide-react';
 import { apiGet } from '../../lib/api';
 import { Mini3DSceneBadge } from '../three/Interactive3DScenes';
@@ -49,6 +49,9 @@ export const GamingWikisHub: React.FC<{
   });
   const [searchQ, setSearchQ] = useState('');
   const [wikiThumb, setWikiThumb] = useState<string | null>(null);
+  const [wikiThumbLoading, setWikiThumbLoading] = useState(false);
+  const [wikiThumbError, setWikiThumbError] = useState('');
+  const wikiThumbRequestId = useRef(0);
   const [mcDepthY, setMcDepthY] = useState<number>(-58);
 
   // Esports Mouse Sensitivity & cm/360° Converter
@@ -81,15 +84,34 @@ export const GamingWikisHub: React.FC<{
   }, [activeTool]);
 
   useEffect(() => {
+    wikiThumbRequestId.current += 1;
     setWikiThumb(null);
-    const title = GAME_WIKI_QUERY_MAP[selectedGameId] || 'Dota 2';
-    fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.thumbnail?.source) setWikiThumb(d.thumbnail.source);
-      })
-      .catch(() => {});
+    setWikiThumbError('');
+    setWikiThumbLoading(false);
   }, [selectedGameId]);
+
+  const loadWikiThumb = async () => {
+    const id = ++wikiThumbRequestId.current;
+    const title = GAME_WIKI_QUERY_MAP[selectedGameId] || 'Dota 2';
+    setWikiThumbLoading(true);
+    setWikiThumbError('');
+    try {
+      // Remote Wikimedia access is deliberately user-triggered, never automatic on tab open.
+      const response = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+      if (!response.ok) throw new Error(`Wikipedia вернула HTTP ${response.status}`);
+      const data = await response.json();
+      if (id !== wikiThumbRequestId.current) return;
+      if (!data?.thumbnail?.source) {
+        setWikiThumbError('Для этой статьи не удалось найти иллюстрацию. Содержание справки доступно без неё.');
+        return;
+      }
+      setWikiThumb(data.thumbnail.source);
+    } catch (error: any) {
+      if (id === wikiThumbRequestId.current) setWikiThumbError(error?.message || 'Не удалось получить изображение из Wikipedia');
+    } finally {
+      if (id === wikiThumbRequestId.current) setWikiThumbLoading(false);
+    }
+  };
 
   const current = games.find((g) => g.id === selectedGameId) || games[0];
 
@@ -173,11 +195,15 @@ export const GamingWikisHub: React.FC<{
               ) : (
                 <Mini3DSceneBadge seed={current.id} color="#ef4444" size={44} />
               )}
-              <div>
-                <h3 className="text-base font-bold text-white">
-                  {current.emoji} {current.game}
-                </h3>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-white">{current.emoji} {current.game}</h3>
                 <p className="text-xs text-slate-400">{current.genre}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => { if (wikiThumb) { setWikiThumb(null); setWikiThumbError(''); } else { void loadWikiThumb(); } }} disabled={wikiThumbLoading} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] text-slate-300 hover:bg-white/10 disabled:opacity-50">
+                    {wikiThumbLoading ? 'Запрашиваю изображение…' : wikiThumb ? 'Скрыть изображение' : 'Загрузить иллюстрацию из Wikipedia (по запросу)'}
+                  </button>
+                  {wikiThumbError && <span role="status" className="text-[10px] text-amber-200">{wikiThumbError}</span>}
+                </div>
               </div>
             </div>
           </div>

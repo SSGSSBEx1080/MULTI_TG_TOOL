@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Dices, Flame, GlassWater, Lightbulb, Search, Volume2 } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
 import { PartyGlass3D } from '../three/Interactive3DScenes';
@@ -38,6 +38,9 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
   const [bSearch, setBSearch] = useState('');
   const [bCount, setBCount] = useState(12);
   const [boredRes, setBoredRes] = useState<any>(null);
+  const [boredLoading, setBoredLoading] = useState(false);
+  const [boredError, setBoredError] = useState('');
+  const boredomRequestId = useRef(0);
   const [showLiguria, setShowLiguria] = useState(false);
   const [liguriaData, setLiguriaData] = useState<any>(null);
 
@@ -70,6 +73,10 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
   };
 
   const loadBoredom = async (cat = bCat, spicy = bSpicy, q = bSearch, cnt = bCount) => {
+    const currentRequest = ++boredomRequestId.current;
+    setBoredLoading(true);
+    setBoredError('');
+    setBoredRes(null);
     try {
       const params = new URLSearchParams({
         category: cat,
@@ -78,15 +85,24 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
         search: q,
       });
       const r = await apiGet(`/api/v2/party/boredom?${params.toString()}`);
-      setBoredRes(r);
+      if (currentRequest === boredomRequestId.current) setBoredRes(r);
     } catch (e: any) {
-      onToast(e.message);
+      if (currentRequest !== boredomRequestId.current) return;
+      const message = e?.message || 'Не удалось загрузить идеи';
+      setBoredError(message);
+      onToast(message);
+    } finally {
+      if (currentRequest === boredomRequestId.current) setBoredLoading(false);
     }
   };
 
   useEffect(() => {
     if (subTab === 'vodka' && !alkoRes) calcVodka();
     else if (subTab === 'boredom' && !boredRes) loadBoredom();
+    else if (subTab !== 'boredom') {
+      boredomRequestId.current += 1;
+      setBoredLoading(false);
+    }
   }, [subTab]);
 
   const toggleLiguria = async () => {
@@ -445,6 +461,10 @@ export const PartyFunHub: React.FC<Props> = ({ activeTool, onSelectTool, onSync,
                 Показать все ({boredRes?.matching_count || 105})
               </button>
             </div>
+
+            {boredLoading && <p role="status" className="text-xs text-amber-200">Подбираем идеи для вечеринки…</p>}
+            {boredError && <div className="flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-rose-200">{boredError}</p><button type="button" onClick={() => loadBoredom()} className="rounded-lg border border-rose-300/20 px-2.5 py-1 text-[10px] text-rose-100">Повторить</button></div>}
+            {!boredLoading && !boredError && boredRes?.items?.length === 0 && <p role="status" className="text-xs text-slate-400">Подходящих идей не найдено. Измените фильтры поиска.</p>}
 
             {/* Ideas Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[540px] overflow-y-auto pr-1">

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 from urllib.parse import urlencode
 
 import pytest
@@ -36,8 +37,20 @@ async def test_everyday_labs_public_chat_and_calculators(tmp_path, monkeypatch) 
         transport = ASGITransport(app=create_app())
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             catalog = (await client.get("/api/life/catalog")).json()
-            for section in ("foods", "vitamins", "anatomy", "hormones", "ports", "sockets", "moons", "welding"):
+            for section in ("foods", "vitamins", "minerals", "anatomy", "bones", "hormones", "units", "ports", "sockets", "moons", "welding", "recipes"):
                 assert catalog[section]
+            assert len(catalog["foods"]) >= 80 and len(catalog["units"]) >= 90
+            assert len(catalog["recipes"]) >= 24 and len(catalog["bones"]) >= 25 and len(catalog["hormones"]) >= 25
+            foods_by_name = {row["name"]: row for row in catalog["foods"]}
+            assert len(foods_by_name) == len(catalog["foods"])
+            for food in foods_by_name.values():
+                assert all(math.isfinite(food[key]) and food[key] >= 0 for key in ("kcal", "kj", "protein", "fat", "carbs", "fiber", "he"))
+            units_by_id = {unit["id"]: unit for unit in catalog["units"]}
+            assert len(units_by_id) == len(catalog["units"])
+            assert all(math.isfinite(unit["scale"]) and unit["scale"] > 0 and math.isfinite(unit["offset"]) for unit in units_by_id.values())
+            recipes_by_id = {recipe["id"]: recipe for recipe in catalog["recipes"]}
+            assert len(recipes_by_id) == len(catalog["recipes"])
+            assert all(item["name"] in foods_by_name for recipe in recipes_by_id.values() for item in recipe["ingredients"])
             assert any(x["planet"] == "Церера" and x["count"] == "0" for x in catalog["moons"])
 
             nutrition = await client.post("/api/life/nutrition", json={"food": "Овсяные хлопья, сухие", "grams": 50})
@@ -51,6 +64,27 @@ async def test_everyday_labs_public_chat_and_calculators(tmp_path, monkeypatch) 
             assert sleep.status_code == 200 and [x["bedtime"] for x in sleep.json()["options"]] == ["01:15", "23:45", "22:15"]
             bouquet = await client.post("/api/life/bouquet", json={"stems": [{"name": "Роза", "count": 5, "price": 200}], "wrapping": 100, "labor": 50, "markup_pct": 20})
             assert bouquet.status_code == 200 and bouquet.json()["suggested_price"] == 1380
+            assert bouquet.json()["subtotal"] == 1150 and bouquet.json()["markup_amount"] == 230
+            euro_quote = await client.post("/api/life/bouquet", json={"stems": [{"name": "Tulip", "count": 12, "price": 0.45}], "wrapping": 2, "labor": 5, "markup_pct": 30, "currency": "EUR"})
+            assert euro_quote.status_code == 200 and euro_quote.json()["currency"] == "EUR"
+            assert euro_quote.json()["suggested_price"] == pytest.approx(16.12)
+            assert (await client.post("/api/life/bouquet", json={"stems": [], "markup_pct": "NaN"})).status_code == 422
+            assert (await client.post("/api/life/bouquet", json={"stems": [{"name": "rose", "count": 301, "price": 2}]})).status_code == 400
+
+            unit = await client.post("/api/life/convert", json={"value": 100, "from_unit": "celsius", "to_unit": "fahrenheit"})
+            assert unit.status_code == 200 and unit.json()["result"] == pytest.approx(212)
+            mile = await client.post("/api/life/convert", json={"value": 1, "from_unit": "mi", "to_unit": "km"})
+            assert mile.status_code == 200 and mile.json()["result"] == pytest.approx(1.609344)
+            assert (await client.post("/api/life/convert", json={"value": -40, "from_unit": "celsius", "to_unit": "fahrenheit"})).json()["result"] == pytest.approx(-40)
+            assert (await client.post("/api/life/convert", json={"value": 1, "from_unit": "km", "to_unit": "kg"})).status_code == 400
+            assert (await client.post("/api/life/convert", json={"value": -300, "from_unit": "celsius", "to_unit": "kelvin"})).status_code == 400
+            assert (await client.get("/api/life/recipes?q=веганское")).json()["count"] == 9
+            assert (await client.get("/api/life/recipes?q=лосось")).json()["count"] == 2
+            recipe = await client.get("/api/life/recipes/chicken-rice-bowl?servings=2")
+            assert recipe.status_code == 200 and recipe.json()["ingredients"][0]["grams"] == 240
+            assert recipe.json()["nutrition"]["kcal"] > 0
+            assert (await client.get("/api/life/recipes/missing")).status_code == 404
+            assert (await client.get("/api/life/recipes/chicken-rice-bowl?servings=21")).status_code == 400
 
             unauthorized = await client.post("/api/life/chat", json={"user_id": 555001, "topic": "science", "text": "Spoof"})
             assert unauthorized.status_code == 401

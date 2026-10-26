@@ -391,6 +391,26 @@ export const generateLorenzPoints = (steps = 650): Vec3[] => {
   return pts;
 };
 
+/** Keep animated scenes still when the OS/browser requests reduced motion. */
+export const usePrefersReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduced(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    return () => media.removeEventListener?.('change', update);
+  }, []);
+
+  return reduced;
+};
+
 /**
  * Zero-battery-drain visibility hook: pauses 3D rAF loops when offscreen or tab hidden
  */
@@ -424,8 +444,8 @@ export const useViewportActive = (ref: RefObject<HTMLElement | null>): boolean =
 
 /**
  * Razor-sharp HiDPI / Retina Canvas synchronizer.
- * Matches physical framebuffer to exact CSS layout pixels * devicePixelRatio (up to 2.5x)
- * and sets a clean 2D transform so all drawing & font rendering are crystal-sharp!
+ * Matches the framebuffer to CSS pixels * devicePixelRatio (capped at 2x).
+ * A 2x cap preserves sharp rendering while bounding canvas memory on HiDPI devices.
  */
 export const syncHiDPICanvas = (
   canvas: HTMLCanvasElement,
@@ -438,7 +458,7 @@ export const syncHiDPICanvas = (
   const rect = canvas.getBoundingClientRect();
   const W = rect.width > 12 ? rect.width : fallbackW;
   const H = rect.height > 12 ? rect.height : fallbackH;
-  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2.5) : 1;
+  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
 
   const targetW = Math.max(1, Math.round(W * dpr));
   const targetH = Math.max(1, Math.round(H * dpr));
