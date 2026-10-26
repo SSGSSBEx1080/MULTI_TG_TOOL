@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import colorsys
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
 import math
 import re
 from typing import Any
@@ -552,50 +553,196 @@ def calculate_loan_and_deposit(
     }
 
 
-def split_group_expenses(entries: list[dict[str, Any]], tip_pct: float = 0.0) -> dict[str, Any]:
-    cleaned = []
-    for e in entries:
-        name = str(e.get("name") or "").strip()
-        paid = max(0.0, float(e.get("paid") or 0.0))
-        if name:
-            cleaned.append({"name": name, "paid": paid})
-    if not cleaned:
+BILL_SPLIT_CURRENCY_CODES = frozenset({"RUB", "EUR", "USD", "GBP", "CHF", "PLN", "TRY", "KZT", "GEL", "AMD", "UZS"})
+
+
+def _split_money_cents(value: Any, label: str, *, maximum: Decimal = Decimal("1000000000000")) -> int:
+    try:
+        amount = Decimal(str(value if value is not None else 0))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise ValueError(f"{label}: укажите корректное число") from exc
+    if not amount.is_finite():
+        raise ValueError(f"{label}: число должно быть конечным")
+    if amount < 0 or amount > maximum:
+        raise ValueError(f"{label}: сумма должна быть от 0 до {maximum}")
+    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _allocate_cents(total_cents: int, weights: list[Decimal]) -> list[int]:
+    if not weights:
+        return []
+    weight_total = sum(weights, Decimal("0"))
+    if weight_total <= 0:
+        raise ValueError("Для распределения расходов нужны положительные доли")
+    exact = [Decimal(total_cents) * weight / weight_total for weight in weights]
+    allocated = [int(value.to_integral_value(rounding=ROUND_FLOOR)) for value in exact]
+    pennies_left = total_cents - sum(allocated)
+    order = sorted(range(len(weights)), key=lambda index: (exact[index] - allocated[index], -index), reverse=True)
+    for index in order[:pennies_left]:
+        allocated[index] += 1
+    return allocated
+
+
+def split_group_expenses(
+    entries: list[dict[str, Any]],
+    tip_pct: float = 0.0,
+    expenses: list[dict[str, Any]] | None = None,
+    currency_code: str = "RUB",
+) -> dict[str, Any]:
+    """Settle a shared bill equally, by weights, or by individually assigned items.
+
+    Without expenses, each participant's paid amount is accepted as a transaction
+    and their share_weight controls their proportion of the bill (default 1).
+    With expenses, each item is assigned to its payer and the participants who
+    consumed it; item costs are divided in cents with deterministic remainders.
+    """
+    currency_code = str(currency_code or "").strip().upper()
+    if currency_code not in BILL_SPLIT_CURRENCY_CODES:
+        raise ValueError(f"Неизвестная валюта счёта: {currency_code or 'пустое значение'}")
+    if not isinstance(entries, list) or not entries:
         raise ValueError("Добавьте хотя бы одного участника")
+    if len(entries) > 100:
+        raise ValueError("За один расчёт можно добавить не более 100 участников")
+    cleaned: list[dict[str, Any]] = []
+    name_indexes: dict[str, int] = {}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Участник {index + 1}: ожидался объект с именем")
+        name = str(entry.get("name") or "").strip()
+        if not name:
+            raise ValueError(f"Укажите имя участника {index + 1}")
+        if len(name) > 60:
+            raise ValueError(f"Имя участника {index + 1} должно быть не длиннее 60 символов")
+        normalized_name = name.casefold()
+        if normalized_name in name_indexes:
+            raise ValueError(f"Имена участников должны быть уникальными: «{name}» указано дважды")
+        name_indexes[normalized_name] = index
+        paid_cents = _split_money_cents(entry.get("paid", 0), f"Оплата участника «{name}»")
+        try:
+            weight = Decimal(str(entry.get("share_weight", 1)))
+        except (InvalidOperation, ValueError, TypeError) as exc:
+            raise ValueError(f"Доля участника «{name}» должна быть числом") from exc
+        if not weight.is_finite() or weight <= 0 or weight > 1000:
+            raise ValueError(f"Доля участника «{name}» должна быть больше 0 и не превышать 1000")
+        cleaned.append({"name": name, "paid_cents": paid_cents, "share_weight": weight})
 
-    raw_total = sum(x["paid"] for x in cleaned)
-    total_with_tip = raw_total * (1.0 + max(0.0, min(100.0, float(tip_pct))) / 100.0)
-    share = total_with_tip / len(cleaned)
+    try:
+        tip_rate = Decimal(str(tip_pct))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise ValueError("Процент чаевых должен быть числом") from exc
+    if not tip_rate.is_finite():
+        raise ValueError("Процент чаевых должен быть конечным числом")
+    tip_rate = max(Decimal("0"), min(Decimal("100"), tip_rate))
 
+    actual_paid = [participant["paid_cents"] for participant in cleaned]
+    owed_before_tip = [0 for _ in cleaned]
+    normalized_expenses: list[dict[str, Any]] = []
+    itemized = expenses is not None
+    if itemized:
+        if not isinstance(expenses, list) or not expenses:
+            raise ValueError("Добавьте хотя бы одну позицию в счёт")
+        if len(expenses) > 200:
+            raise ValueError("За один расчёт можно добавить не более 200 позиций")
+        actual_paid = [0 for _ in cleaned]
+        for item_index, expense in enumerate(expenses):
+            if not isinstance(expense, dict):
+                raise ValueError(f"Позиция {item_index + 1}: ожидался объект")
+            description = str(expense.get("description") or f"Позиция {item_index + 1}").strip()
+            if len(description) > 80:
+                raise ValueError(f"Название позиции {item_index + 1} должно быть не длиннее 80 символов")
+            amount_cents = _split_money_cents(expense.get("amount", 0), f"Сумма позиции «{description}»")
+            payer_name = str(expense.get("payer") or "").strip()
+            payer_index = name_indexes.get(payer_name.casefold())
+            if payer_index is None:
+                raise ValueError(f"Для позиции «{description}» выберите плательщика из списка участников")
+            raw_participants = expense.get("participants")
+            if not isinstance(raw_participants, list) or not raw_participants:
+                raise ValueError(f"Для позиции «{description}» отметьте хотя бы одного участника")
+            item_indexes: list[int] = []
+            for participant_name in raw_participants:
+                participant_index = name_indexes.get(str(participant_name).strip().casefold())
+                if participant_index is None:
+                    raise ValueError(f"Позиция «{description}»: неизвестный участник «{participant_name}»")
+                if participant_index in item_indexes:
+                    raise ValueError(f"Позиция «{description}»: участник выбран больше одного раза")
+                item_indexes.append(participant_index)
+            shares = _allocate_cents(amount_cents, [Decimal("1") for _ in item_indexes])
+            actual_paid[payer_index] += amount_cents
+            for participant_index, share_cents in zip(item_indexes, shares):
+                owed_before_tip[participant_index] += share_cents
+            normalized_expenses.append({
+                "description": description,
+                "amount": amount_cents / 100,
+                "payer": cleaned[payer_index]["name"],
+                "participants": [cleaned[index]["name"] for index in item_indexes],
+            })
+        raw_total_cents = sum(actual_paid)
+    else:
+        raw_total_cents = sum(actual_paid)
+        owed_before_tip = _allocate_cents(
+            raw_total_cents,
+            [participant["share_weight"] for participant in cleaned],
+        )
+
+    tip_cents = int((Decimal(raw_total_cents) * tip_rate / Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    total_cents = raw_total_cents + tip_cents
+    tip_shares = _allocate_cents(tip_cents, [Decimal(value) for value in owed_before_tip]) if tip_cents else [0 for _ in cleaned]
+    owed_total = [base + tip for base, tip in zip(owed_before_tip, tip_shares)]
+    effective_paid = _allocate_cents(total_cents, [Decimal(value) for value in actual_paid]) if total_cents else [0 for _ in cleaned]
+
+    settlements: list[dict[str, Any]] = []
     creditors: list[list[Any]] = []
     debtors: list[list[Any]] = []
-    for x in cleaned:
-        effective_paid = x["paid"] * (total_with_tip / raw_total) if raw_total > 0 else 0.0
-        net = effective_paid - share
-        if net > 0.01:
-            creditors.append([x["name"], net])
-        elif net < -0.01:
-            debtors.append([x["name"], -net])
+    for index, participant in enumerate(cleaned):
+        balance_cents = effective_paid[index] - owed_total[index]
+        settlements.append({
+            "name": participant["name"],
+            "paid": actual_paid[index] / 100,
+            "effective_paid_with_tip": effective_paid[index] / 100,
+            "share": owed_total[index] / 100,
+            "tip_share": tip_shares[index] / 100,
+            "balance": balance_cents / 100,
+            "share_weight": float(participant["share_weight"]),
+            "status": "receives" if balance_cents > 0 else "owes" if balance_cents < 0 else "settled",
+        })
+        if balance_cents > 0:
+            creditors.append([participant["name"], balance_cents])
+        elif balance_cents < 0:
+            debtors.append([participant["name"], -balance_cents])
 
-    transfers = []
-    i = j = 0
-    while i < len(debtors) and j < len(creditors):
-        d_name, d_amt = debtors[i]
-        c_name, c_amt = creditors[j]
-        amt = min(d_amt, c_amt)
-        if amt >= 0.5:
-            transfers.append({"from": d_name, "to": c_name, "amount": round(amt, 2)})
-        debtors[i][1] -= amt
-        creditors[j][1] -= amt
-        if debtors[i][1] < 0.01:
-            i += 1
-        if creditors[j][1] < 0.01:
-            j += 1
+    # Paying down the largest balances first gives a compact, deterministic
+    # settlement list while preserving each participant's exact net balance.
+    creditors.sort(key=lambda item: item[1], reverse=True)
+    debtors.sort(key=lambda item: item[1], reverse=True)
+    transfers: list[dict[str, Any]] = []
+    debtor_index = creditor_index = 0
+    while debtor_index < len(debtors) and creditor_index < len(creditors):
+        debtor_name, debtor_cents = debtors[debtor_index]
+        creditor_name, creditor_cents = creditors[creditor_index]
+        amount_cents = min(debtor_cents, creditor_cents)
+        if amount_cents > 0:
+            transfers.append({"from": debtor_name, "to": creditor_name, "amount": amount_cents / 100})
+        debtors[debtor_index][1] -= amount_cents
+        creditors[creditor_index][1] -= amount_cents
+        if debtors[debtor_index][1] == 0:
+            debtor_index += 1
+        if creditors[creditor_index][1] == 0:
+            creditor_index += 1
 
+    raw_total = raw_total_cents / 100
+    total_with_tip = total_cents / 100
     return {
         "participants": len(cleaned),
-        "raw_total": round(raw_total, 2),
-        "total_with_tip": round(total_with_tip, 2),
-        "per_person": round(share, 2),
+        "currency_code": currency_code,
+        "raw_total": raw_total,
+        "tip_amount": tip_cents / 100,
+        "total_with_tip": total_with_tip,
+        "per_person": round(total_with_tip / len(cleaned), 2),
+        "average_share": round(total_with_tip / len(cleaned), 2),
+        "expense_mode": "items" if itemized else "weighted" if any(item["share_weight"] != 1 for item in cleaned) else "equal",
+        "expense_count": len(normalized_expenses),
+        "expenses": normalized_expenses,
+        "settlements": settlements,
         "transfers": transfers,
     }
 

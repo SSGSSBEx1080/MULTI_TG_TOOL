@@ -1175,15 +1175,21 @@ async def api_v5_finance_pro(req: FinanceProReq, request: Request) -> dict[str, 
 
 class BillSplitReq(BaseModel):
     user_id: int = DEFAULT_DEMO_USER_ID
-    entries: list[dict[str, Any]]
-    tip_pct: float = 0.0
+    entries: list[dict[str, Any]] = Field(min_length=1, max_length=100)
+    tip_pct: float = Field(default=0.0, allow_inf_nan=False)
+    expenses: list[dict[str, Any]] | None = Field(default=None, max_length=200)
+    currency_code: str = Field(default="RUB", min_length=3, max_length=3)
 
 
 @router.post("/api/v2/v5/bill-split")
 async def api_v5_bill_split(req: BillSplitReq, request: Request) -> dict[str, Any]:
     uid = await resolve_api_user(request, req.user_id)
-    res = split_group_expenses(req.entries, req.tip_pct)
-    await db.record_tool_use(uid, "bill_splitter", "calc", "miniapp", f"{res['participants']}p", xp_gain=6)
+    try:
+        res = split_group_expenses(req.entries, req.tip_pct, req.expenses, req.currency_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    detail = f"{res['participants']}p/{res['expense_mode']}"
+    await db.record_tool_use(uid, "bill_splitter", "calc", "miniapp", detail, xp_gain=6)
     return res
 
 

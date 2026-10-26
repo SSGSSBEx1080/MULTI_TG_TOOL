@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bomb, Copy, Flag, Plus, RotateCcw, Search, Shield, Table, Trash2, Trophy } from 'lucide-react';
+import { Bomb, Copy, Download, Flag, Plus, RotateCcw, Search, Shield, Table, Trash2, Trophy } from 'lucide-react';
 import { apiGet, apiPost, copyText } from '../../lib/api';
 
 // ============================================================================
@@ -166,120 +166,251 @@ export const PeriodicTableStudio: React.FC<{ onToast: (m: string) => void }> = (
 // ============================================================================
 // 2. GROUP BILL SPLITTER & SETTLEMENT (bill_splitter)
 // ============================================================================
+type BillParticipant = { id: string; name: string; paid: number; share_weight: number };
+type BillExpense = { id: string; description: string; amount: number; payerId: string; participantIds: string[] };
+const BILL_SPLIT_CURRENCIES = [
+  { code: 'RUB', label: '₽ RUB' }, { code: 'EUR', label: '€ EUR' }, { code: 'USD', label: '$ USD' },
+  { code: 'GBP', label: '£ GBP' }, { code: 'CHF', label: 'CHF' }, { code: 'PLN', label: 'zł PLN' },
+  { code: 'TRY', label: '₺ TRY' }, { code: 'KZT', label: '₸ KZT' }, { code: 'GEL', label: '₾ GEL' },
+  { code: 'AMD', label: '֏ AMD' }, { code: 'UZS', label: "soʻm UZS" },
+] as const;
+
+const billEntryId = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+  ? crypto.randomUUID()
+  : `bill-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const makeBillParticipant = (index: number): BillParticipant => ({
+  id: billEntryId(),
+  name: ['Алексей', 'Мария', 'Денис', 'Катя'][index] || `Участник ${index + 1}`,
+  paid: [3200, 900, 0, 500][index] || 0,
+  share_weight: 1,
+});
+
 export const BillSplitterStudio: React.FC<{ onSync: () => void; onToast: (m: string) => void }> = ({ onSync, onToast }) => {
-  const [entries, setEntries] = useState([
-    { name: 'Алексей', paid: 3200 },
-    { name: 'Мария', paid: 900 },
-    { name: 'Денис', paid: 0 },
-    { name: 'Катя', paid: 500 },
-  ]);
+  const [entries, setEntries] = useState<BillParticipant[]>(() => [0, 1, 2, 3].map(makeBillParticipant));
+  const [expenses, setExpenses] = useState<BillExpense[]>([]);
+  const [splitMode, setSplitMode] = useState<'weighted' | 'items'>('weighted');
+  const [currencyCode, setCurrencyCode] = useState<(typeof BILL_SPLIT_CURRENCIES)[number]['code']>('RUB');
   const [tipPct, setTipPct] = useState(0);
   const [res, setRes] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const requestId = useRef(0);
+  const formatMoney = (value: unknown) => new Intl.NumberFormat('ru-RU', {
+    style: 'currency', currency: currencyCode, minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(Number(value) || 0);
+
+  const markDirty = () => { requestId.current += 1; setLoading(false); setRes(null); setError(''); };
+  const updateEntry = (id: string, patch: Partial<BillParticipant>) => {
+    setEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
+    markDirty();
+  };
+  const updateExpense = (id: string, patch: Partial<BillExpense>) => {
+    setExpenses((current) => current.map((expense) => expense.id === id ? { ...expense, ...patch } : expense));
+    markDirty();
+  };
+
+  const addExpense = () => {
+    const firstId = entries[0]?.id || '';
+    setExpenses((current) => [...current, {
+      id: billEntryId(),
+      description: `Позиция ${current.length + 1}`,
+      amount: 0,
+      payerId: firstId,
+      participantIds: entries.map((entry) => entry.id),
+    }]);
+    markDirty();
+  };
+
+  const removeParticipant = (id: string) => {
+    const remaining = entries.filter((entry) => entry.id !== id);
+    if (remaining.length < 2) {
+      onToast('Для взаимозачёта оставьте не менее двух участников.');
+      return;
+    }
+    setEntries(remaining);
+    setExpenses((current) => current.map((expense) => ({
+      ...expense,
+      payerId: expense.payerId === id ? remaining[0].id : expense.payerId,
+      participantIds: expense.participantIds.filter((participantId) => participantId !== id),
+    })));
+    markDirty();
+  };
 
   const calculate = async (silent = false) => {
+    const currentRequest = ++requestId.current;
+    setLoading(true);
+    setError('');
     try {
-      const r = await apiPost('/api/v2/v5/bill-split', { entries, tip_pct: tipPct });
-      setRes(r);
+      const apiEntries = entries.map(({ name, paid, share_weight }) => ({
+        name: name.trim(),
+        paid: splitMode === 'items' ? 0 : paid,
+        share_weight: splitMode === 'items' ? 1 : share_weight,
+      }));
+      const apiExpenses = splitMode === 'items' ? expenses.map((expense) => ({
+        description: expense.description.trim(),
+        amount: expense.amount,
+        payer: entries.find((entry) => entry.id === expense.payerId)?.name.trim() || '',
+        participants: expense.participantIds.map((id) => entries.find((entry) => entry.id === id)?.name.trim() || '').filter(Boolean),
+      })) : undefined;
+      const result = await apiPost('/api/v2/v5/bill-split', { entries: apiEntries, tip_pct: tipPct, expenses: apiExpenses, currency_code: currencyCode });
+      if (currentRequest !== requestId.current) return;
+      setRes(result);
       if (!silent) onSync();
-    } catch (e: any) {
-      if (!silent) onToast(e.message);
+    } catch (caught: any) {
+      if (currentRequest !== requestId.current) return;
+      const message = caught?.message || 'Не удалось распределить счёт';
+      setError(message);
+      if (!silent) onToast(message);
+    } finally {
+      if (currentRequest === requestId.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    calculate(true);
+    void calculate(true);
+    return () => { requestId.current += 1; };
   }, []);
 
+  const createTransferText = () => res?.transfers?.length
+    ? res.transfers.map((transfer: any) => `${transfer.from} → ${transfer.to}: ${formatMoney(transfer.amount)}`).join(String.fromCharCode(10))
+    : 'Переводы не нужны';
+
+  const exportSettlementCsv = () => {
+    if (!res) return;
+    const cell = (value: unknown) => {
+      const text = String(value ?? '');
+      const spreadsheetSafe = /^[=+@-]/.test(text.trimStart()) ? `'${text}` : text;
+      return `"${spreadsheetSafe.replace(/"/g, '""')}"`;
+    };
+    const decimal = (value: unknown) => (Number(value) || 0).toFixed(2).replace('.', ',');
+    const rows: unknown[][] = [
+      ['Участник', 'Фактически оплатил', 'Доля с чаевыми', 'Чаевые', 'Баланс', 'Статус', 'Валюта'],
+      ...(res.settlements || []).map((item: any) => [item.name, decimal(item.paid), decimal(item.share), decimal(item.tip_share), decimal(item.balance), item.status, currencyCode]),
+      [],
+      ['Переводы'],
+      ['От', 'Кому', 'Сумма', 'Валюта'],
+      ...(res.transfers || []).map((item: any) => [item.from, item.to, decimal(item.amount), currencyCode]),
+    ];
+    const csv = rows.map((row) => row.map(cell).join(';')).join(String.fromCharCode(13, 10));
+    const url = URL.createObjectURL(new Blob([String.fromCharCode(0xFEFF), csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bill-settlement-${currencyCode.toLowerCase()}.csv`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-w-0">
-      <div className="lg:col-span-6 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm sm:text-base font-semibold text-white">🧾 Кто сколько заплатил в общий счёт</h3>
+    <div className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-12">
+      <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 xl:col-span-7">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-white sm:text-base">🧾 Общий счёт и взаимозачёт переводов</h3>
+            <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Распределите общий счёт по долям или укажите позиции, которые делили не все. Суммы округляются до центов, расхождение округления распределяется по участникам.</p>
+          </div>
           <button
             type="button"
-            onClick={() => setEntries([...entries, { name: `Участник ${entries.length + 1}`, paid: 0 }])}
-            className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 text-xs flex items-center gap-1"
+            disabled={entries.length >= 25}
+            onClick={() => { setEntries((current) => [...current, { id: billEntryId(), name: `Участник ${current.length + 1}`, paid: 0, share_weight: 1 }]); markDirty(); }}
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-indigo-400/30 bg-indigo-500/20 px-2.5 text-xs text-indigo-100 hover:bg-indigo-500/30 disabled:opacity-40"
           >
-            <Plus className="w-3.5 h-3.5" /> Участник
+            <Plus className="h-3.5 w-3.5" />Участник {entries.length >= 25 ? '· лимит' : ''}
           </button>
         </div>
 
-        <div className="space-y-2">
-          {entries.map((e, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <input
-                value={e.name}
-                onChange={(ev) => setEntries(entries.map((x, i) => (i === idx ? { ...x, name: ev.target.value } : x)))}
-                placeholder="Имя"
-                className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs sm:text-sm text-white"
-              />
-              <input
-                type="number"
-                value={e.paid}
-                onChange={(ev) => setEntries(entries.map((x, i) => (i === idx ? { ...x, paid: Number(ev.target.value) || 0 } : x)))}
-                placeholder="Оплатил ₽"
-                className="w-28 rounded-xl bg-slate-950 border border-white/10 px-3 py-2 text-xs sm:text-sm text-white"
-              />
-              {entries.length > 2 && (
-                <button
-                  type="button"
-                  onClick={() => setEntries(entries.filter((_, i) => i !== idx))}
-                  className="p-2 text-slate-400 hover:text-rose-400"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-2" role="group" aria-label="Способ распределения счёта">
+            <button type="button" aria-pressed={splitMode === 'weighted'} onClick={() => { setSplitMode('weighted'); markDirty(); }} className={`min-h-9 rounded-lg border px-3 text-xs transition ${splitMode === 'weighted' ? 'border-indigo-400 bg-indigo-500/20 text-indigo-100' : 'border-white/10 bg-slate-950 text-slate-300'}`}>По долям участников</button>
+            <button type="button" aria-pressed={splitMode === 'items'} onClick={() => { setSplitMode('items'); markDirty(); }} className={`min-h-9 rounded-lg border px-3 text-xs transition ${splitMode === 'items' ? 'border-indigo-400 bg-indigo-500/20 text-indigo-100' : 'border-white/10 bg-slate-950 text-slate-300'}`}>Разобрать по позициям</button>
+          </div>
+          <label className="min-w-[110px] space-y-1 text-[9px] text-slate-500">Валюта
+            <select value={currencyCode} onChange={(event) => { setCurrencyCode(event.target.value as typeof currencyCode); markDirty(); }} className="min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-2 text-xs text-white" aria-label="Валюта общего счёта">
+              {BILL_SPLIT_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <section aria-label="Участники счёта" className="space-y-2">
+          <div className="hidden grid-cols-[minmax(100px,1fr)_minmax(90px,140px)_minmax(75px,100px)_36px] gap-2 px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+            <span>Имя</span><span>{splitMode === 'items' ? 'Оплата по позициям' : `Уже оплатил · ${currencyCode}`}</span>{splitMode === 'weighted' && <span>Доля</span>}<span />
+          </div>
+          {entries.map((entry, index) => (
+            <div key={entry.id} className={`grid grid-cols-[minmax(0,1fr)_minmax(88px,120px)_36px] items-center gap-2 rounded-xl border border-white/5 bg-slate-950/70 p-2 ${splitMode === 'weighted' ? 'sm:grid-cols-[minmax(100px,1fr)_minmax(90px,140px)_minmax(75px,100px)_36px]' : ''}`}>
+              <label className="min-w-0"><span className="sr-only">Имя участника {index + 1}</span><input value={entry.name} maxLength={60} onChange={(event) => updateEntry(entry.id, { name: event.target.value })} placeholder={`Участник ${index + 1}`} className="w-full min-w-0 rounded-lg border border-white/10 bg-slate-900 px-2.5 py-2 text-xs text-white placeholder:text-slate-600" /></label>
+              {splitMode === 'items' ? <span className="truncate px-1 text-center text-[9px] text-slate-500">считается из позиций</span> : <label><span className="sr-only">Сколько заплатил участник {index + 1}</span><input type="number" min="0" max="1000000000000" step="0.01" value={entry.paid} onChange={(event) => updateEntry(entry.id, { paid: Number(event.target.value) })} className="w-full rounded-lg border border-white/10 bg-slate-900 px-2 py-2 text-xs text-white" /></label>}
+              {splitMode === 'weighted' && <label><span className="sr-only">Доля расходов участника {index + 1}</span><input type="number" min="0.01" max="1000" step="0.25" value={entry.share_weight} onChange={(event) => updateEntry(entry.id, { share_weight: Number(event.target.value) })} className="w-full rounded-lg border border-white/10 bg-slate-900 px-2 py-2 text-xs text-white" /></label>}
+              <button type="button" onClick={() => removeParticipant(entry.id)} aria-label={`Удалить участника ${entry.name || index + 1}`} disabled={entries.length <= 2} className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-rose-400/10 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-25"><Trash2 className="h-3.5 w-3.5" /></button>
             </div>
           ))}
-        </div>
+          {splitMode === 'weighted' && <p className="px-1 text-[9px] leading-relaxed text-slate-500">Доля 1 — обычная; 0,5 — половинная; 2 — двойная. Фактические доли нормируются автоматически. Например, если ребёнок платит половину взрослой доли, укажите 0,5.</p>}
+        </section>
 
-        <div className="text-xs">
-          <div className="flex justify-between text-slate-300 mb-1">
-            <span>Чаевые сверху</span>
-            <b>{tipPct}%</b>
+        {splitMode === 'items' && <section aria-label="Строки общего счёта" className="space-y-2 rounded-xl border border-indigo-300/10 bg-indigo-300/[.025] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><h4 className="text-xs font-semibold text-white">Позиции в счёте</h4><p className="mt-1 text-[9px] text-slate-500">Выберите плательщика и только тех, кто делил эту позицию. Чаевые распределятся пропорционально долям.</p></div>
+            <button type="button" onClick={addExpense} disabled={expenses.length >= 200} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[10px] text-slate-200 hover:bg-white/10 disabled:opacity-40"><Plus className="h-3 w-3" />Добавить позицию</button>
           </div>
-          <input type="range" min={0} max={25} value={tipPct} onChange={(e) => setTipPct(Number(e.target.value))} className="w-full accent-indigo-400" />
-        </div>
+          {expenses.length === 0 && <div className="rounded-lg border border-dashed border-white/10 p-4 text-center text-[10px] text-slate-500">Добавьте блюдо, напиток или другую строку счёта, чтобы назначить её только нужным участникам.</div>}
+          {expenses.map((expense, expenseIndex) => <article key={expense.id} className="space-y-2 rounded-xl border border-white/10 bg-slate-950/80 p-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_120px_150px_36px]">
+              <label><span className="sr-only">Название позиции {expenseIndex + 1}</span><input value={expense.description} maxLength={80} onChange={(event) => updateExpense(expense.id, { description: event.target.value })} placeholder={`Позиция ${expenseIndex + 1}`} className="w-full rounded-lg border border-white/10 bg-slate-900 px-2.5 py-2 text-xs text-white" /></label>
+              <label><span className="sr-only">Стоимость позиции {expenseIndex + 1}</span><input type="number" min="0" max="1000000000000" step="0.01" value={expense.amount} onChange={(event) => updateExpense(expense.id, { amount: Number(event.target.value) })} placeholder={`Сумма ${currencyCode}`} className="w-full rounded-lg border border-white/10 bg-slate-900 px-2.5 py-2 text-xs text-white" /></label>
+              <label><span className="sr-only">Кто оплатил позицию {expenseIndex + 1}</span><select value={expense.payerId} onChange={(event) => updateExpense(expense.id, { payerId: event.target.value })} className="w-full rounded-lg border border-white/10 bg-slate-900 px-2.5 py-2 text-xs text-white">{entries.map((participant) => <option key={participant.id} value={participant.id}>{participant.name || 'Без имени'}</option>)}</select></label>
+              <button type="button" onClick={() => { setExpenses((current) => current.filter((item) => item.id !== expense.id)); markDirty(); }} aria-label={`Удалить позицию ${expense.description}`} className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-rose-400/10 hover:text-rose-200"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
+            <fieldset className="flex flex-wrap gap-x-3 gap-y-1 border-t border-white/5 pt-2">
+              <legend className="mb-1 text-[9px] text-slate-500">Кто делил позицию</legend>
+              {entries.map((participant) => <label key={participant.id} className="flex cursor-pointer items-center gap-1 text-[10px] text-slate-300"><input type="checkbox" checked={expense.participantIds.includes(participant.id)} onChange={(event) => updateExpense(expense.id, { participantIds: event.target.checked ? [...expense.participantIds, participant.id] : expense.participantIds.filter((id) => id !== participant.id) })} className="accent-indigo-400" />{participant.name || 'Без имени'}</label>)}
+            </fieldset>
+          </article>)}
+        </section>}
 
+        <div className="space-y-1 text-xs">
+          <div className="flex justify-between text-slate-300"><label htmlFor="bill-tip-rate">Чаевые сверху</label><b>{tipPct}%</b></div>
+          <input id="bill-tip-rate" type="range" min="0" max="100" value={tipPct} onChange={(event) => { setTipPct(Number(event.target.value)); markDirty(); }} className="w-full accent-indigo-400" />
+        </div>
+        {error && <p role="alert" className="rounded-lg border border-rose-300/15 bg-rose-400/5 p-2.5 text-xs text-rose-200">{error}</p>}
         <button
           type="button"
-          onClick={() => calculate(false)}
-          className="w-full py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-semibold text-sm transition"
+          disabled={loading || (splitMode === 'items' && expenses.length === 0)}
+          onClick={() => void calculate(false)}
+          className="min-h-11 w-full rounded-xl bg-indigo-500 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-indigo-400 disabled:cursor-wait disabled:opacity-50"
         >
-          Рассчитать взаимозачёт переводов
+          {loading ? 'Считаю взаимозачёт…' : 'Рассчитать распределение и переводы'}
         </button>
       </div>
 
-      <div className="lg:col-span-6 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 space-y-3">
-        {res && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl bg-slate-950 border border-white/10">
-                <div className="text-xs text-slate-400">Итого по счёту</div>
-                <div className="text-xl font-bold text-white">{res.total_with_tip} ₽</div>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-emerald-400/30">
-                <div className="text-xs text-slate-400">Доля каждого</div>
-                <div className="text-xl font-bold text-emerald-300">{res.per_person} ₽</div>
-              </div>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div className="text-slate-300 font-semibold">Кому сколько перевести:</div>
-              {res.transfers.length > 0 ? (
-                res.transfers.map((tr: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-indigo-400/30">
-                    <span className="text-slate-200">
-                      <b>{tr.from}</b> → <b>{tr.to}</b>
-                    </span>
-                    <b className="text-indigo-300 text-sm">{tr.amount} ₽</b>
-                  </div>
-                ))
-              ) : (
-                <div className="p-3 rounded-xl bg-slate-950 text-emerald-300">Все заплатили поровну — переводы не нужны</div>
-              )}
-            </div>
-          </>
-        )}
+      <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 xl:col-span-5">
+        {res ? <>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-slate-950 p-3"><div className="text-[10px] text-slate-500">Счёт до чаевых</div><div className="mt-1 text-lg font-bold text-white">{formatMoney(res.raw_total)}</div></div>
+            <div className="rounded-xl border border-amber-300/15 bg-slate-950 p-3"><div className="text-[10px] text-slate-500">Чаевые</div><div className="mt-1 text-lg font-bold text-amber-200">{formatMoney(res.tip_amount)}</div></div>
+            <div className="col-span-2 rounded-xl border border-emerald-400/20 bg-slate-950 p-3 sm:col-span-1 xl:col-span-2"><div className="text-[10px] text-slate-500">Итого · средняя доля {formatMoney(res.average_share)}</div><div className="mt-1 text-xl font-bold text-emerald-200">{formatMoney(res.total_with_tip)}</div></div>
+          </div>
+
+          {res.expense_mode === 'items' && <section aria-label="Разобранные позиции счёта" className="space-y-2">
+            <h4 className="text-xs font-semibold text-white">Проверка позиций</h4>
+            <div className="max-h-40 space-y-1 overflow-y-auto">{(res.expenses || []).map((expense: any, index: number) => <div key={`${expense.description}-${index}`} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-white/5 bg-slate-950 px-3 py-2 text-[9px]"><div className="min-w-0"><b className="block truncate text-slate-200">{expense.description}</b><span className="text-slate-500">Оплатил {expense.payer} · делили: {expense.participants.join(', ')}</span></div><b className="shrink-0 text-slate-300">{formatMoney(expense.amount)}</b></div>)}</div>
+          </section>}
+
+          <section aria-label="Доли и баланс участников" className="space-y-2">
+            <h4 className="text-xs font-semibold text-white">Баланс участников</h4>
+            <div className="max-h-64 space-y-1.5 overflow-y-auto">{(res.settlements || []).map((settlement: any) => <div key={settlement.name} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/5 bg-slate-950 px-3 py-2 text-[10px]">
+              <div className="min-w-0"><b className="block truncate text-slate-200">{settlement.name}</b><span className="text-slate-500">Заплатил {formatMoney(settlement.paid)} · доля {formatMoney(settlement.share)}</span></div>
+              <b className={settlement.status === 'receives' ? 'text-emerald-200' : settlement.status === 'owes' ? 'text-amber-200' : 'text-slate-400'}>{settlement.status === 'receives' ? `получит ${formatMoney(settlement.balance)}` : settlement.status === 'owes' ? `доплатит ${formatMoney(Math.abs(Number(settlement.balance)))}` : 'расчёт закрыт'}</b>
+            </div>)}</div>
+          </section>
+
+          <section className="space-y-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold text-white">Оптимальные переводы</h4><div className="flex gap-1.5"><button type="button" onClick={() => copyText(createTransferText(), onToast)} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[10px] text-slate-200 hover:bg-white/10"><Copy className="h-3 w-3" />Копировать</button><button type="button" onClick={exportSettlementCsv} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[10px] text-slate-200 hover:bg-white/10"><Download className="h-3 w-3" />CSV</button></div></div>
+            {res.transfers.length > 0 ? res.transfers.map((transfer: any, index: number) => <div key={`${transfer.from}-${transfer.to}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-indigo-400/25 bg-slate-950 p-3"><span className="min-w-0 truncate text-slate-200"><b>{transfer.from}</b> → <b>{transfer.to}</b></span><b className="shrink-0 text-sm text-indigo-200">{formatMoney(transfer.amount)}</b></div>) : <div className="rounded-xl bg-slate-950 p-3 text-emerald-300">Взаимозачёт уже сбалансирован — переводы не нужны.</div>}
+          </section>
+          {res.expense_mode === 'items' && <p className="text-[9px] leading-relaxed text-slate-500">В режиме позиций оплата распределяется по выбранным плательщикам, доли — только между отмеченными участниками. Чаевые и округление включены в итог.</p>}
+        </> : <div className="grid min-h-52 place-items-center rounded-xl border border-dashed border-white/10 text-center text-xs text-slate-500">{loading ? 'Рассчитываю доли и сверяю переводы…' : 'Добавьте участников и выполните расчёт, чтобы увидеть взаимозачёт.'}</div>}
       </div>
     </div>
   );
