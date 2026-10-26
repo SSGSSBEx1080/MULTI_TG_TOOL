@@ -218,6 +218,12 @@ class PcEvalReq(BaseModel):
     hdd_id: str = "hdd_none"
     psu_id: str = "psu_450"
     case_id: str = "used_office_case"
+    case_fans_id: str = "fans_none"
+    wifi_adapter_id: str = "wifi_none"
+    monitor_id: str = "monitor_none"
+    keyboard_id: str = "keyboard_none"
+    mouse_id: str = "mouse_none"
+    thermal_paste_id: str = "paste_none"
 
 
 @router.post("/api/v6/pc/evaluate")
@@ -233,6 +239,12 @@ async def api_v6_pc_evaluate(req: PcEvalReq, request: Request) -> dict[str, Any]
         hdd_id=req.hdd_id,
         psu_id=req.psu_id,
         case_id=req.case_id,
+        case_fans_id=req.case_fans_id,
+        wifi_adapter_id=req.wifi_adapter_id,
+        monitor_id=req.monitor_id,
+        keyboard_id=req.keyboard_id,
+        mouse_id=req.mouse_id,
+        thermal_paste_id=req.thermal_paste_id,
     )
     await db.record_tool_use(uid, "pc_builder_pro", "pc_materials_style", "miniapp", f"{res['total_price_rub']}RUB", xp_gain=7)
     return res
