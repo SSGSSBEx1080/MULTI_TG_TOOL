@@ -226,7 +226,7 @@ const GAMEPIADA_REGISTRATION_URL = 'https://forms.gle/BSrp7vQqTXzJtBhq7';
 const GAMEPIADA_DISCORD_URL = 'https://discord.gg/5fRZkcjt';
 const GAMEPIADA_DISCIPLINES = 'Dota 2 • CS2 • Minecraft Duo Speedrun • Clash Royale • Double Dealers • Rocket League • GeoGuessr • Fall Guys • Geometry Dash • Fortnite • Trackmania • MK11 • шахматы • Minecraft PvP • Brawl Stars';
 
-const GamepiadaPromoBanner: React.FC = () => {
+export const GamepiadaPromoBanner: React.FC = () => {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -243,41 +243,53 @@ const GamepiadaPromoBanner: React.FC = () => {
   const seconds = secondsLeft % 60;
 
   return (
-    <section aria-labelledby="gamepiada-title" className="relative overflow-hidden rounded-2xl border border-amber-300/25 bg-[radial-gradient(ellipse_at_top_right,rgba(245,158,11,.19),transparent_48%),linear-gradient(125deg,#170e20,#0b1020_58%,#101526)] p-4 shadow-[0_16px_50px_-32px_rgba(245,158,11,.75)] sm:p-5">
-      <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full border border-amber-200/10" />
-      <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/25 bg-amber-400/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.17em] text-amber-100">
-            <span className={`h-1.5 w-1.5 rounded-full ${inTournament ? 'bg-emerald-300' : 'bg-amber-300 animate-pulse'}`} />
-            {inTournament ? 'Турнирный период начался' : now >= GAMEPIADA_END_MS ? 'Событие завершено' : 'Регистрация открыта'}
+    <section aria-labelledby="gamepiada-title" className="relative isolate min-h-[430px] overflow-hidden rounded-[28px] border border-amber-200/40 bg-[radial-gradient(ellipse_at_15%_0%,rgba(251,191,36,.33),transparent_42%),radial-gradient(ellipse_at_95%_100%,rgba(249,115,22,.24),transparent_45%),linear-gradient(130deg,#241024,#10101e_52%,#27140e)] p-5 shadow-[0_28px_90px_-35px_rgba(245,158,11,.72)] sm:min-h-[390px] sm:p-8 xl:min-h-[420px]">
+      <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-28 h-80 w-80 rounded-full border border-amber-100/15 shadow-[0_0_90px_20px_rgba(251,191,36,.12)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-36 left-[34%] h-72 w-72 rounded-full bg-orange-400/10 blur-3xl" />
+      <div className="relative flex min-h-[390px] flex-col justify-between gap-6 sm:min-h-[340px] xl:min-h-[370px]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/40 bg-amber-300/15 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.2em] text-amber-100 sm:text-xs">
+            <span className={`h-2 w-2 rounded-full ${inTournament ? 'bg-emerald-300' : 'bg-amber-300 animate-pulse'}`} />
+            {inTournament ? 'Турнир уже идёт' : now >= GAMEPIADA_END_MS ? 'Событие завершено' : 'Открыта регистрация'}
           </div>
-          <h2 id="gamepiada-title" className="mt-2 font-display text-xl font-black tracking-tight text-white sm:text-2xl">⚡️ GAMEpiada 🏆</h2>
-          <p className="mt-1 text-xs font-semibold text-amber-100 sm:text-sm">17 дисциплин. Один общий рейтинг. Докажи, что ты универсал.</p>
-          <p className="mt-2 max-w-4xl text-[10px] leading-relaxed text-slate-300 sm:text-xs">{GAMEPIADA_DISCIPLINES}</p>
-          <p className="mt-2 text-[10px] text-slate-400 sm:text-xs">📅 27 октября — 1 ноября 2026 (предварительно) · расписание и подробности — скоро.</p>
+          <span className="rounded-full border border-white/15 bg-black/25 px-3 py-1.5 text-[10px] font-bold tracking-wide text-white/80 sm:text-xs">27 ОКТ — 1 НОЯ · 2026</span>
         </div>
-        <div className="flex min-w-0 flex-col gap-2.5 lg:w-[230px]">
-          <div className="rounded-xl border border-white/10 bg-black/25 p-2.5 text-center" aria-live="off">
-            <div className="text-[9px] font-bold uppercase tracking-[.14em] text-amber-200/80">{beforeStart ? 'До ориентировочной даты старта' : inTournament ? 'GAMEpiada уже на арене' : 'Турнирный период завершён'}</div>
+
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)] xl:items-center">
+          <div className="min-w-0">
+            <div className="font-display text-5xl font-black leading-[.9] tracking-[-.06em] text-white drop-shadow-[0_5px_25px_rgba(251,191,36,.25)] sm:text-7xl xl:text-8xl">
+              GAME<span className="text-amber-300">piada</span><span className="text-amber-200">🏆</span>
+            </div>
+            <p className="mt-4 max-w-2xl text-base font-extrabold leading-snug text-amber-50 sm:text-xl xl:text-2xl">17 дисциплин. Один общий рейтинг.<br className="hidden sm:block" /> Докажи, что ты универсал.</p>
+            <p className="mt-2 max-w-3xl text-xs leading-relaxed text-slate-200 sm:text-sm">{GAMEPIADA_DISCIPLINES}</p>
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-[10px] font-semibold text-amber-100/90 sm:text-xs">
+              <span>🏅 Очки за места → титул MVP</span>
+              <span>📅 Даты предварительные</span>
+              <span>🗓 Расписание — скоро</span>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-amber-100/20 bg-[#090914]/65 p-4 shadow-2xl backdrop-blur-md sm:p-5">
+            <div className="text-center text-[10px] font-black uppercase tracking-[.2em] text-amber-200/90 sm:text-xs">
+              {beforeStart ? 'До старта по дате осталось' : inTournament ? 'Выходи на арену — турнир начался' : 'Турнирный период завершён'}
+            </div>
             {beforeStart ? (
-              <div className="mt-1 grid grid-cols-4 gap-1 font-mono">
-                {[[days, 'дн'], [hours, 'ч'], [minutes, 'мин'], [seconds, 'сек']].map(([value, label]) => (
-                  <div key={label} className="rounded-lg bg-slate-950/70 px-1 py-1.5">
-                    <b className="block text-base tabular-nums text-white sm:text-lg">{String(value).padStart(2, '0')}</b>
-                    <span className="text-[8px] text-slate-400">{label}</span>
+              <div className="mt-3 grid grid-cols-4 gap-2 font-mono">
+                {[[days, 'ДНЕЙ'], [hours, 'ЧАСОВ'], [minutes, 'МИНУТ'], [seconds, 'СЕКУНД']].map(([value, label]) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-black/35 px-1.5 py-3 text-center sm:py-4">
+                    <b className="block text-xl font-black tabular-nums text-white sm:text-3xl">{String(value).padStart(2, '0')}</b>
+                    <span className="mt-1 block text-[7px] font-bold tracking-[.12em] text-slate-400 sm:text-[9px]">{label}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="mt-1 text-sm font-bold text-emerald-200">{inTournament ? 'Выбирай дисциплины и выходи играть!' : 'Спасибо участникам!'}</div>
+              <div className="mt-4 rounded-xl bg-emerald-400/10 px-3 py-4 text-center text-sm font-bold text-emerald-100">{inTournament ? 'GAMEpiada уже на арене!' : 'Спасибо участникам!'}</div>
             )}
-            {beforeStart && <div className="mt-1 text-[8px] text-slate-500">Обратный отсчёт до 27 октября, 00:00 МСК; точное расписание скоро.</div>}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {now < GAMEPIADA_END_MS && (
-              <a href={GAMEPIADA_REGISTRATION_URL} target="_blank" rel="noreferrer" className="inline-flex min-h-10 flex-1 items-center justify-center rounded-xl border border-amber-200/40 bg-amber-300 px-3 py-2 text-[11px] font-extrabold text-slate-950 transition hover:bg-amber-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">📝 Подать заявку</a>
-            )}
-            <a href={GAMEPIADA_DISCORD_URL} target="_blank" rel="noreferrer" className="inline-flex min-h-10 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/[.06] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200">💬 Discord турнира</a>
+            {beforeStart && <p className="mt-2 text-center text-[9px] leading-relaxed text-slate-400">Отсчёт до 27 октября, 00:00 МСК — точное время старта пока не объявлено.</p>}
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {now < GAMEPIADA_END_MS && <a href={GAMEPIADA_REGISTRATION_URL} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-amber-100/70 bg-gradient-to-b from-amber-200 to-amber-400 px-3 py-3 text-sm font-black text-[#24110a] shadow-[0_8px_24px_-10px_rgba(251,191,36,.8)] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">📝 Подать заявку</a>}
+              <a href={GAMEPIADA_DISCORD_URL} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/20 bg-white/[.07] px-3 py-3 text-sm font-bold text-white transition hover:bg-white/[.14] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200">💬 Discord турнира</a>
+            </div>
           </div>
         </div>
       </div>
@@ -1054,7 +1066,6 @@ export const MiniAppStudio: React.FC<Props> = ({
         {/* Right Main Content */}
         <section className="col-span-9 space-y-4 min-w-0">
           <ToolDiscoveryBanner categories={categories} onOpenPalette={onOpenPalette} onRandomCategory={openRandomCategory} />
-          <GamepiadaPromoBanner />
           {/* Universal Intuitive Search + Calculator Top Bar */}
           <form
             onSubmit={runQuickBar}
@@ -1249,7 +1260,6 @@ export const MiniAppStudio: React.FC<Props> = ({
             </div>
 
             <ToolDiscoveryBanner categories={categories} onOpenPalette={onOpenPalette} onRandomCategory={openRandomCategory} />
-            <GamepiadaPromoBanner />
 
             {renderIntuitivePanel()}
 

@@ -17,7 +17,7 @@ import {
   getTelegramWebApp,
   isInsideTelegram,
 } from './lib/api';
-import { MiniAppStudio } from './components/MiniAppStudio';
+import { GamepiadaPromoBanner, MiniAppStudio } from './components/MiniAppStudio';
 import { CommandPalette } from './components/CommandPalette';
 
 const TelegramSimulator = lazy(() =>
@@ -455,6 +455,11 @@ export const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 min-w-0">
+        {viewMode !== 'admin' && viewMode !== 'bot' && (
+          <div className="mx-auto max-w-[1440px] px-3 pt-3 sm:px-5 sm:pt-4">
+            <GamepiadaPromoBanner />
+          </div>
+        )}
         <Suspense
           fallback={
             <div className="max-w-xl mx-auto mt-10 p-8 rounded-2xl bg-slate-900/60 border border-white/10 text-center text-sm text-slate-400">
