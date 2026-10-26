@@ -1386,9 +1386,28 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             assert start_r.status_code == 200
             welcome = start_r.json()["messages"][-1]
             assert "GAMEpiada" in welcome["text"]
+            assert "188 инструментов" in welcome["text"]
             welcome_buttons = [button for row in welcome["inline_keyboard"] for button in row]
             assert any(button.get("url") == "https://discord.gg/5fRZkcjt" for button in welcome_buttons)
-            mid = welcome["message_id"]
+            assert any(button.get("callback_data") == "nav:tools" for button in welcome_buttons)
+
+            tool_search = await client.post("/api/sim/send-text", json={"text": "/tools"})
+            assert tool_search.status_code == 200
+            search_message = tool_search.json()["messages"][-1]
+            assert "Все разделы и инструменты" in search_message["text"]
+            assert any(button.get("callback_data") == "toolsearch:page:1" for row in search_message["inline_keyboard"] for button in row)
+            next_page = await client.post("/api/sim/callback", json={"message_id": search_message["message_id"], "callback_data": "toolsearch:page:1"})
+            assert "Страница 2/" in next_page.json()["messages"][-1]["text"]
+
+            qr_search = await client.post("/api/sim/send-text", json={"text": "/tools QR"})
+            assert "Поиск по каталогу бота" in qr_search.json()["messages"][-1]["text"]
+            qr_buttons = [button for row in qr_search.json()["messages"][-1]["inline_keyboard"] for button in row]
+            assert any(button.get("callback_data", "").startswith("tool:open:") for button in qr_buttons)
+            assert any("tool=" in button.get("web_app_url", "") for button in qr_buttons)
+
+            # Return to a fresh main-menu message before exhaustively exercising every category.
+            start_again = await client.post("/api/sim/send-text", json={"text": "/start"})
+            mid = start_again.json()["messages"][-1]["message_id"]
 
             for cat in TOOL_CATEGORIES:
                 cat_r = await client.post("/api/sim/callback", json={"message_id": mid, "callback_data": f"nav:cat:{cat['id']}"})

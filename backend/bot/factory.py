@@ -25,6 +25,7 @@ logger = logging.getLogger("multi_tg_tool.bot")
 
 BOT_COMMANDS = [
     BotCommand(command="start", description="Главное меню"),
+    BotCommand(command="tools", description="Поиск по всем инструментам бота"),
     BotCommand(command="ai", description="ИИ-Ассистент с выходом в Интернет"),
     BotCommand(command="stands", description="Все Стенды JoJo (Части 3–9)"),
     BotCommand(command="earth", description="3D Земля и веб-камеры мира"),
