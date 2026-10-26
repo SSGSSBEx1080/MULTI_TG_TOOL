@@ -1251,22 +1251,22 @@ export const PhysicsLab3D: React.FC<Physics3DProps> = ({ calcId, values }) => {
 // 4. INTERACTIVE 3D EARTH GLOBE & CHAOTIC LORENZ ATTRACTOR (KNOWLEDGE HUB)
 // ============================================================================
 const WORLD_BEACONS = [
-  { name: 'Россия', city: 'Москва', lat: 55.75, lon: 37.62, weight: 0.65, color: '#38bdf8' },
-  { name: 'Китай', city: 'Пекин', lat: 39.9, lon: 116.4, weight: 1.0, color: '#fb7185' },
-  { name: 'Индия', city: 'Дели', lat: 28.61, lon: 77.21, weight: 1.0, color: '#fb923c' },
-  { name: 'США', city: 'Нью-Йорк', lat: 40.71, lon: -74.0, weight: 0.78, color: '#60a5fa' },
-  { name: 'Япония', city: 'Токио', lat: 35.68, lon: 139.69, weight: 0.72, color: '#f472b6' },
-  { name: 'Германия', city: 'Берлин', lat: 52.52, lon: 13.4, weight: 0.55, color: '#facc15' },
-  { name: 'Франция', city: 'Париж', lat: 48.85, lon: 2.35, weight: 0.52, color: '#a78bfa' },
-  { name: 'Великобритания', city: 'Лондон', lat: 51.5, lon: -0.12, weight: 0.54, color: '#38bdf8' },
-  { name: 'Бразилия', city: 'Сан-Паулу', lat: -23.55, lon: -46.63, weight: 0.74, color: '#34d399' },
-  { name: 'Египет', city: 'Каир', lat: 30.04, lon: 31.23, weight: 0.62, color: '#fbbf24' },
-  { name: 'Турция', city: 'Стамбул', lat: 41.0, lon: 28.97, weight: 0.58, color: '#f87171' },
-  { name: 'Индонезия', city: 'Джакарта', lat: -6.2, lon: 106.84, weight: 0.8, color: '#2dd4bf' },
-  { name: 'Нигерия', city: 'Лагос', lat: 6.52, lon: 3.37, weight: 0.76, color: '#4ade80' },
-  { name: 'Мексика', city: 'Мехико', lat: 19.43, lon: -99.13, weight: 0.68, color: '#fb923c' },
-  { name: 'Австралия', city: 'Сидней', lat: -33.86, lon: 151.2, weight: 0.45, color: '#38bdf8' },
-  { name: 'Казахстан', city: 'Астана', lat: 51.16, lon: 71.47, weight: 0.46, color: '#22d3ee' },
+  { name: 'Россия', city: 'Москва', lat: 55.75, lon: 37.62, color: '#38bdf8' },
+  { name: 'Китай', city: 'Пекин', lat: 39.9, lon: 116.4, color: '#fb7185' },
+  { name: 'Индия', city: 'Дели', lat: 28.61, lon: 77.21, color: '#fb923c' },
+  { name: 'США', city: 'Нью-Йорк', lat: 40.71, lon: -74.0, color: '#60a5fa' },
+  { name: 'Япония', city: 'Токио', lat: 35.68, lon: 139.69, color: '#f472b6' },
+  { name: 'Германия', city: 'Берлин', lat: 52.52, lon: 13.4, color: '#facc15' },
+  { name: 'Франция', city: 'Париж', lat: 48.85, lon: 2.35, color: '#a78bfa' },
+  { name: 'Великобритания', city: 'Лондон', lat: 51.5, lon: -0.12, color: '#38bdf8' },
+  { name: 'Бразилия', city: 'Сан-Паулу', lat: -23.55, lon: -46.63, color: '#34d399' },
+  { name: 'Египет', city: 'Каир', lat: 30.04, lon: 31.23, color: '#fbbf24' },
+  { name: 'Турция', city: 'Стамбул', lat: 41.0, lon: 28.97, color: '#f87171' },
+  { name: 'Индонезия', city: 'Джакарта', lat: -6.2, lon: 106.84, color: '#2dd4bf' },
+  { name: 'Нигерия', city: 'Лагос', lat: 6.52, lon: 3.37, color: '#4ade80' },
+  { name: 'Мексика', city: 'Мехико', lat: 19.43, lon: -99.13, color: '#fb923c' },
+  { name: 'Австралия', city: 'Сидней', lat: -33.86, lon: 151.2, color: '#38bdf8' },
+  { name: 'Казахстан', city: 'Астана', lat: 51.16, lon: 71.47, color: '#22d3ee' },
 ];
 
 interface GlobeProps {
@@ -1451,12 +1451,12 @@ export const WorldGlobeAndMath3D: React.FC<GlobeProps> = ({ mode, onPickQuery })
           ctx.fillText('N↑', npp.sx - 6, npp.sy - 2);
         }
 
-        // 3D Population & Country Beacons
+        // Country markers (pin size is not population data)
         const hits: { q: string; sx: number; sy: number; r: number; z: number }[] = [];
         for (const b of WORLD_BEACONS) {
           const base = rotateEuler(latLonToVec3(b.lat, b.lon, R), cam.rx, cam.ry);
           if (base.z < -0.15) continue; // occluded behind Earth
-          const tip = rotateEuler(latLonToVec3(b.lat, b.lon, R + 0.14 + b.weight * 0.28), cam.rx, cam.ry);
+          const tip = rotateEuler(latLonToVec3(b.lat, b.lon, R + 0.24), cam.rx, cam.ry);
           const pb = project3D(base, W, H, fov, camDist);
           const pt = project3D(tip, W, H, fov, camDist);
 
@@ -2646,7 +2646,8 @@ export const Mini3DSceneBadge: React.FC<{
       const { ctx, W, H } = syncHiDPICanvas(cvs, size, size);
       if (!ctx) return;
 
-      t += variant.speed + boostRef.current;
+      const motionScale = variant.shape === 'tesseract' ? 0.18 : 1;
+      t += (variant.speed + boostRef.current) * motionScale;
       boostRef.current *= 0.92;
 
       ctx.clearRect(0, 0, W, H);

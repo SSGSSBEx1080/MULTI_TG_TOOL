@@ -67,9 +67,13 @@ def _summarize_omni_output(payload: dict[str, Any]) -> dict[str, Any]:
     elif kind == "population":
         places = res.get("places") or []
         if places:
-            out = f"{places[0]['name']}: {places[0]['formatted_pop']} чел."
+            place = places[0]
+            if place.get("pop") is None:
+                out = f"{place['name']}: проверенное актуальное значение отсутствует в офлайн-справочнике."
+            else:
+                out = f"{place['name']}: {place['formatted_pop']} чел. (ориентир, год данных не указан)."
         else:
-            out = f"Земля: {res.get('live_earth_population', '')}"
+            out = "В офлайн-справочнике нет совпадения; значение населения не оценивалось."
     elif kind == "cron":
         out = str(res.get("human_ru") or res.get("description") or "")
     elif kind == "hash":

@@ -760,13 +760,13 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
       {subTab === 'pop' && (
         <div className="rounded-2xl border border-white/10 bg-slate-900/75 p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-950/70 to-sky-950/70 border border-emerald-400/30">
-            <div>
-              <div className="text-xs text-emerald-300 uppercase tracking-wider font-semibold">🌍 Живой демографический счётчик Планеты Земля</div>
-              <div className="text-2xl sm:text-3xl font-black font-mono text-white mt-0.5">
-                {popData?.live_earth_population || '8 185 400 000'} <span className="text-sm font-normal text-slate-300">человек</span>
-              </div>
+            <div className="min-w-0">
+              <div className="text-xs text-emerald-300 uppercase tracking-wider font-semibold">🌍 Офлайн-справочник населения</div>
+              <p className="text-sm text-slate-200 mt-1 max-w-3xl">
+                Здесь нет проверенного live-счётчика. Значения в каталоге — ориентиры без единого года и определения границ; для актуальных цифр сверяйтесь с национальными статистическими службами.
+              </p>
             </div>
-            <Globe2 className="w-10 h-10 text-emerald-400/70 hidden sm:block" />
+            <Globe2 className="w-10 h-10 text-emerald-400/70 hidden sm:block shrink-0" />
           </div>
 
           <div className="flex flex-wrap gap-1.5">
@@ -798,7 +798,7 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
               value={popQuery}
               onChange={(e) => setPopQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && loadPop(popQuery)}
-              placeholder="Введите страну, мегаполис, город, ПГТ или деревню (например: село Оймякон)..."
+              placeholder="Поиск по встроенному каталогу (например: Россия, Москва, Оймякон)..."
               className="flex-1 rounded-xl bg-slate-950 border border-white/10 px-4 py-2.5 text-xs sm:text-sm text-white"
             />
             <button
@@ -809,6 +809,12 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
             </button>
           </div>
 
+          {popData?.count === 0 && (
+            <p role="status" className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">
+              Встроенный каталог не содержит совпадений. Мы не генерируем оценку для неизвестного населённого пункта.
+            </p>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {(popData?.places || []).map((p: any) => (
               <div key={p.name} className="p-4 rounded-xl bg-slate-950/90 border border-white/10 space-y-1.5">
@@ -816,7 +822,9 @@ export const KnowledgeMegaHub: React.FC<Props> = ({
                   <span className="font-bold text-sm text-white">{p.name}</span>
                   <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 shrink-0">{p.type}</span>
                 </div>
-                <div className="text-xl font-mono font-extrabold text-amber-300">{p.formatted_pop} чел.</div>
+                <div className="text-xl font-mono font-extrabold text-amber-300">
+                  {p.pop == null ? 'Нет проверенного значения' : `${p.formatted_pop} чел. (ориентир)`}
+                </div>
                 <div className="text-[11px] text-slate-400">{p.country}</div>
                 <p className="text-xs text-slate-300">{p.note}</p>
               </div>

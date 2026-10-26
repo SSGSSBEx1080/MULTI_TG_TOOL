@@ -7,7 +7,7 @@ from PIL import Image
 
 from backend.api.app import create_app
 from backend.bot.factory import bot_manager
-from backend.database import db
+from backend.database import DEFAULT_AUTHOR_INFO, db
 from backend.tools.dev_tools import evaluate_regex, explain_cron, format_convert_data, transform_codec
 from backend.tools.image_lab import (
     inspect_and_clean_image,
@@ -46,6 +46,12 @@ from backend.tools.smart_calc import calculate_finance, calculate_subnet, conver
 from backend.tools.smart_units_nlp import smart_parse_and_convert
 from backend.tools.social_and_dating import altushka_chat_reply, check_turing_guess, get_turing_round
 from backend.tools.text_studio import analyze_and_diff_text, fix_keyboard_layout, run_randomizer, stylize_text
+
+
+def test_author_links_are_pinned_to_official_destinations() -> None:
+    normalized = db._normalize_author({"title": "Project", "links": [{"label": "Injected", "url": "https://example.invalid"}]})
+    assert [link["url"] for link in normalized["links"]] == [link["url"] for link in DEFAULT_AUTHOR_INFO["links"]]
+    assert len(normalized["links"]) == 4
 
 
 def test_qr_and_barcode_engine() -> None:
@@ -198,6 +204,12 @@ def test_v2_mega_engines() -> None:
     assert len(phys) >= 1
     pop = query_population("Оймякон")
     assert pop["places"][0]["pop"] == 502
+    assert pop["places"][0]["formatted_pop"].startswith("~")
+    assert pop["live_earth_population"] is None
+    unknown_pop = query_population("Несуществующий населённый пункт")
+    assert unknown_pop["count"] == 0 and unknown_pop["places"] == []
+    earth = query_population("Планета Земля")
+    assert earth["places"][0]["pop"] is None
 
     # 6. Rhyme Generator & QR Image Decoder & URL Cleaner
     rh = generate_russian_rhymes("любовь")

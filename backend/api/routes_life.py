@@ -10,7 +10,7 @@ from backend.config import DEFAULT_DEMO_USER_ID
 from backend.database import db
 from backend.tools.everyday_labs import (
     FOOD_DB, calculate_flower_bouquet, calculate_nutrition,
-    calculate_sleep_windows, life_catalog,
+    calculate_sleep_windows, convert_measurement, get_recipes, life_catalog, scale_recipe,
 )
 
 router = APIRouter(tags=["everyday-life"])
@@ -27,6 +27,35 @@ def _chat_topic(topic: str) -> str:
 @router.get("/api/life/catalog")
 async def catalog() -> dict[str, Any]:
     return life_catalog()
+
+
+class UnitConversionReq(BaseModel):
+    value: float = Field(allow_inf_nan=False, ge=-1e30, le=1e30)
+    from_unit: str = Field(min_length=1, max_length=24)
+    to_unit: str = Field(min_length=1, max_length=24)
+
+
+@router.post("/api/life/convert")
+async def convert_units(req: UnitConversionReq) -> dict[str, Any]:
+    try:
+        return convert_measurement(req.value, req.from_unit, req.to_unit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/api/life/recipes")
+async def recipes(q: str = "", category: str = "") -> dict[str, Any]:
+    items = get_recipes(q[:80], category[:40])
+    return {"count": len(items), "items": items}
+
+
+@router.get("/api/life/recipes/{recipe_id}")
+async def recipe_detail(recipe_id: str, servings: float = 1.0) -> dict[str, Any]:
+    try:
+        return scale_recipe(recipe_id, servings)
+    except ValueError as exc:
+        status = 404 if str(exc) == "Рецепт не найден" else 400
+        raise HTTPException(status_code=status, detail=str(exc))
 
 
 @router.get("/api/life/foods")

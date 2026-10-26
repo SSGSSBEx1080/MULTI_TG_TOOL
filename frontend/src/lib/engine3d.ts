@@ -424,8 +424,8 @@ export const useViewportActive = (ref: RefObject<HTMLElement | null>): boolean =
 
 /**
  * Razor-sharp HiDPI / Retina Canvas synchronizer.
- * Matches physical framebuffer to exact CSS layout pixels * devicePixelRatio (up to 2.5x)
- * and sets a clean 2D transform so all drawing & font rendering are crystal-sharp!
+ * Matches the framebuffer to CSS pixels * devicePixelRatio (capped at 2x).
+ * A 2x cap preserves sharp rendering while bounding canvas memory on HiDPI devices.
  */
 export const syncHiDPICanvas = (
   canvas: HTMLCanvasElement,
@@ -438,7 +438,7 @@ export const syncHiDPICanvas = (
   const rect = canvas.getBoundingClientRect();
   const W = rect.width > 12 ? rect.width : fallbackW;
   const H = rect.height > 12 ? rect.height : fallbackH;
-  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2.5) : 1;
+  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
 
   const targetW = Math.max(1, Math.round(W * dpr));
   const targetH = Math.max(1, Math.round(H * dpr));

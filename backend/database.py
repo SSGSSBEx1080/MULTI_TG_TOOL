@@ -1255,12 +1255,9 @@ class Database:
         out["title"] = out.get("title") or out.get("name") or "QLS • MULTI_TG_TOOL"
         out["name"] = out["title"]
         out["donation_note"] = out.get("donation_note") or "Поддержка проекта:"
-        norm_links = []
-        for lnk in out.get("links", []):
-            lbl = lnk.get("label") or lnk.get("title") or "Ссылка"
-            em = lnk.get("emoji") or (lbl.split()[0] if lbl and not lbl[0].isalnum() else "🔗")
-            norm_links.append({**lnk, "label": lbl, "title": lbl, "emoji": em})
-        out["links"] = norm_links
+        # Keep the public author card pinned to the four official destinations.
+        # This also strips arbitrary/legacy URLs from previously stored settings.
+        out["links"] = [dict(link) for link in DEFAULT_AUTHOR_INFO["links"]]
         return out
 
     async def get_author_info(self) -> dict[str, Any]:
