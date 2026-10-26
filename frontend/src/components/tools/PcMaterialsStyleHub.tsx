@@ -46,6 +46,15 @@ const PC_PART_CATALOG_KEYS: Record<PcBuildPartKey, string> = {
   ssd: 'ssds', hdd: 'hdds', psu: 'psus', case: 'cases',
 };
 
+const PC_SEGMENT_FILTERS = [
+  { id: 'all', label: 'Все', description: 'Полный каталог' },
+  { id: 'legacy', label: 'Старые / б/у', description: 'Старые поколения и вторичный рынок' },
+  { id: 'budget', label: 'Бюджет', description: 'Доступные и начальные варианты' },
+  { id: 'mainstream', label: 'Средний класс', description: 'Сбалансированные массовые модели' },
+  { id: 'premium', label: 'Дорогие / новые', description: 'Производительные и флагманские' },
+  { id: 'optional', label: 'Опционально', description: 'Необязательные позиции' },
+] as const;
+
 const isPcBuildParts = (value: unknown): value is PcBuildParts => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
@@ -98,6 +107,9 @@ const PC_BUILD_PRESETS = [
   { id: 'mainstream', name: 'Сбалансированный', note: 'AM5 · средний класс', parts: { cpu: 'r5_7500f', gpu: 'rx_7600', mb: 'b650m', ram: 'ddr5_32_5600', cooler: 'ak400', ssd: 'nvme_1tb_gen3', hdd: 'hdd_none', psu: 'psu_650', case: 'mid_tower_budget' } },
   { id: 'performance', name: 'Высокая производительность', note: '1440p-класс · больше памяти и диска', parts: { cpu: 'r7_7800x3d', gpu: 'rx_7800xt', mb: 'b650_aorus', ram: 'ddr5_32_6000', cooler: 'ak620', ssd: 'nvme_2tb_gen4', hdd: 'hdd_2tb', psu: 'psu_750', case: 'lancool_216' } },
   { id: 'flagship', name: 'Флагманская', note: 'Максимальный класс · большая цена и мощность', parts: { cpu: 'r7_9800x3d', gpu: 'rtx_5090', mb: 'x870e_tomahawk', ram: 'ddr5_64_6000', cooler: 'aio_360', ssd: 't705_2tb', hdd: 'hdd_4tb', psu: 'psu_1200', case: 'full_tower' } },
+  { id: 'ivy-bridge-rebuild', name: 'Ретро-апгрейд LGA1155', note: 'Недорогая система DDR3 · корпус с запасом по охлаждению', parts: { cpu: 'i5_3570k', gpu: 'gtx_1050ti', mb: 'h61_lga1155', ram: 'ddr3_16_1600', cooler: 'stock_lga1155', ssd: 'sata_480', hdd: 'hdd_none', psu: 'psu_450', case: 'mid_tower_budget' } },
+  { id: 'am5-budget', name: 'Доступный вход на AM5', note: 'Свежая платформа с DDR5 и видеокартой среднего уровня', parts: { cpu: 'r5_7500f', gpu: 'rx_9060xt_16', mb: 'a620m_am5', ram: 'ddr5_32_5600', cooler: 'tower_120_budget', ssd: 'nvme_1tb_gen3', hdd: 'hdd_none', psu: 'psu_650_gold', case: 'airflow_atx_2025' } },
+  { id: 'new-mainstream-1440p', name: 'Новое поколение · 1440p', note: 'Современная видеокарта, быстрый SSD и резерв мощности', parts: { cpu: 'r5_9600x', gpu: 'rtx_5070', mb: 'b850m_am5', ram: 'ddr5_32_6000', cooler: 'ak620', ssd: 'nvme_2tb_gen4', hdd: 'hdd_none', psu: 'psu_750', case: 'airflow_atx_2025' } },
 ] as const;
 
 // ============================================================================
@@ -123,6 +135,7 @@ export const PcMaterialsStyleHub: React.FC<{
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogRetry, setCatalogRetry] = useState(0);
   const [partSearch, setPartSearch] = useState('');
+  const [pcSegmentFilter, setPcSegmentFilter] = useState<(typeof PC_SEGMENT_FILTERS)[number]['id']>('all');
   const [cpuId, setCpuId] = useState('i5_6500');
   const [gpuId, setGpuId] = useState('gtx_1050ti');
   const [mbId, setMbId] = useState('h110_lga1151');
@@ -585,6 +598,19 @@ export const PcMaterialsStyleHub: React.FC<{
               <Cpu className="w-4 h-4 text-indigo-400" /> Сборка ПК: от офисных апгрейдов до флагманов
             </h3>
             <label className="relative block"><Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" /><input type="search" value={partSearch} onChange={(event) => setPartSearch(event.target.value)} placeholder="Фильтр по модели, поколению, сокету, типу или цене…" aria-label="Поиск комплектующих в списках" className="w-full rounded-xl border border-white/10 bg-slate-950 py-2 pl-9 pr-3 text-xs text-white placeholder:text-slate-600" /></label>
+            <fieldset className="min-w-0 rounded-xl border border-white/10 bg-slate-950/70 p-2.5">
+              <legend className="px-1 text-[10px] font-semibold text-slate-300">Ценовой и возрастной сегмент каталога</legend>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+                {PC_SEGMENT_FILTERS.map((segment) => {
+                  const count = segment.id === 'all'
+                    ? Object.values(catalog).reduce((sum: number, items: any) => sum + (Array.isArray(items) ? items.length : 0), 0)
+                    : Object.values(catalog).reduce((sum: number, items: any) => sum + (Array.isArray(items) ? items.filter((item: any) => item.segment === segment.id).length : 0), 0);
+                  const active = pcSegmentFilter === segment.id;
+                  return <button key={segment.id} type="button" aria-pressed={active} title={segment.description} onClick={() => setPcSegmentFilter(segment.id)} className={`min-h-10 rounded-lg border px-2 py-1.5 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300 ${active ? 'border-indigo-300/50 bg-indigo-500/15 text-indigo-100' : 'border-white/5 bg-white/[.025] text-slate-400 hover:border-white/15 hover:text-white'}`}><span className="block truncate text-[10px] font-semibold">{segment.label}</span><span className="block text-[9px] opacity-70">{count} поз.</span></button>;
+                })}
+              </div>
+              <p className="mt-2 text-[9px] leading-relaxed text-slate-500">Сегмент фильтрует детали во всех девяти категориях. Текущий выбор всегда остаётся доступен, чтобы не терять совместимость сборки.</p>
+            </fieldset>
 
             {[
               { label: 'Процессор (CPU)', val: cpuId, set: setCpuId, list: catalog.cpus, extra: (x: any) => `${x.cores} · ${x.socket}/${x.ram_type} · ${x.release_year || 'старое поколение'} · ${x.tdp_w} Вт` },
@@ -605,8 +631,10 @@ export const PcMaterialsStyleHub: React.FC<{
                   className="w-full rounded-xl bg-slate-950 border border-white/15 px-3 py-2 text-white"
                 >
                   {(row.list || []).filter((item: any) => {
-                    if (!partSearch.trim() || item.id === row.val) return true;
-                    const terms = `${item.name} ${item.id} ${item.tier || ''} ${item.release_year || ''} ${row.extra(item)} ${item.price_rub}`.toLocaleLowerCase();
+                    if (item.id === row.val) return true;
+                    if (pcSegmentFilter !== 'all' && item.segment !== pcSegmentFilter) return false;
+                    if (!partSearch.trim()) return true;
+                    const terms = `${item.name} ${item.id} ${item.tier || ''} ${item.release_year || ''} ${item.segment || ''} ${row.extra(item)} ${item.price_rub}`.toLocaleLowerCase();
                     return terms.includes(partSearch.trim().toLocaleLowerCase());
                   }).map((item: any) => (
                     <option key={item.id} value={item.id}>
