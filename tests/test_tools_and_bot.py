@@ -43,7 +43,7 @@ from backend.tools.security_lab import (
     inspect_jwt,
     sign_jwt,
 )
-from backend.tools.smart_calc import calculate_finance, calculate_subnet, convert_units, evaluate_math
+from backend.tools.smart_calc import calculate_finance, calculate_loan_plan, calculate_savings_goal, calculate_subnet, convert_units, evaluate_math
 from backend.tools.smart_units_nlp import smart_parse_and_convert
 from backend.tools.social_and_dating import altushka_chat_reply, check_turing_guess, get_turing_round
 from backend.tools.text_studio import analyze_and_diff_text, fix_keyboard_layout, run_randomizer, stylize_text
@@ -186,6 +186,36 @@ def test_dev_calc_and_text_engines() -> None:
     fin = calculate_finance("split", 5000, people_count=4, tip_pct=10)
     assert fin["per_person"] == 1375.0
 
+    standard_loan = calculate_finance("loan", 2_000_000, rate_annual_pct=16, months=36)
+    early_loan = calculate_finance("loan", 2_000_000, rate_annual_pct=16, months=36, monthly_extra_payment=20_000)
+    assert len(standard_loan["schedule"]) == 36
+    assert early_loan["months_to_payoff"] < 36 and early_loan["months_saved"] > 0
+    assert early_loan["interest_saved"] > 0
+    assert early_loan["schedule"][-1]["remaining_balance"] == 0
+    assert round(sum(row["payment"] for row in early_loan["schedule"]), 2) == early_loan["total_paid"]
+    assert all(row["remaining_balance"] >= 0 for row in early_loan["schedule"])
+    differentiated = calculate_finance("loan", 2_000_000, rate_annual_pct=16, months=36, repayment_method="differentiated")
+    assert differentiated["repayment_method_label"] == "Дифференцированный"
+    assert differentiated["schedule"][0]["payment"] > differentiated["schedule"][-1]["payment"]
+    assert differentiated["standard_overpayment"] < standard_loan["standard_overpayment"]
+    differentiated_early = calculate_finance("loan", 2_000_000, rate_annual_pct=16, months=36, monthly_extra_payment=20_000, repayment_method="differentiated")
+    assert differentiated_early["months_to_payoff"] < 36 and differentiated_early["interest_saved"] > 0
+
+    goal = calculate_finance("goal", 10_000, rate_annual_pct=0, months=12, monthly_topup=5_000, target_amount=100_000)
+    assert goal["required_monthly_contribution"] == 7_500
+    assert goal["projected_balance"] == 70_000
+    assert goal["target_difference"] == -30_000
+    assert goal["estimated_months_to_goal"] == 18
+    assert len(goal["schedule"]) == 1 and goal["schedule"][0]["month"] == 12
+    inflation_goal = calculate_finance("goal", 0, rate_annual_pct=0, months=12, monthly_topup=10_000, target_amount=100_000, inflation_annual_pct=12)
+    assert inflation_goal["target_amount_at_horizon"] > inflation_goal["target_amount_today"]
+    assert inflation_goal["required_monthly_contribution"] < 10_000
+    assert inflation_goal["estimated_months_to_goal"] > 10
+    already_reached = calculate_finance("goal", 120_000, months=12, monthly_topup=0, target_amount=100_000)
+    assert already_reached["required_monthly_contribution"] == 0
+    with pytest.raises(ValueError):
+        calculate_finance("loan", 100_000, months=12, monthly_extra_payment=100_001)
+
     fixed = fix_keyboard_layout("Ghbdtn? rfr ltkf&")
     assert fixed["primary"] == "Привет, как дела?"
 
@@ -200,6 +230,30 @@ def test_dev_calc_and_text_engines() -> None:
 
     assert smart_omni_detect("Ghbdtn vbh")["kind"] == "layout_fix"
     assert smart_omni_detect("10.0.0.1/24")["kind"] == "subnet"
+
+
+def test_financial_planner_bounds_and_long_horizon_milestones() -> None:
+    invalid_loan_inputs = [
+        {"principal": 0, "rate_annual_pct": 10, "months": 12},
+        {"principal": 100_000, "rate_annual_pct": 201, "months": 12},
+        {"principal": 100_000, "rate_annual_pct": 10, "months": 601},
+        {"principal": 100_000, "rate_annual_pct": 10, "months": 12, "monthly_extra_payment": 100_001},
+        {"principal": 100_000, "rate_annual_pct": 10, "months": 12, "repayment_method": "balloon"},
+        {"principal": 100_000, "rate_annual_pct": float("nan"), "months": 12},
+    ]
+    for args in invalid_loan_inputs:
+        with pytest.raises(ValueError):
+            calculate_loan_plan(**args)
+
+    with pytest.raises(ValueError):
+        calculate_savings_goal(0, 1000, 100_000, 5, 12, inflation_annual_pct=-1)
+    with pytest.raises(ValueError):
+        calculate_savings_goal(0, float("inf"), 100_000, 5, 12)
+
+    fifty_year_plan = calculate_savings_goal(0, 1, 100_000_000, 0, 600)
+    assert len(fifty_year_plan["schedule"]) == 50
+    assert fifty_year_plan["schedule"][-1]["month"] == 600
+    assert fifty_year_plan["estimated_months_to_goal"] is None
 
 
 def test_v2_mega_engines() -> None:
@@ -1123,6 +1177,17 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             assert (await client.get("/api/v2/v5/plate-codes?q=777")).json()["count"] >= 1
             assert len((await client.get("/api/v2/v5/world-time?msk_hour=14")).json()["cities"]) >= 10
             assert (await client.post("/api/v2/v5/finance-pro", json={"mode": "loan", "principal": 2000000, "annual_rate_pct": 16, "months": 36})).status_code == 200
+            finance_early = await client.post("/api/tools/calc/finance", json={"mode": "loan", "principal": 2000000, "rate_annual_pct": 16, "months": 36, "monthly_extra_payment": 25000})
+            assert finance_early.status_code == 200
+            assert finance_early.json()["interest_saved"] > 0 and finance_early.json()["months_to_payoff"] < 36
+            finance_diff = await client.post("/api/tools/calc/finance", json={"mode": "loan", "principal": 2000000, "rate_annual_pct": 16, "months": 36, "repayment_method": "differentiated"})
+            assert finance_diff.status_code == 200 and finance_diff.json()["repayment_method"] == "differentiated"
+            finance_goal = await client.post("/api/tools/calc/finance", json={"mode": "goal", "principal": 10000, "rate_annual_pct": 0, "months": 12, "monthly_topup": 5000, "target_amount": 100000, "inflation_annual_pct": 0})
+            assert finance_goal.status_code == 200 and finance_goal.json()["required_monthly_contribution"] == 7500
+            inflation_goal_api = await client.post("/api/tools/calc/finance", json={"mode": "goal", "principal": 0, "rate_annual_pct": 0, "months": 12, "monthly_topup": 10000, "target_amount": 100000, "inflation_annual_pct": 12})
+            assert inflation_goal_api.status_code == 200 and inflation_goal_api.json()["target_amount_at_horizon"] > 100000
+            finance_bad = await client.post("/api/tools/calc/finance", json={"mode": "loan", "principal": 100000, "months": 12, "monthly_extra_payment": 100001})
+            assert finance_bad.status_code == 400
             assert (await client.post("/api/v2/v5/bill-split", json={"entries": [{"name": "A", "paid": 2000}, {"name": "B", "paid": 0}]})).json()["transfers"][0]["amount"] == 1000.0
             assert (await client.get("/api/v2/v5/periodic-table?formula=C6H12O6")).json()["molar"]["molar_mass_g_mol"] == pytest.approx(180.156, rel=1e-2)
             assert (await client.post("/api/v2/v5/color-harmony", json={"hex_color": "#0ea5e9"})).status_code == 200

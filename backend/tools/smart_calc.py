@@ -205,6 +205,208 @@ def convert_units(value: float, category: str, from_unit: str, to_unit: str = ""
     }
 
 
+def _annuity_payment(principal: float, monthly_rate: float, months: int) -> float:
+    if monthly_rate == 0:
+        return principal / months
+    factor = (1.0 + monthly_rate) ** months
+    return principal * (monthly_rate * factor) / (factor - 1.0)
+
+
+def _loan_schedule(principal: float, monthly_rate: float, months: int, base_payment: float, extra_payment: float) -> list[dict[str, float | int]]:
+    balance = round(principal, 2)
+    schedule: list[dict[str, float | int]] = []
+    for month in range(1, months + 1):
+        if balance <= 0:
+            break
+        interest = round(balance * monthly_rate, 2)
+        due = round(balance + interest, 2)
+        regular = min(round(base_payment, 2), due)
+        extra = min(round(extra_payment, 2), max(0.0, due - regular))
+        payment = round(regular + extra, 2)
+        principal_paid = round(payment - interest, 2)
+        balance = max(0.0, round(balance - principal_paid, 2))
+        if balance < 0.01:
+            balance = 0.0
+        schedule.append({
+            "month": month,
+            "payment": payment,
+            "regular_payment": regular,
+            "extra_payment": extra,
+            "principal_paid": principal_paid,
+            "interest_paid": interest,
+            "remaining_balance": balance,
+        })
+    return schedule
+
+
+def _differentiated_schedule(principal: float, monthly_rate: float, months: int, extra_payment: float) -> list[dict[str, float | int]]:
+    balance = round(principal, 2)
+    scheduled_principal = round(principal / months, 2)
+    schedule: list[dict[str, float | int]] = []
+    for month in range(1, months + 1):
+        if balance <= 0:
+            break
+        interest = round(balance * monthly_rate, 2)
+        due = round(balance + interest, 2)
+        regular = min(round(scheduled_principal + interest, 2), due)
+        extra = min(round(extra_payment, 2), max(0.0, due - regular))
+        payment = round(regular + extra, 2)
+        principal_paid = round(payment - interest, 2)
+        balance = max(0.0, round(balance - principal_paid, 2))
+        if balance < 0.01:
+            balance = 0.0
+        schedule.append({
+            "month": month,
+            "payment": payment,
+            "regular_payment": regular,
+            "extra_payment": extra,
+            "principal_paid": principal_paid,
+            "interest_paid": interest,
+            "remaining_balance": balance,
+        })
+    return schedule
+
+
+def calculate_loan_plan(
+    principal: float,
+    rate_annual_pct: float,
+    months: int,
+    monthly_extra_payment: float = 0.0,
+    repayment_method: str = "annuity",
+) -> dict[str, Any]:
+    """Compare an annuity or differentiated schedule with extra principal payments."""
+    values = (principal, rate_annual_pct, monthly_extra_payment)
+    if any(not math.isfinite(float(value)) for value in values):
+        raise ValueError("Сумма, ставка и досрочный платёж должны быть конечными числами")
+    principal = float(principal)
+    rate_annual_pct = float(rate_annual_pct)
+    monthly_extra_payment = float(monthly_extra_payment)
+    if not 0 < principal <= 100_000_000_000:
+        raise ValueError("Сумма кредита должна быть больше нуля и не превышать 100 млрд")
+    if not 0 <= rate_annual_pct <= 200:
+        raise ValueError("Годовая ставка должна быть в диапазоне от 0 до 200%")
+    if not 1 <= int(months) <= 600:
+        raise ValueError("Срок должен быть от 1 до 600 месяцев")
+    if not 0 <= monthly_extra_payment <= principal:
+        raise ValueError("Досрочный ежемесячный платёж должен быть от 0 до суммы кредита")
+    repayment_method = repayment_method.strip().lower()
+    if repayment_method not in {"annuity", "differentiated"}:
+        raise ValueError("Метод погашения должен быть annuity или differentiated")
+
+    months = int(months)
+    monthly_rate = (rate_annual_pct / 100.0) / 12.0
+    annuity_payment = _annuity_payment(principal, monthly_rate, months)
+    if repayment_method == "annuity":
+        standard_schedule = _loan_schedule(principal, monthly_rate, months, annuity_payment, 0.0)
+        schedule = _loan_schedule(principal, monthly_rate, months, annuity_payment, monthly_extra_payment)
+    else:
+        standard_schedule = _differentiated_schedule(principal, monthly_rate, months, 0.0)
+        schedule = _differentiated_schedule(principal, monthly_rate, months, monthly_extra_payment)
+    standard_interest = round(sum(float(row["interest_paid"]) for row in standard_schedule), 2)
+    actual_interest = round(sum(float(row["interest_paid"]) for row in schedule), 2)
+    total_paid = round(sum(float(row["payment"]) for row in schedule), 2)
+    standard_total_paid = round(sum(float(row["payment"]) for row in standard_schedule), 2)
+    regular_first_payment = float(standard_schedule[0]["regular_payment"])
+    return {
+        "mode": "loan",
+        "repayment_method": repayment_method,
+        "repayment_method_label": "Аннуитетный" if repayment_method == "annuity" else "Дифференцированный",
+        "principal": round(principal, 2),
+        "months": months,
+        "rate_pct": rate_annual_pct,
+        "monthly_payment": round(regular_first_payment, 2),
+        "first_payment": round(float(schedule[0]["payment"]), 2),
+        "last_payment": round(float(schedule[-1]["payment"]), 2),
+        "monthly_extra_payment": round(monthly_extra_payment, 2),
+        "total_paid": total_paid,
+        "overpayment": actual_interest,
+        "overpayment_pct": round(actual_interest / principal * 100.0, 2),
+        "months_to_payoff": len(schedule),
+        "months_saved": max(0, len(standard_schedule) - len(schedule)),
+        "standard_total_paid": standard_total_paid,
+        "standard_overpayment": standard_interest,
+        "interest_saved": round(max(0.0, standard_interest - actual_interest), 2),
+        "schedule": schedule,
+    }
+
+
+def calculate_savings_goal(
+    initial_amount: float,
+    monthly_contribution: float,
+    target_amount: float,
+    rate_annual_pct: float,
+    months: int,
+    inflation_annual_pct: float = 0.0,
+) -> dict[str, Any]:
+    values = (initial_amount, monthly_contribution, target_amount, rate_annual_pct, inflation_annual_pct)
+    if any(not math.isfinite(float(value)) for value in values):
+        raise ValueError("Параметры накоплений должны быть конечными числами")
+    initial_amount, monthly_contribution, target_amount, rate_annual_pct, inflation_annual_pct = map(float, values)
+    if not 0 <= initial_amount <= 100_000_000_000 or not 0 <= target_amount <= 100_000_000_000:
+        raise ValueError("Начальная сумма и цель должны быть от 0 до 100 млрд")
+    if not 0 <= monthly_contribution <= 1_000_000_000:
+        raise ValueError("Ежемесячное пополнение должно быть от 0 до 1 млрд")
+    if not 0 <= rate_annual_pct <= 200:
+        raise ValueError("Годовая ставка должна быть в диапазоне от 0 до 200%")
+    if not 0 <= inflation_annual_pct <= 200:
+        raise ValueError("Инфляция должна быть в диапазоне от 0 до 200%")
+    if not 1 <= int(months) <= 600:
+        raise ValueError("Срок должен быть от 1 до 600 месяцев")
+    months = int(months)
+    monthly_rate = rate_annual_pct / 1200.0
+    monthly_inflation = inflation_annual_pct / 1200.0
+    growth_factor = (1.0 + monthly_rate) ** months
+    inflation_factor = (1.0 + monthly_inflation) ** months
+    target_at_horizon = target_amount * inflation_factor
+    contribution_factor = months if monthly_rate == 0 else (growth_factor - 1.0) / monthly_rate
+    initial_future_value = initial_amount * growth_factor
+    projected_balance = initial_future_value + monthly_contribution * contribution_factor
+    required_monthly = max(0.0, (target_at_horizon - initial_future_value) / contribution_factor)
+    invested = initial_amount + monthly_contribution * months
+    forecast_balance = initial_amount
+    savings_schedule: list[dict[str, float | int]] = []
+    for month in range(1, months + 1):
+        forecast_balance = forecast_balance * (1.0 + monthly_rate) + monthly_contribution
+        if month % 12 == 0 or month == months:
+            milestone_inflation = (1.0 + monthly_inflation) ** month
+            milestone_target = target_amount * milestone_inflation
+            savings_schedule.append({
+                "month": month,
+                "projected_balance": round(forecast_balance, 2),
+                "target_at_date": round(milestone_target, 2),
+                "balance_in_today_rub": round(forecast_balance / milestone_inflation, 2),
+                "difference_to_target": round(forecast_balance - milestone_target, 2),
+            })
+    running_balance = initial_amount
+    estimated_months_to_goal: int | None = 0 if initial_amount >= target_amount else None
+    for month in range(1, 601):
+        running_balance = running_balance * (1.0 + monthly_rate) + monthly_contribution
+        inflation_adjusted_goal = target_amount * ((1.0 + monthly_inflation) ** month)
+        if running_balance >= inflation_adjusted_goal:
+            estimated_months_to_goal = month
+            break
+    return {
+        "mode": "goal",
+        "target_amount_today": round(target_amount, 2),
+        "target_amount_at_horizon": round(target_at_horizon, 2),
+        "projected_balance": round(projected_balance, 2),
+        "projected_balance_in_today_rub": round(projected_balance / inflation_factor, 2),
+        "required_monthly_contribution": round(required_monthly, 2),
+        "monthly_contribution": round(monthly_contribution, 2),
+        "initial_amount_future_value": round(initial_future_value, 2),
+        "total_invested": round(invested, 2),
+        "estimated_growth": round(projected_balance - invested, 2),
+        "target_difference": round(projected_balance - target_at_horizon, 2),
+        "real_target_difference": round(projected_balance / inflation_factor - target_amount, 2),
+        "estimated_months_to_goal": estimated_months_to_goal,
+        "schedule": savings_schedule,
+        "months": months,
+        "rate_pct": rate_annual_pct,
+        "inflation_pct": inflation_annual_pct,
+        "assumption": "Ставка, инфляция и пополнения считаются постоянными; взносы вносятся в конце месяца. Налоги, комиссии и изменение условий не учтены.",
+    }
+
+
 def calculate_finance(
     mode: str,
     principal: float,
@@ -213,6 +415,10 @@ def calculate_finance(
     monthly_topup: float = 0.0,
     people_count: int = 2,
     tip_pct: float = 10.0,
+    monthly_extra_payment: float = 0.0,
+    target_amount: float = 1_000_000.0,
+    repayment_method: str = "annuity",
+    inflation_annual_pct: float = 0.0,
 ) -> dict[str, Any]:
     m = mode.lower().strip()
     if m == "split":
@@ -232,23 +438,10 @@ def calculate_finance(
     monthly_rate = (rate_annual_pct / 100.0) / 12.0
 
     if m == "loan":
-        if monthly_rate == 0:
-            monthly_pay = principal / months
-        else:
-            factor = (1 + monthly_rate) ** months
-            monthly_pay = principal * (monthly_rate * factor) / (factor - 1)
-        total_paid = monthly_pay * months
-        overpayment = total_paid - principal
-        return {
-            "mode": "loan",
-            "principal": round(principal, 2),
-            "months": months,
-            "rate_pct": rate_annual_pct,
-            "monthly_payment": round(monthly_pay, 2),
-            "total_paid": round(total_paid, 2),
-            "overpayment": round(overpayment, 2),
-            "overpayment_pct": round((overpayment / max(1.0, principal)) * 100, 2),
-        }
+        return calculate_loan_plan(principal, rate_annual_pct, months, monthly_extra_payment, repayment_method)
+
+    if m == "goal":
+        return calculate_savings_goal(principal, monthly_topup, target_amount, rate_annual_pct, months, inflation_annual_pct)
 
     # Default: compound interest deposit
     balance = principal
