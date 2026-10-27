@@ -455,7 +455,7 @@ export const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 min-w-0">
-        {viewMode !== 'admin' && viewMode !== 'bot' && (
+        {viewMode !== 'admin' && viewMode !== 'bot' && !mobileDrillOpen && (
           <div className="mx-auto max-w-[1440px] px-3 pt-3 sm:px-5 sm:pt-4">
             <GamepiadaPromoBanner />
           </div>

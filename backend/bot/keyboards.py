@@ -24,6 +24,12 @@ def webapp_button(text: str = "📱 Открыть приложение", tab: s
 def main_menu_kb(favorites_count: int = 0, now: datetime | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(_webapp_button("📱 Открыть приложение MULTI_TG_TOOL"))
+    builder.row(
+        InlineKeyboardButton(
+            text="🏆 GAMEpiada · подробности" if not gamepiada_is_over(now) else "🏁 GAMEpiada · итоги",
+            callback_data="event:gamepiada:details",
+        )
+    )
     if not gamepiada_is_over(now):
         builder.row(
             InlineKeyboardButton(text="📝 Заявка GAMEpiada", url=REGISTRATION_URL),
@@ -33,26 +39,49 @@ def main_menu_kb(favorites_count: int = 0, now: datetime | None = None) -> Inlin
     else:
         builder.row(InlineKeyboardButton(text="💬 Discord GAMEpiada · итоги", url=DISCORD_URL))
 
-    cat_buttons = [
-        InlineKeyboardButton(
-            text=f"{cat['emoji']} {cat['title']}",
-            callback_data=f"nav:cat:{cat['id']}",
-        )
-        for cat in TOOL_CATEGORIES
-    ]
-    for i in range(0, len(cat_buttons), 2):
-        builder.row(*cat_buttons[i : i + 2])
-
+    builder.row(
+        InlineKeyboardButton(text=f"🗂 Каталог · {len(TOOL_CATEGORIES)} разделов", callback_data="nav:catalog"),
+        InlineKeyboardButton(text="🔎 Поиск", callback_data="nav:tools"),
+    )
     fav_label = f"⭐ Избранное ({favorites_count})" if favorites_count else "⭐ Избранное"
     builder.row(
         InlineKeyboardButton(text=fav_label, callback_data="nav:favorites"),
         InlineKeyboardButton(text="👤 Профиль", callback_data="nav:profile"),
     )
-    builder.row(
-        InlineKeyboardButton(text="🔎 Найти инструмент", callback_data="nav:tools"),
-        InlineKeyboardButton(text="📖 Команды", callback_data="nav:help"),
-    )
+    builder.row(InlineKeyboardButton(text="📖 Команды", callback_data="nav:help"))
     builder.row(InlineKeyboardButton(text="⚡ Быстро в чате · калькулятор / поиск", switch_inline_query_current_chat="256 * 16"))
+    return builder.as_markup()
+
+
+CATEGORY_CATALOG_PAGE_SIZE = 8
+
+
+def category_catalog_kb(page: int = 0) -> InlineKeyboardMarkup:
+    """Compact, paginated category picker keeps the home screen above the fold."""
+    page_count = max(1, (len(TOOL_CATEGORIES) + CATEGORY_CATALOG_PAGE_SIZE - 1) // CATEGORY_CATALOG_PAGE_SIZE)
+    page = max(0, min(page, page_count - 1))
+    start = page * CATEGORY_CATALOG_PAGE_SIZE
+    categories = TOOL_CATEGORIES[start : start + CATEGORY_CATALOG_PAGE_SIZE]
+    builder = InlineKeyboardBuilder()
+    for i in range(0, len(categories), 2):
+        builder.row(*[
+            InlineKeyboardButton(
+                text=f"{cat['emoji']} {cat['title'][:24]}",
+                callback_data=f"nav:cat:{cat['id']}",
+            )
+            for cat in categories[i : i + 2]
+        ])
+    navigation: list[InlineKeyboardButton] = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"nav:catalog:page:{page - 1}"))
+    if page + 1 < page_count:
+        navigation.append(InlineKeyboardButton(text="Ещё ➡️", callback_data=f"nav:catalog:page:{page + 1}"))
+    if navigation:
+        builder.row(*navigation)
+    builder.row(
+        InlineKeyboardButton(text="🔎 Поиск по всем инструментам", callback_data="nav:tools"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:home"),
+    )
     return builder.as_markup()
 
 

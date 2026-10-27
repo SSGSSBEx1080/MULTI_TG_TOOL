@@ -1385,11 +1385,31 @@ async def test_v5_fixes_qr_roundtrip_and_all_tools_bot_wiring() -> None:
             start_r = await client.post("/api/sim/send-text", json={"text": "/start"})
             assert start_r.status_code == 200
             welcome = start_r.json()["messages"][-1]
-            assert "GAMEpiada" in welcome["text"]
-            assert "188 инструментов" in welcome["text"]
+            assert welcome["text"].startswith("<b>🏆━━━━━━━━ GAMEpiada")
+            assert welcome["text"].index("GAMEpiada") < welcome["text"].index("MULTI_TG_TOOL")
+            assert "17 дисциплин" in welcome["text"] and "188 инструментов" in welcome["text"]
+            assert "Dota 2" not in welcome["text"]  # the long promo stays available behind its details button
+            assert len(welcome["inline_keyboard"]) <= 8
             welcome_buttons = [button for row in welcome["inline_keyboard"] for button in row]
             assert any(button.get("url") == "https://discord.gg/5fRZkcjt" for button in welcome_buttons)
             assert any(button.get("callback_data") == "nav:tools" for button in welcome_buttons)
+            assert any(button.get("callback_data") == "nav:catalog" for button in welcome_buttons)
+            assert any(button.get("callback_data") == "event:gamepiada:details" for button in welcome_buttons)
+
+            details = await client.post("/api/sim/callback", json={"message_id": welcome["message_id"], "callback_data": "event:gamepiada:details"})
+            detail_message = details.json()["messages"][-1]
+            assert "Dota 2" in detail_message["text"] and "Brawl Stars" in detail_message["text"]
+            assert any(button.get("url") == "https://forms.gle/BSrp7vQqTXzJtBhq7" for row in detail_message["inline_keyboard"] for button in row)
+
+            home_again = await client.post("/api/sim/callback", json={"message_id": detail_message["message_id"], "callback_data": "nav:home"})
+            home_message = home_again.json()["messages"][-1]
+            catalog = await client.post("/api/sim/callback", json={"message_id": home_message["message_id"], "callback_data": "nav:catalog"})
+            catalog_message = catalog.json()["messages"][-1]
+            assert "GAMEpiada" not in catalog_message["text"]
+            assert "Страница 1/" in catalog_message["text"]
+            first_category = next(button["callback_data"] for row in catalog_message["inline_keyboard"] for button in row if button.get("callback_data", "").startswith("nav:cat:"))
+            category_screen = await client.post("/api/sim/callback", json={"message_id": catalog_message["message_id"], "callback_data": first_category})
+            assert "GAMEpiada" not in category_screen.json()["messages"][-1]["text"]
 
             tool_search = await client.post("/api/sim/send-text", json={"text": "/tools"})
             assert tool_search.status_code == 200
