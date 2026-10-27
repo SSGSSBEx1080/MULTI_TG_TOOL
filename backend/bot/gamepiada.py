@@ -40,7 +40,24 @@ def gamepiada_countdown(now: datetime | None = None) -> str:
     return "🏁 Турнирный период GAMEpiada завершён."
 
 
+def gamepiada_home_banner(now: datetime | None = None) -> str:
+    """Compact hero shown at the top of the bot home screen."""
+    current = (now or datetime.now(MOSCOW_TZ)).astimezone(MOSCOW_TZ)
+    if current >= GAMEPIADA_END:
+        return (
+            "<b>🏁 GAMEpiada · 27 октября — 1 ноября 2026</b>\n"
+            "<b>Турнир завершён · следите за итогами</b>"
+        )
+    return (
+        "<b>🏆━━━━━━━━ GAMEpiada ━━━━━━━━🏆</b>\n"
+        "<b>БОЛЬШОЙ ТУРНИР · 17 дисциплин · общий рейтинг</b>\n"
+        "📅 <b>27 октября — 1 ноября 2026 (предварительно)</b>\n"
+        f"{gamepiada_countdown(current)}"
+    )
+
+
 def gamepiada_announcement(now: datetime | None = None) -> str:
+    """Full event details, opened on demand from the home-screen hero."""
     current = (now or datetime.now(MOSCOW_TZ)).astimezone(MOSCOW_TZ)
     if current >= GAMEPIADA_END:
         return (

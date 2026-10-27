@@ -8,8 +8,14 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backend.bot.handlers.helpers import esc, progress_bar, render_hud
-from backend.bot.gamepiada import gamepiada_announcement
-from backend.bot.keyboards import category_kb, main_menu_kb, webapp_button
+from backend.bot.gamepiada import (
+    DISCORD_URL,
+    REGISTRATION_URL,
+    gamepiada_announcement,
+    gamepiada_home_banner,
+    gamepiada_is_over,
+)
+from backend.bot.keyboards import CATEGORY_CATALOG_PAGE_SIZE, category_catalog_kb, category_kb, main_menu_kb, webapp_button
 from backend.bot.tool_catalog import count_tool_entries, search_tools
 from backend.database import db
 from backend.tools import TOOL_CATEGORIES, TOOLS_BY_ID
@@ -21,11 +27,10 @@ def _build_welcome_text(profile: dict[str, Any]) -> str:
     rank = profile["rank"]
     name = esc(profile.get("first_name") or "Пользователь")
     return (
-        f"<b>MULTI_TG_TOOL</b>\n"
+        f"{gamepiada_home_banner()}\n\n"
+        f"<b>MULTI_TG_TOOL</b> · {len(TOOL_CATEGORIES)} разделов · {count_tool_entries()} инструментов\n"
         f"<blockquote>👤 {name}  •  Уровень {rank['level']} ({rank['xp']} XP)  •  Запусков: {profile.get('tools_used', 0)}</blockquote>\n\n"
-        f"{gamepiada_announcement()}\n\n"
-        f"В каталоге <b>{len(TOOL_CATEGORIES)} разделов и {count_tool_entries()} инструментов</b>. Откройте раздел или найдите нужное командой <code>/tools фото</code>.\n"
-        f"Также можно отправить в чат фото, PDF, математический пример или величину для перевода (например: <code>75 кг в фунты</code>)."
+        "Выберите раздел, найдите инструмент или отправьте в чат фото, PDF, пример либо величину для перевода."
     )
 
 
@@ -73,6 +78,51 @@ async def cb_refresh_gamepiada_countdown(
         _build_welcome_text(user_profile),
         reply_markup=main_menu_kb(len(user_favorites)),
     )
+
+
+@router.callback_query(F.data == "event:gamepiada:details")
+async def cb_gamepiada_details(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    builder = InlineKeyboardBuilder()
+    if not gamepiada_is_over():
+        builder.row(InlineKeyboardButton(text="📝 Подать заявку", url=REGISTRATION_URL))
+    builder.row(InlineKeyboardButton(text="💬 Discord GAMEpiada", url=DISCORD_URL))
+    builder.row(InlineKeyboardButton(text="🏠 На главную", callback_data="nav:home"))
+    await render_hud(
+        callback,
+        f"<b>🏆 GAMEpiada · турнирная информация</b>\n\n{gamepiada_announcement()}",
+        reply_markup=builder.as_markup(),
+    )
+
+
+def _category_catalog_text(page: int) -> str:
+    page_size = CATEGORY_CATALOG_PAGE_SIZE
+    page_count = max(1, (len(TOOL_CATEGORIES) + page_size - 1) // page_size)
+    page = max(0, min(page, page_count - 1))
+    start = page * page_size
+    categories = TOOL_CATEGORIES[start : start + page_size]
+    lines = "\n".join(
+        f"{category['emoji']} <b>{esc(category['title'])}</b> · {len(category['tools'])} инструментов"
+        for category in categories
+    )
+    return (
+        f"<b>🗂 Каталог разделов</b> · {len(TOOL_CATEGORIES)} разделов / {count_tool_entries()} инструментов\n\n"
+        f"{lines}\n\nСтраница {page + 1}/{page_count} · выберите раздел кнопками ниже."
+    )
+
+
+@router.callback_query(F.data == "nav:catalog")
+async def cb_category_catalog(callback: CallbackQuery) -> None:
+    await render_hud(callback, _category_catalog_text(0), reply_markup=category_catalog_kb(0))
+
+
+@router.callback_query(F.data.startswith("nav:catalog:page:"))
+async def cb_category_catalog_page(callback: CallbackQuery) -> None:
+    try:
+        page = int(callback.data.rsplit(":", 1)[-1])
+    except (AttributeError, ValueError):
+        page = 0
+    await render_hud(callback, _category_catalog_text(page), reply_markup=category_catalog_kb(page))
 
 
 TOOL_SEARCH_PAGE_SIZE = 6
